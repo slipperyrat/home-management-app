@@ -4,11 +4,18 @@ import { createClient } from '@supabase/supabase-js';
 
 const buckets = new Map<string, { ts: number[] }>();
 
-// Create Supabase admin client for onboarding checks
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Create Supabase admin client for onboarding checks - with error handling
+let supabaseAdmin: any = null;
+try {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+} catch (error) {
+  console.error('Failed to create Supabase admin client in middleware:', error);
+}
 
 // Cache for onboarding status to reduce database calls
 const onboardingCache = new Map<string, { hasOnboarded: boolean; timestamp: number }>();
@@ -43,6 +50,12 @@ async function checkOnboardingStatus(userId: string): Promise<boolean> {
   const cached = onboardingCache.get(userId);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     return cached.hasOnboarded;
+  }
+
+  // If Supabase client is not available, skip the check
+  if (!supabaseAdmin) {
+    console.warn('Supabase admin client not available in middleware, skipping onboarding check');
+    return true; // Allow access to avoid blocking the app
   }
 
   try {
