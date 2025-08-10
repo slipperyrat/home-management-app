@@ -8,6 +8,18 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 // Create a Supabase client with service role key for server-side operations
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+interface ChoreCompletion {
+  id: string;
+  completed_at: string;
+  xp_earned: number;
+  completed_by: string;
+  chore: {
+    id: string;
+    title: string;
+    household_id: string;
+  }[];
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -37,7 +49,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const filteredData = data.filter(item => item.chore.household_id === householdId);
+    const filteredData = (data as ChoreCompletion[]).filter(item => {
+      // chore is now an array, so we can safely access the first element
+      const chore = item.chore[0];
+      return chore && chore.household_id === householdId;
+    });
     return NextResponse.json({ data: filteredData });
   } catch (error) {
     console.error('Exception in GET /api/chores/completions:', error);

@@ -58,11 +58,15 @@ export async function GET(_request: NextRequest) {
 
     // Transform the data to match the expected format and sort by XP (descending)
     const leaderboard = householdUsers
-      ?.map((member, index) => ({
-        id: member.users.id,
-        xp: member.users.xp || 0,
-        username: member.users.email || `User ${index + 1}`
-      }))
+      ?.map((member, index) => {
+        // Handle case where users might be an array or single object
+        const user = Array.isArray(member.users) ? member.users[0] : member.users;
+        return {
+          id: user?.id || `user-${index}`,
+          xp: user?.xp || 0,
+          username: user?.email || `User ${index + 1}`
+        };
+      })
       .sort((a, b) => b.xp - a.xp) // Sort by XP descending
       .slice(0, 10) || [];
 

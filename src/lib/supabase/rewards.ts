@@ -1,11 +1,4 @@
 import { supabase } from '@/lib/supabaseClient'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
-
-// Create a Supabase client with service role key for server-side operations
-const supabaseService = createClient(supabaseUrl, supabaseServiceKey);
 
 /**
  * Fetches all rewards from the rewards table ordered by created_at descending
@@ -93,28 +86,12 @@ export async function getUserPowerUps(userId: string): Promise<string[]> {
   try {
     console.log(`🔍 Fetching power-ups for user ${userId}`);
     
-    // First, delete expired power-ups using service role client
-    const now = new Date().toISOString();
-    const { error: deleteError } = await supabaseService
-      .from('power_ups')
-      .delete()
-      .eq('user_id', userId)
-      .lt('expires_at', now)
-      .not('expires_at', 'is', null);
-
-    if (deleteError) {
-      console.error('❌ Error deleting expired power-ups:', deleteError);
-      // Continue with the operation even if deletion fails
-    } else {
-      console.log(`🧹 Cleaned up expired power-ups for user ${userId}`);
-    }
-
     // Fetch remaining (active) power-ups
     const { data, error } = await supabase
       .from('power_ups')
       .select('type')
       .eq('user_id', userId)
-      .or(`expires_at.is.null,expires_at.gt.${now}`);
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
 
     if (error) {
       console.error('❌ Error fetching user power-ups:', error);

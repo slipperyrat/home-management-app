@@ -31,7 +31,7 @@ interface ShoppingList {
 interface ShoppingItem {
   id: string;
   name: string;
-  quantity: number;
+  quantity: string | null;
   completed: boolean;
   list_id: string;
 }
@@ -186,28 +186,28 @@ export default function ShoppingListsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Shopping Lists</h1>
-          <p className="text-gray-600">Manage your household shopping lists</p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Shopping Lists</h1>
+          <p className="text-sm sm:text-base text-gray-600">Manage your household shopping lists</p>
         </div>
 
         {/* Create new list section */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Create New List</h2>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <input
               type="text"
               value={newListTitle}
               onChange={(e) => setNewListTitle(e.target.value)}
               placeholder="Enter list title..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="flex-1 px-4 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               onKeyPress={(e) => e.key === 'Enter' && handleCreateList()}
             />
             <button
               onClick={handleCreateList}
               disabled={!newListTitle.trim() || creatingList}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 sm:py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-base sm:text-sm"
             >
               {creatingList ? 'Creating...' : 'Create List'}
             </button>
@@ -215,30 +215,30 @@ export default function ShoppingListsPage() {
         </div>
 
         {/* Shopping lists grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {shoppingLists.map((list) => (
             <div
               key={list.id}
               onClick={() => handleListClick(list.id)}
-              className="bg-white rounded-lg shadow hover:shadow-md transition-shadow cursor-pointer p-6"
+              className="bg-white rounded-lg shadow hover:shadow-md transition-all duration-200 cursor-pointer p-4 sm:p-6 active:scale-95 touch-manipulation"
             >
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 truncate">
+              <div className="flex justify-between items-start mb-3 sm:mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 truncate pr-2">
                   {list.title}
                 </h3>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-500 whitespace-nowrap">
                   {list.shopping_items?.length || 0} items
                 </span>
               </div>
               
-              <div className="text-sm text-gray-500 mb-4">
+              <div className="text-sm text-gray-500 mb-3 sm:mb-4">
                 Created {formatDate(list.created_at)}
               </div>
 
               {/* Progress bar */}
               {list.shopping_items && list.shopping_items.length > 0 && (
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm text-gray-600 mb-1">
+                <div className="mb-3 sm:mb-4">
+                  <div className="flex justify-between text-sm text-gray-600 mb-2">
                     <span>Progress</span>
                     <span>
                       {list.shopping_items.filter(item => item.completed).length} / {list.shopping_items.length}
@@ -255,8 +255,11 @@ export default function ShoppingListsPage() {
                 </div>
               )}
 
-              <div className="text-blue-600 text-sm font-medium">
-                Click to view details →
+              <div className="text-blue-600 text-sm font-medium flex items-center">
+                <span>View details</span>
+                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
               </div>
             </div>
           ))}
@@ -265,9 +268,9 @@ export default function ShoppingListsPage() {
         {/* Empty state */}
         {shoppingLists.length === 0 && !loading && (
           <div className="text-center py-12">
-            <div className="text-gray-400 text-6xl mb-4">🛒</div>
+            <div className="text-4xl sm:text-6xl text-gray-400 mb-4">🛒</div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No shopping lists yet</h3>
-            <p className="text-gray-600">Create your first shopping list to get started!</p>
+            <p className="text-sm sm:text-base text-gray-600">Create your first shopping list to get started!</p>
           </div>
         )}
       </div>

@@ -39,6 +39,8 @@ export function usePowerUps(): UsePowerUpsReturn {
         setLoading(true);
         setError(null);
         
+        if (!user?.id) return;
+        
         const powerUpsData = await getUserPowerUpDetails(user.id);
         setPowerUps(powerUpsData);
       } catch (err) {

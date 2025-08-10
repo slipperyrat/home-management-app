@@ -1,0 +1,57 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-dependencies:
+    name: Update Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Update dependencies
+      run: |
+        npm update
+        npm audit fix --force
+        
+    - name: Run tests after update
+      run: |
+        npm ci
+        npm run test:run
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co'
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key'
+        SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key'
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'test-clerk-key'
+        CLERK_SECRET_KEY: 'test-clerk-secret'
+        
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: update dependencies'
+        title: 'chore: weekly dependency updates'
+        body: |
+          Automated dependency updates:
+          
+          - Updated npm packages to latest versions
+          - Fixed security vulnerabilities
+          - All tests passing ✅
+          
+          Please review and merge if all checks pass.
+        branch: dependency-updates
+        delete-branch: true

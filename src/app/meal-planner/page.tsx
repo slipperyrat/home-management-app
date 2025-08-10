@@ -1,0 +1,1036 @@
+'use client';
+
+import { useAuth, useUser } from '@clerk/nextjs';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { useUserData } from '@/hooks/useUserData';
+import { useRecipes } from '@/hooks/useRecipes';
+import { useMealPlan } from '@/hooks/useMealPlan';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { FeatureErrorBoundary } from '@/components/ErrorBoundary';
+
+interface UserData {
+  email: string;
+  role: 'owner' | 'member';
+  plan: 'free' | 'premium';
+  household: {
+    id: string;
+    plan: string;
+  };
+}
+
+interface Recipe {
+  id: string;
+  title: string;
+  description: string;
+  ingredients: Ingredient[];
+  instructions: string[];
+  prep_time: number;
+  cook_time: number;
+  servings: number;
+  image_url?: string;
+  tags: string[];
+}
+
+interface Ingredient {
+  name: string;
+  amount: number;
+  unit: string;
+  category: string;
+}
+
+interface MealPlan {
+  id: string;
+  household_id: string;
+  week_start_date: string;
+  meals: {
+    [day: string]: {
+      breakfast?: Recipe | string | null;
+      lunch?: Recipe | string | null;
+      dinner?: Recipe | string | null;
+    };
+  };
+}
+
+export default function MealPlannerPage() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const { user } = useUser();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  
+  // Use React Query hooks for data fetching
+  const { data: userData, isLoading: userDataLoading, error: userDataError } = useUserData();
+  const { data: recipes, isLoading: recipesLoading, error: recipesError } = useRecipes(userData?.household?.id);
+  
+  const [currentWeek, setCurrentWeek] = useState<Date>(new Date());
+  const weekStartDate = getWeekStart(currentWeek);
+  const { data: mealPlan, isLoading: mealPlanLoading, error: mealPlanError } = useMealPlan(userData?.household?.id, weekStartDate);
+  
+
+
+  // Data loading states
+  const loading = userDataLoading || recipesLoading || mealPlanLoading;
+  const error = userDataError || recipesError || mealPlanError;
+  
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
+  const [showCreateRecipeModal, setShowCreateRecipeModal] = useState(false);
+
+  // React Query mutations
+  const assignRecipeMutation = useMutation({
+    mutationFn: async ({ date, mealType, recipe }: { date: string; mealType: 'breakfast' | 'lunch' | 'dinner'; recipe: Recipe }) => {
+      const dateObj = new Date(date);
+      const weekStart = getWeekStart(dateObj);
+      const weekStartDate = weekStart.toISOString().split('T')[0];
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayName = dayNames[dateObj.getDay()];
+
+      const response = await fetch('/api/meal-planner/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          week: weekStartDate,
+          day: dayName,
+          slot: mealType,
+          recipe_id: recipe.id,
+          alsoAddToList: true
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to assign recipe: ${response.status}`);
+      }
+
+      return response.json();
+    },
+          onSuccess: (result, variables) => {
+        // Invalidate the specific meal plan query to refetch data
+        const weekStartString = weekStartDate.toISOString().split('T')[0];
+
+        // Invalidate both the specific query and refetch immediately
+        queryClient.invalidateQueries({
+          queryKey: ['mealPlan', userData?.household?.id, weekStartString]
+        });
+
+        // Also invalidate all meal plan queries to ensure consistency
+        queryClient.invalidateQueries({
+          queryKey: ['mealPlan']
+        });
+
+      // Show toast notification for ingredient sync
+      if (result.ingredients) {
+        const { added = 0, updated = 0 } = result.ingredients;
+        
+        if (added > 0 || updated > 0) {
+          let message = '';
+          if (added > 0 && updated > 0) {
+            message = `Added ${added} items • Merged ${updated} items`;
+          } else if (added > 0) {
+            message = `Added ${added} items`;
+          } else if (updated > 0) {
+            message = `Merged ${updated} items`;
+          }
+          
+          toast.success(message, {
+            action: {
+              label: 'View List',
+              onClick: () => router.push('/shopping-lists')
+            },
+            duration: 5000
+          });
+        }
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to assign recipe: ${error.message}`);
+    },
+  });
+
+  const createRecipeMutation = useMutation({
+    mutationFn: async (recipeData: any) => {
+      const response = await fetch('/api/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(recipeData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to create recipe');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      // Invalidate recipes query to refetch data
+      queryClient.invalidateQueries({ queryKey: ['recipes'] });
+      toast.success('Recipe created successfully!');
+      setShowCreateRecipeModal(false);
+    },
+    onError: (error) => {
+      toast.error(`Failed to create recipe: ${error.message}`);
+    },
+  });
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    if (!isSignedIn) {
+      router.push('/sign-in');
+      return;
+    }
+  }, [isLoaded, isSignedIn, router]);
+
+  function getWeekStart(date: Date): Date {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
+  }
+
+
+
+  function getWeekDays(): Date[] {
+    const days: Date[] = [];
+    const weekStart = getWeekStart(currentWeek);
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(weekStart);
+      date.setDate(date.getDate() + i);
+      days.push(date);
+    }
+    return days;
+  }
+
+  function formatDate(date: Date): string {
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  }
+
+  function getMealForDay(date: string, mealType: 'breakfast' | 'lunch' | 'dinner'): Recipe | undefined {
+    if (!mealPlan?.meals) return undefined;
+    
+    // Convert date to day name
+    const dateObj = new Date(date);
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[dateObj.getDay()];
+    
+    const dayMeals = mealPlan.meals[dayName];
+    if (!dayMeals) return undefined;
+    
+    const meal = dayMeals[mealType];
+    
+    // If meal is a string (recipe ID), we need to find the recipe object
+    if (typeof meal === 'string') {
+      return recipes?.find(r => r.id === meal);
+    }
+    
+    return meal as Recipe | undefined;
+  }
+
+  function assignRecipe(date: string, mealType: 'breakfast' | 'lunch' | 'dinner', recipe: Recipe) {
+    assignRecipeMutation.mutate({ date, mealType, recipe });
+  }
+
+  async function addToGroceryList(recipe: Recipe) {
+    if (!userData?.household?.id) return;
+
+    try {
+      const response = await fetch('/api/shopping-lists/add-recipe-ingredients', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipe_id: recipe.id
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const { added = 0, updated = 0 } = result;
+        
+        let message = '';
+        if (added > 0 && updated > 0) {
+          message = `Added ${added} items • Merged ${updated} items`;
+        } else if (added > 0) {
+          message = `Added ${added} items`;
+        } else if (updated > 0) {
+          message = `Merged ${updated} items`;
+        } else {
+          message = 'No changes';
+        }
+        
+        // Only show toast with action if there were changes
+        if (added > 0 || updated > 0) {
+          toast.success(message, {
+            action: {
+              label: 'View List',
+              onClick: () => router.push('/shopping-lists')
+            },
+            duration: 5000
+          });
+        } else {
+          toast.info(message);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        toast.error(`Failed to add ingredients: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Error adding ingredients to grocery list:', err);
+      toast.error('Failed to add ingredients. Please try again.');
+    }
+  }
+
+  function navigateWeek(direction: 'prev' | 'next') {
+    const newWeek = new Date(currentWeek);
+    if (direction === 'prev') {
+      newWeek.setDate(newWeek.getDate() - 7);
+    } else {
+      newWeek.setDate(newWeek.getDate() + 7);
+    }
+    setCurrentWeek(newWeek);
+  }
+
+  // Copy last week mutation
+  const copyLastWeekMutation = useMutation({
+    mutationFn: async () => {
+      // Calculate from (last Monday) and to (current Monday) dates
+      const currentMonday = getWeekStart(currentWeek);
+      const lastMonday = new Date(currentMonday);
+      lastMonday.setDate(lastMonday.getDate() - 7);
+
+      const from = lastMonday.toISOString().split('T')[0]; // YYYY-MM-DD
+      const to = currentMonday.toISOString().split('T')[0]; // YYYY-MM-DD
+
+      const response = await fetch('/api/meal-planner/copy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from,
+          to,
+          overwrite: false
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 404) {
+          throw new Error('NO_PLAN_FOUND');
+        }
+        throw new Error(errorData.error || 'Failed to copy meal plan');
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Invalidate and refetch the meal plan using the correct query key format
+      const weekStartString = weekStartDate.toISOString().split('T')[0];
+      queryClient.invalidateQueries({ queryKey: ['mealPlan', userData?.household?.id, weekStartString] });
+      
+      // Also invalidate all meal plan queries to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
+      
+      if (data.plan) {
+        toast.success("Copied last week's plan");
+      } else {
+        toast.info("No plan found last week to copy");
+      }
+    },
+    onError: (error: Error) => {
+      if (error.message === 'NO_PLAN_FOUND') {
+        toast.info("No plan found last week to copy");
+      } else {
+        toast.error(error.message || 'Failed to copy meal plan');
+      }
+    },
+  });
+
+  function copyLastWeek() {
+    copyLastWeekMutation.mutate();
+  }
+
+  // Show loading spinner while auth is loading or data is being fetched
+  if (!isLoaded || loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return null;
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white shadow rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="text-center">
+            <div className="text-red-500 text-6xl mb-4">⚠️</div>
+            <h1 className="text-xl font-semibold text-gray-900 mb-2">Error</h1>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const weekDays = getWeekDays();
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="bg-white shadow rounded-lg">
+          {/* Header */}
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Meal Planner</h1>
+                <p className="text-sm sm:text-base text-gray-600">Plan your weekly meals and sync with grocery lists</p>
+              </div>
+              
+              {/* Mobile-first button layout */}
+              <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-4">
+                <button
+                  onClick={() => {
+                    console.log('🔍 New Recipe button clicked');
+                    setShowCreateRecipeModal(true);
+                  }}
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 text-sm font-medium"
+                >
+                  + New Recipe
+                </button>
+                
+                {/* Week Navigation */}
+                <div className="flex items-center justify-between sm:justify-start space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => navigateWeek('prev')}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
+                      aria-label="Previous week"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-xs sm:text-sm font-medium text-gray-900 min-w-0">
+                      <span className="hidden sm:inline">{formatDate(weekDays[0])} - {formatDate(weekDays[6])}</span>
+                      <span className="sm:hidden">{weekDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {weekDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    </span>
+                    <button
+                      onClick={() => navigateWeek('next')}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
+                      aria-label="Next week"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <button
+                    onClick={copyLastWeek}
+                    disabled={copyLastWeekMutation.isPending}
+                    className="px-3 py-2 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {copyLastWeekMutation.isPending ? 'Copying...' : 'Copy Last Week'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Weekly Grid */}
+          <FeatureErrorBoundary featureName="Meal Planner Grid">
+            {/* Desktop Grid - Hidden on mobile */}
+            <div className="hidden lg:block">
+              <div className="grid grid-cols-7 gap-4 p-6">
+                {weekDays.map((date, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="text-center">
+                      <div className="text-sm font-medium text-gray-900">
+                        {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+
+                    {/* Breakfast */}
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-gray-700">Breakfast</div>
+                      <MealSlot
+                        date={date.toISOString().split('T')[0]}
+                        mealType="breakfast"
+                        recipe={getMealForDay(date.toISOString().split('T')[0], 'breakfast')}
+                        onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'breakfast', recipe)}
+                        recipes={recipes || []}
+                      />
+                    </div>
+
+                    {/* Lunch */}
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-gray-700">Lunch</div>
+                      <MealSlot
+                        date={date.toISOString().split('T')[0]}
+                        mealType="lunch"
+                        recipe={getMealForDay(date.toISOString().split('T')[0], 'lunch')}
+                        onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'lunch', recipe)}
+                        recipes={recipes || []}
+                      />
+                    </div>
+
+                    {/* Dinner */}
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-gray-700">Dinner</div>
+                      <MealSlot
+                        date={date.toISOString().split('T')[0]}
+                        mealType="dinner"
+                        recipe={getMealForDay(date.toISOString().split('T')[0], 'dinner')}
+                        onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'dinner', recipe)}
+                        recipes={recipes || []}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mobile/Tablet Layout - Stacked cards */}
+            <div className="lg:hidden">
+              <div className="space-y-4 p-4">
+                {weekDays.map((date, index) => (
+                  <div key={index} className="bg-gray-50 rounded-lg p-4">
+                    <div className="text-center mb-4">
+                      <div className="text-lg font-semibold text-gray-900">
+                        {date.toLocaleDateString('en-US', { weekday: 'long' })}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                      </div>
+                    </div>
+
+                    {/* Mobile Meals Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Breakfast */}
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-gray-700 text-center">🌅 Breakfast</div>
+                        <MealSlot
+                          date={date.toISOString().split('T')[0]}
+                          mealType="breakfast"
+                          recipe={getMealForDay(date.toISOString().split('T')[0], 'breakfast')}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'breakfast', recipe)}
+                          recipes={recipes || []}
+                          isMobile={true}
+                        />
+                      </div>
+
+                      {/* Lunch */}
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-gray-700 text-center">☀️ Lunch</div>
+                        <MealSlot
+                          date={date.toISOString().split('T')[0]}
+                          mealType="lunch"
+                          recipe={getMealForDay(date.toISOString().split('T')[0], 'lunch')}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'lunch', recipe)}
+                          recipes={recipes || []}
+                          isMobile={true}
+                        />
+                      </div>
+
+                      {/* Dinner */}
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-gray-700 text-center">🌙 Dinner</div>
+                        <MealSlot
+                          date={date.toISOString().split('T')[0]}
+                          mealType="dinner"
+                          recipe={getMealForDay(date.toISOString().split('T')[0], 'dinner')}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'dinner', recipe)}
+                          recipes={recipes || []}
+                          isMobile={true}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </FeatureErrorBoundary>
+
+          {/* Recipe Modal */}
+          {showRecipeModal && selectedRecipe && (
+            <RecipeModal
+              recipe={selectedRecipe}
+              onClose={() => setShowRecipeModal(false)}
+              onAddToGroceryList={() => {
+                addToGroceryList(selectedRecipe);
+                setShowRecipeModal(false);
+              }}
+            />
+          )}
+
+          {/* Create Recipe Modal */}
+          {showCreateRecipeModal && (
+            <CreateRecipeModal
+              onClose={() => {
+                console.log('🔍 Closing create recipe modal');
+                setShowCreateRecipeModal(false);
+              }}
+              onCreated={(newRecipe) => {
+                console.log('🔍 Recipe created:', newRecipe);
+                // React Query will automatically refetch recipes due to our mutation
+                setShowCreateRecipeModal(false);
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface MealSlotProps {
+  date: string;
+  mealType: 'breakfast' | 'lunch' | 'dinner';
+  recipe?: Recipe;
+  onAssign: (recipe: Recipe) => void;
+  recipes: Recipe[];
+  isMobile?: boolean;
+}
+
+function MealSlot({ date, mealType, recipe, onAssign, recipes, isMobile = false }: MealSlotProps) {
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  return (
+    <div className="relative">
+      {recipe ? (
+        <div className={`bg-green-50 border border-green-200 rounded-md cursor-pointer hover:bg-green-100 ${isMobile ? 'p-3' : 'p-2'}`}>
+          <div className={`font-medium text-green-800 truncate ${isMobile ? 'text-sm' : 'text-xs'}`}>
+            {recipe.title}
+          </div>
+          <div className={`text-green-600 ${isMobile ? 'text-xs' : 'text-xs'}`}>
+            {recipe.prep_time + recipe.cook_time}min
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className={`w-full bg-gray-50 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-100 text-left ${isMobile ? 'p-3 text-sm' : 'p-2 text-xs'}`}
+        >
+          + Add Recipe
+        </button>
+      )}
+
+      {showDropdown && (
+        <div className={`absolute z-50 mt-1 bg-white border border-gray-200 rounded-md shadow-lg ${isMobile ? 'w-72 left-0 right-0' : 'w-64'}`}>
+          <div className="p-3">
+            <div className={`font-medium text-gray-700 mb-3 ${isMobile ? 'text-sm' : 'text-xs'}`}>
+              Select Recipe
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-1">
+              {recipes.length === 0 ? (
+                <div className={`p-3 text-gray-500 text-center ${isMobile ? 'text-sm' : 'text-xs'}`}>
+                  <div>No recipes yet!</div>
+                  <button
+                    onClick={() => setShowDropdown(false)}
+                    className="mt-2 text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Create your first recipe
+                  </button>
+                </div>
+              ) : (
+                recipes.map((recipe) => (
+                  <button
+                    key={recipe.id}
+                    onClick={() => {
+                      console.log('🔍 Recipe clicked:', recipe.title, recipe.id);
+                      console.log('🔍 About to call onAssign with:', recipe);
+                      onAssign(recipe);
+                      console.log('🔍 onAssign called, closing dropdown');
+                      setShowDropdown(false);
+                    }}
+                    className={`w-full text-left hover:bg-gray-50 rounded ${isMobile ? 'p-3' : 'p-2'}`}
+                  >
+                    <div className={`font-medium text-gray-900 ${isMobile ? 'text-sm' : 'text-xs'}`}>
+                      {recipe.title}
+                    </div>
+                    <div className={`text-gray-500 ${isMobile ? 'text-xs' : 'text-xs'}`}>
+                      {recipe.prep_time + recipe.cook_time}min
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface RecipeModalProps {
+  recipe: Recipe;
+  onClose: () => void;
+  onAddToGroceryList: () => void;
+}
+
+function RecipeModal({ recipe, onClose, onAddToGroceryList }: RecipeModalProps) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-900">{recipe.title}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              ✕
+            </button>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-2">Ingredients</h3>
+              <ul className="space-y-1">
+                {recipe.ingredients.map((ingredient, index) => (
+                  <li key={index} className="text-sm text-gray-700">
+                    {ingredient.amount} {ingredient.unit} {ingredient.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-2">Instructions</h3>
+              <ol className="space-y-2">
+                {recipe.instructions.map((instruction, index) => (
+                  <li key={index} className="text-sm text-gray-700">
+                    {index + 1}. {instruction}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end space-x-3">
+            <button
+              onClick={onAddToGroceryList}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Add to Grocery List
+            </button>
+            <button
+              onClick={onClose}
+              className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface CreateRecipeModalProps {
+  onClose: () => void;
+  onCreated: (recipe: Recipe) => void;
+}
+
+function CreateRecipeModal({ onClose, onCreated }: CreateRecipeModalProps) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [ingredients, setIngredients] = useState<Ingredient[]>([{ name: '', amount: 1, unit: 'cup', category: 'other' }]);
+  const [instructions, setInstructions] = useState<string[]>(['']);
+  const [prepTime, setPrepTime] = useState(0);
+  const [cookTime, setCookTime] = useState(0);
+  const [servings, setServings] = useState(4);
+  const [creating, setCreating] = useState(false);
+
+  function addIngredient() {
+    setIngredients([...ingredients, { name: '', amount: 1, unit: 'cup', category: 'other' }]);
+  }
+
+  function removeIngredient(index: number) {
+    setIngredients(ingredients.filter((_, i) => i !== index));
+  }
+
+  function updateIngredient(index: number, field: keyof Ingredient, value: string | number) {
+    const updated = [...ingredients];
+    updated[index] = { ...updated[index], [field]: value };
+    setIngredients(updated);
+  }
+
+  function addInstruction() {
+    setInstructions([...instructions, '']);
+  }
+
+  function removeInstruction(index: number) {
+    setInstructions(instructions.filter((_, i) => i !== index));
+  }
+
+  function updateInstruction(index: number, value: string) {
+    const updated = [...instructions];
+    updated[index] = value;
+    setInstructions(updated);
+  }
+
+  async function handleCreate() {
+    if (!title.trim()) return;
+
+    const validIngredients = ingredients.filter(ing => ing.name.trim());
+    const validInstructions = instructions.filter(inst => inst.trim());
+
+    if (validIngredients.length === 0 || validInstructions.length === 0) {
+      toast.error('Please add at least one ingredient and one instruction.');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const response = await fetch('/api/recipes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim(),
+          ingredients: validIngredients,
+          instructions: validInstructions,
+          prep_time: prepTime,
+          cook_time: cookTime,
+          servings: servings,
+          tags: []
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Recipe created successfully:', result);
+        onCreated(result.recipe);
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Failed to create recipe:', errorData);
+        toast.error(`Failed to create recipe: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Error creating recipe:', err);
+      toast.error('Failed to create recipe. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Create New Recipe</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              ✕
+            </button>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Left Column - Basic Info */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Recipe Title *
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Enter recipe name..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Brief description..."
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Prep Time (min)
+                  </label>
+                  <input
+                    type="number"
+                    value={prepTime}
+                    onChange={(e) => setPrepTime(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cook Time (min)
+                  </label>
+                  <input
+                    type="number"
+                    value={cookTime}
+                    onChange={(e) => setCookTime(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Servings
+                  </label>
+                  <input
+                    type="number"
+                    value={servings}
+                    onChange={(e) => setServings(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+              </div>
+
+              {/* Ingredients */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Ingredients *
+                  </label>
+                  <button
+                    onClick={addIngredient}
+                    className="text-green-600 hover:text-green-800 text-sm"
+                  >
+                    + Add Ingredient
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {ingredients.map((ingredient, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <input
+                        type="number"
+                        value={ingredient.amount}
+                        onChange={(e) => updateIngredient(index, 'amount', parseFloat(e.target.value) || 1)}
+                        className="w-16 px-2 py-1 border border-gray-300 rounded text-sm"
+                        min="0"
+                        step="0.1"
+                      />
+                      <select
+                        value={ingredient.unit}
+                        onChange={(e) => updateIngredient(index, 'unit', e.target.value)}
+                        className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
+                      >
+                        <option value="cup">cup</option>
+                        <option value="tbsp">tbsp</option>
+                        <option value="tsp">tsp</option>
+                        <option value="lb">lb</option>
+                        <option value="oz">oz</option>
+                        <option value="g">g</option>
+                        <option value="kg">kg</option>
+                        <option value="piece">piece</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={ingredient.name}
+                        onChange={(e) => updateIngredient(index, 'name', e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="Ingredient name..."
+                      />
+                      {ingredients.length > 1 && (
+                        <button
+                          onClick={() => removeIngredient(index)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Instructions */}
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Instructions *
+                  </label>
+                  <button
+                    onClick={addInstruction}
+                    className="text-green-600 hover:text-green-800 text-sm"
+                  >
+                    + Add Step
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {instructions.map((instruction, index) => (
+                    <div key={index} className="flex items-start space-x-2">
+                      <span className="text-sm font-medium text-gray-500 mt-2 w-6">
+                        {index + 1}.
+                      </span>
+                      <textarea
+                        value={instruction}
+                        onChange={(e) => updateInstruction(index, e.target.value)}
+                        rows={2}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="Enter instruction step..."
+                      />
+                      {instructions.length > 1 && (
+                        <button
+                          onClick={() => removeInstruction(index)}
+                          className="text-red-500 hover:text-red-700 mt-2"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end space-x-3">
+            <button
+              onClick={onClose}
+              className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={!title.trim() || creating}
+              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
+            >
+              {creating ? 'Creating...' : 'Create Recipe'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

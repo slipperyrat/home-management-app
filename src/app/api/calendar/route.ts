@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { sanitizeDeep, sanitizeText } from '@/lib/security/sanitize';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,18 +40,21 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, description, start_time, end_time, created_by, household_id } = body;
+    
+    // Sanitize input data
+    const clean = sanitizeDeep(body, { description: 'rich' });
+    const { title, description, start_time, end_time, created_by, household_id } = clean;
 
     if (!title || !start_time || !end_time || !created_by || !household_id) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    console.log('Adding calendar event:', body);
+    console.log('Adding calendar event:', { title: sanitizeText(title), description, start_time, end_time });
 
     const { data, error } = await supabase
       .from('calendar_events')
       .insert({
-        title,
+        title: sanitizeText(title),
         description,
         start_time,
         end_time,

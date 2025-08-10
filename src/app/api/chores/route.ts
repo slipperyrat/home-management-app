@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { sanitizeDeep, sanitizeText } from '@/lib/security/sanitize';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -37,15 +38,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, description, assigned_to, due_at, recurrence, created_by, household_id } = body;
+    
+    // Sanitize input data
+    const clean = sanitizeDeep(body, { description: 'rich' });
+    const { title, description, assigned_to, due_at, recurrence, created_by, household_id } = clean;
 
     if (!title || !created_by || !household_id) {
       return NextResponse.json({ error: 'Title, created_by, and household_id are required' }, { status: 400 });
     }
 
     const choreData = {
-      title,
-      description: description || null,
+      title: sanitizeText(title),
+      description: description || null, // Already sanitized as rich text
       assigned_to: assigned_to || null,
       due_at: due_at || null,
       recurrence: recurrence || null,

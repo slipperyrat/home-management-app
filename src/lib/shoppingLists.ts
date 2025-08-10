@@ -4,7 +4,7 @@ interface ShoppingItem {
   id: string;
   list_id: string;
   name: string;
-  quantity: number;
+  quantity: string | null;
   completed: boolean;
   completed_by: string | null;
   completed_at: string | null;
@@ -64,7 +64,7 @@ export async function getShoppingItems(listId: string): Promise<ShoppingItem[]> 
 }
 
 // Add a new shopping item to a list
-export async function addShoppingItem(listId: string, name: string, quantity: number = 1): Promise<ShoppingItem> {
+export async function addShoppingItem(listId: string, name: string, quantity: string | null = "1"): Promise<ShoppingItem> {
   const { data, error } = await supabase
     .from('shopping_items')
     .insert({

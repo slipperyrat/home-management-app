@@ -45,10 +45,35 @@ export async function awardPoints({
       return { success: false, error: 'Type must be either "xp" or "coins"' };
     }
 
+    // First get the current value
+    const { data: currentData, error: fetchError } = await supabase
+      .from('users')
+      .select(`${type}`)
+      .eq('id', userId)
+      .single();
+
+    if (fetchError) {
+      console.error(`❌ Error fetching current ${type} for user ${userId}:`, fetchError);
+      return { 
+        success: false, 
+        error: `Failed to fetch current ${type}: ${fetchError.message}` 
+      };
+    }
+
+    if (!currentData) {
+      return { 
+        success: false, 
+        error: 'User not found' 
+      };
+    }
+
+    const currentValue = (currentData as any)[type] || 0;
+    const newValue = currentValue + amount;
+
     // Update the user's points/coins
     const { data, error } = await supabase
       .from('users')
-      .update({ [type]: supabase.sql`${type} + ${amount}` })
+      .update({ [type]: newValue })
       .eq('id', userId)
       .select(`${type}`)
       .single();
@@ -68,7 +93,7 @@ export async function awardPoints({
       };
     }
 
-    const newTotal = data[type];
+    const newTotal = (data as any)[type];
     console.log(`✅ Successfully awarded ${amount} ${type} to user ${userId}. New total: ${newTotal}`);
 
     return {

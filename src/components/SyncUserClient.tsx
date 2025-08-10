@@ -12,11 +12,18 @@ export function SyncUserClient() {
       fetch("/api/sync-user", {
         method: "POST",
       })
-      .then(response => {
+      .then(async response => {
         if (response.ok) {
           console.log('User synced successfully');
         } else {
           console.error('Failed to sync user:', response.status, response.statusText);
+          // Try to get error details
+          try {
+            const errorText = await response.text();
+            console.error('Response body:', errorText);
+          } catch (e) {
+            console.error('Could not read response body');
+          }
         }
       })
       .catch(error => {

@@ -9,12 +9,12 @@ import { debugUser } from '@/lib/debugUser';
 interface ShoppingItem {
   id: string;
   name: string;
-  quantity: number;
+  quantity: string | null; // Changed from number to string to support "500 g", "1 kg", etc.
   completed: boolean;
   list_id: string;
   created_at: string;
-  completed_at?: string;
-  completed_by?: string;
+  completed_at: string | null;
+  completed_by: string | null;
 }
 
 interface ShoppingList {
@@ -37,7 +37,7 @@ export default function ShoppingListDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState('');
-  const [newItemQuantity, setNewItemQuantity] = useState(1);
+  const [newItemQuantity, setNewItemQuantity] = useState("1");
   const [addingItem, setAddingItem] = useState(false);
   const [togglingItems, setTogglingItems] = useState<Set<string>>(new Set());
 
@@ -105,7 +105,7 @@ export default function ShoppingListDetailPage() {
       
       setShoppingItems(prev => [...prev, newItem]);
       setNewItemName('');
-      setNewItemQuantity(1);
+      setNewItemQuantity("1");
     } catch (err) {
       console.error('Error adding shopping item:', err);
       setError('Failed to add item');
@@ -251,22 +251,43 @@ export default function ShoppingListDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <button
             onClick={() => router.back()}
-            className="text-blue-600 hover:text-blue-700 mb-4 flex items-center"
+            className="text-blue-600 hover:text-blue-700 mb-4 flex items-center font-medium"
           >
-            ← Back to Lists
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Lists
           </button>
           
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {shoppingList?.title || 'Shopping List'}
-          </h1>
-          <p className="text-gray-600">
-            {shoppingItems.length} items • {completedItems.length} completed
-          </p>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 truncate">
+                {shoppingList?.title || 'Shopping List'}
+              </h1>
+              <p className="text-sm sm:text-base text-gray-600">
+                {shoppingItems.length} items • {completedItems.length} completed
+              </p>
+            </div>
+            <button
+              onClick={fetchShoppingListData}
+              disabled={loading}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 text-sm font-medium whitespace-nowrap"
+            >
+              {loading ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Debug section */}
@@ -282,9 +303,9 @@ export default function ShoppingListDetailPage() {
         </div>
 
         {/* Add new item section */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Add New Item</h2>
-          <div className="flex gap-4 items-end">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Item Name
@@ -294,26 +315,26 @@ export default function ShoppingListDetailPage() {
                 value={newItemName}
                 onChange={(e) => setNewItemName(e.target.value)}
                 placeholder="Enter item name..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 onKeyPress={(e) => e.key === 'Enter' && handleAddItem()}
               />
             </div>
-            <div className="w-24">
+            <div className="w-full sm:w-24">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Qty
+                Quantity
               </label>
               <input
-                type="number"
-                min="1"
+                type="text"
                 value={newItemQuantity}
-                onChange={(e) => setNewItemQuantity(parseInt(e.target.value) || 1)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onChange={(e) => setNewItemQuantity(e.target.value || "1")}
+                placeholder="1"
+                className="w-full px-4 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
             <button
               onClick={handleAddItem}
               disabled={!newItemName.trim() || addingItem}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 sm:py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-base sm:text-sm"
             >
               {addingItem ? 'Adding...' : 'Add Item'}
             </button>
@@ -330,28 +351,30 @@ export default function ShoppingListDetailPage() {
                 {pendingItems.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center p-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50"
+                    className="flex items-center p-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 active:bg-gray-100 touch-manipulation"
                   >
                     <button
                       onClick={() => handleToggleItem(item.id)}
                       disabled={togglingItems.has(item.id)}
-                      className="flex-shrink-0 w-6 h-6 border-2 border-gray-300 rounded-full mr-4 hover:border-blue-500 disabled:opacity-50"
+                      className="flex-shrink-0 w-8 h-8 sm:w-6 sm:h-6 border-2 border-gray-300 rounded-full mr-3 sm:mr-4 hover:border-blue-500 disabled:opacity-50 flex items-center justify-center touch-manipulation"
                     >
                       {togglingItems.has(item.id) && (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mx-auto mt-0.5"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                       )}
                     </button>
-                    <div className="flex-1">
-                      <span className="text-gray-900 font-medium">
-                        {item.name}
-                      </span>
-                      {item.quantity > 1 && (
-                        <span className="text-gray-500 ml-2">
-                          (x{item.quantity})
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center">
+                        <span className="text-gray-900 font-medium truncate">
+                          {item.name}
                         </span>
-                      )}
+                        {item.quantity && (
+                          <span className="text-gray-500 text-sm sm:ml-2">
+                            ({item.quantity})
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-xs sm:text-sm text-gray-500 ml-2 hidden sm:block">
                       {formatDate(item.created_at)}
                     </div>
                   </div>
@@ -368,32 +391,34 @@ export default function ShoppingListDetailPage() {
                 {completedItems.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center p-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50"
+                    className="flex items-center p-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 active:bg-gray-100 touch-manipulation"
                   >
                     <button
                       onClick={() => handleToggleItem(item.id)}
                       disabled={togglingItems.has(item.id)}
-                      className="flex-shrink-0 w-6 h-6 bg-green-500 border-2 border-green-500 rounded-full mr-4 flex items-center justify-center hover:bg-green-600 disabled:opacity-50"
+                      className="flex-shrink-0 w-8 h-8 sm:w-6 sm:h-6 bg-green-500 border-2 border-green-500 rounded-full mr-3 sm:mr-4 flex items-center justify-center hover:bg-green-600 disabled:opacity-50 touch-manipulation"
                     >
                       {togglingItems.has(item.id) ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mx-auto"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                       ) : (
                         <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       )}
                     </button>
-                    <div className="flex-1">
-                      <span className="text-gray-500 line-through">
-                        {item.name}
-                      </span>
-                      {item.quantity > 1 && (
-                        <span className="text-gray-400 ml-2">
-                          (x{item.quantity})
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center">
+                        <span className="text-gray-500 line-through truncate">
+                          {item.name}
                         </span>
-                      )}
+                        {item.quantity && (
+                          <span className="text-gray-400 text-sm sm:ml-2">
+                            ({item.quantity})
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-xs sm:text-sm text-gray-500 ml-2 hidden sm:block">
                       {item.completed_at && formatDate(item.completed_at)}
                     </div>
                   </div>

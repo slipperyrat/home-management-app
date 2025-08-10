@@ -36,7 +36,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const filteredData = data.filter(item => item.reward.household_id === householdId);
+    const filteredData = data.filter(item => {
+      // Handle case where reward might be an array or single object
+      const reward = Array.isArray(item.reward) ? item.reward[0] : item.reward;
+      return reward && reward.household_id === householdId;
+    });
     return NextResponse.json({ data: filteredData });
   } catch (error) {
     console.error('Exception in GET /api/rewards/redemptions:', error);

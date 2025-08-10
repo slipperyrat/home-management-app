@@ -14,6 +14,8 @@ interface UserData {
   plan: 'free' | 'premium';
   xp: number;
   coins: number;
+  has_onboarded?: boolean;
+  updated_at?: string;
 }
 
 type PowerUpType = string;
@@ -27,6 +29,7 @@ export default function DashboardPage() {
   const [powerUps, setPowerUps] = useState<PowerUpType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -58,13 +61,24 @@ export default function DashboardPage() {
         }
 
         if (result.success && result.user) {
-          setUserData({
+          const userData = {
             email: result.user.email,
             role: result.user.role,
             plan: result.user.plan || 'free',
             xp: result.user.xp || 0,
-            coins: result.user.coins || 0
-          });
+            coins: result.user.coins || 0,
+            has_onboarded: result.user.has_onboarded,
+            updated_at: result.user.updated_at
+          };
+          
+          setUserData(userData);
+
+          // Check if user was recently onboarded (within last hour)
+          if (userData.has_onboarded && userData.updated_at) {
+            const updatedAt = new Date(userData.updated_at);
+            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+            setShowWelcomeBanner(updatedAt > oneHourAgo);
+          }
 
           // Fetch power-ups for the user
           try {
@@ -149,14 +163,14 @@ export default function DashboardPage() {
 
   // Show dashboard content
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 lg:py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-white shadow rounded-lg p-4 sm:p-6">
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
               Welcome to Your Dashboard
             </h1>
-            <p className="text-gray-600">
+            <p className="text-sm sm:text-base text-gray-600">
               {userData?.role === 'owner' 
                 ? "👑 You have owner privileges" 
                 : "👋 You're a member of this workspace"
@@ -164,13 +178,64 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-gray-50 rounded-lg p-6">
+          {/* Welcome back banner for recently onboarded users */}
+          {showWelcomeBanner && (
+            <div className="mb-6 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4 sm:p-6">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-100">
+                    <span className="text-green-600 text-lg">🎉</span>
+                  </div>
+                </div>
+                <div className="ml-3 flex-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium text-green-800">
+                        Welcome back, {user?.firstName || 'there'}!
+                      </h3>
+                      <p className="mt-1 text-sm text-green-700">
+                        Your home management system is all set up and ready to use. 
+                        Explore your meal planner, organize tasks, and manage your household effortlessly.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => router.push('/meal-planner')}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                        >
+                          📋 View Meal Planner
+                        </button>
+                        <button
+                          onClick={() => router.push('/planner')}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          📝 View Planner
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <button
+                        onClick={() => setShowWelcomeBanner(false)}
+                        className="inline-flex text-green-400 hover:text-green-600 focus:outline-none focus:text-green-600"
+                        aria-label="Dismiss banner"
+                      >
+                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">User Information</h2>
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Email</label>
-                  <p className="mt-1 text-sm text-gray-900">{userData?.email}</p>
+                  <p className="mt-1 text-sm text-gray-900 truncate">{userData?.email}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Role</label>
@@ -196,55 +261,59 @@ export default function DashboardPage() {
                     </span>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">XP</label>
-                  <div className="mt-1 flex items-center space-x-2">
-                    <span className="text-sm text-gray-900">XP: {userData?.xp || 0}</span>
-                    {powerUps.includes('xp_boost') && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
-                        🔥 +50% XP
-                      </span>
-                    )}
+                
+                {/* XP and Coins in a row on mobile */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">XP</label>
+                    <div className="mt-1 flex flex-col space-y-1">
+                      <span className="text-sm text-gray-900">{userData?.xp || 0}</span>
+                      {powerUps.includes('xp_boost') && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200 w-fit">
+                          🔥 +50% XP
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Coins</label>
-                  <div className="mt-1 flex items-center space-x-2">
-                    <span className="text-sm text-gray-900">Coins: 🪙 {userData?.coins || 0}</span>
-                    {powerUps.includes('double_coin') && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800 border border-green-200">
-                        🪙 2x Coins
-                      </span>
-                    )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Coins</label>
+                    <div className="mt-1 flex flex-col space-y-1">
+                      <span className="text-sm text-gray-900">🪙 {userData?.coins || 0}</span>
+                      {powerUps.includes('double_coin') && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800 border border-green-200 w-fit">
+                          🪙 2x Coins
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-6">
+            <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
               <div className="space-y-3">
                 {userData?.role === 'owner' ? (
                   <>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50">
+                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
                       🛠️ Manage Users
                     </button>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50">
+                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
                       ⚙️ System Settings
                     </button>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50">
+                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
                       📊 View Analytics
                     </button>
                   </>
                 ) : (
                   <>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50">
+                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
                       📝 Create Content
                     </button>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50">
+                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
                       📋 View Tasks
                     </button>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50">
+                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
                       👥 Team Directory
                     </button>
                   </>
@@ -259,7 +328,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Power-Ups Section */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 lg:col-span-2">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">⚡ Active Power-Ups</h2>
               
               {powerUps.length > 0 ? (
@@ -306,29 +375,35 @@ export default function DashboardPage() {
           </div>
 
           {/* Feature Cards */}
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Available Features</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Games Card */}
+          <div className="mt-6 sm:mt-8">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">Available Features</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+              {/* Meal Planner Card */}
               {userData && (() => {
-                const showGames = canAccessFeature(userData.plan, "games");
-                return showGames && (
-                  <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg p-6 text-white">
-                    <div className="text-2xl mb-2">🎮</div>
-                    <h3 className="font-semibold mb-2">Games</h3>
-                    <p className="text-sm opacity-90">Fun games for the whole family</p>
+                const showMealPlanner = canAccessFeature(userData.plan, "meal_planner");
+                return showMealPlanner && (
+                  <div 
+                    onClick={() => router.push('/meal-planner')}
+                    className="bg-gradient-to-br from-orange-500 to-red-500 rounded-lg p-4 sm:p-6 text-white cursor-pointer hover:shadow-lg active:scale-95 transition-all duration-200 touch-manipulation"
+                  >
+                    <div className="text-2xl mb-2">🍽️</div>
+                    <h3 className="font-semibold mb-2">Meal Planner</h3>
+                    <p className="text-sm opacity-90">Plan weekly meals and sync with grocery lists</p>
                   </div>
                 );
               })()}
 
-              {/* Finance Card */}
+              {/* Collaborative Planner Card */}
               {userData && (() => {
-                const showFinance = canAccessFeature(userData.plan, "finance");
-                return showFinance && (
-                  <div className="bg-gradient-to-br from-green-500 to-teal-500 rounded-lg p-6 text-white">
-                    <div className="text-2xl mb-2">💰</div>
-                    <h3 className="font-semibold mb-2">Finance</h3>
-                    <p className="text-sm opacity-90">Track household expenses</p>
+                const showPlanner = canAccessFeature(userData.plan, "collaborative_planner");
+                return showPlanner && (
+                  <div 
+                    onClick={() => router.push('/planner')}
+                    className="bg-gradient-to-br from-purple-500 to-indigo-500 rounded-lg p-4 sm:p-6 text-white cursor-pointer hover:shadow-lg active:scale-95 transition-all duration-200 touch-manipulation"
+                  >
+                    <div className="text-2xl mb-2">📋</div>
+                    <h3 className="font-semibold mb-2">Collaborative Planner</h3>
+                    <p className="text-sm opacity-90">Plan trips, renovations, dreams, and goals</p>
                   </div>
                 );
               })()}
@@ -339,7 +414,7 @@ export default function DashboardPage() {
                 return showShoppingList && (
                   <div 
                     onClick={() => router.push('/shopping-lists')}
-                    className="bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg p-6 text-white cursor-pointer hover:shadow-lg transition-shadow"
+                    className="bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg p-4 sm:p-6 text-white cursor-pointer hover:shadow-lg active:scale-95 transition-all duration-200 touch-manipulation"
                   >
                     <div className="text-2xl mb-2">🛒</div>
                     <h3 className="font-semibold mb-2">Shopping List</h3>
@@ -354,7 +429,7 @@ export default function DashboardPage() {
                 return showChores && (
                   <div 
                     onClick={() => router.push('/chores')}
-                    className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg p-6 text-white cursor-pointer hover:shadow-lg transition-shadow"
+                    className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg p-4 sm:p-6 text-white cursor-pointer hover:shadow-lg active:scale-95 transition-all duration-200 touch-manipulation"
                   >
                     <div className="text-2xl mb-2">🧹</div>
                     <h3 className="font-semibold mb-2">Chores</h3>
@@ -369,7 +444,7 @@ export default function DashboardPage() {
                 return showRewards && (
                   <div 
                     onClick={() => router.push('/rewards')}
-                    className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg p-6 text-white cursor-pointer hover:shadow-lg transition-shadow"
+                    className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg p-4 sm:p-6 text-white cursor-pointer hover:shadow-lg active:scale-95 transition-all duration-200 touch-manipulation"
                   >
                     <div className="text-2xl mb-2">🏆</div>
                     <h3 className="font-semibold mb-2">Rewards</h3>
@@ -384,7 +459,7 @@ export default function DashboardPage() {
                 return showLeaderboard && (
                   <div 
                     onClick={() => router.push('/leaderboard')}
-                    className="bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg p-6 text-white cursor-pointer hover:shadow-lg transition-shadow"
+                    className="bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg p-4 sm:p-6 text-white cursor-pointer hover:shadow-lg active:scale-95 transition-all duration-200 touch-manipulation"
                   >
                     <div className="text-2xl mb-2">📊</div>
                     <h3 className="font-semibold mb-2">Leaderboard</h3>
@@ -422,18 +497,6 @@ export default function DashboardPage() {
                     <div className="text-2xl mb-2">⏰</div>
                     <h3 className="font-semibold mb-2">Reminders</h3>
                     <p className="text-sm opacity-90">Set notifications</p>
-                  </div>
-                );
-              })()}
-
-              {/* Calendar Card */}
-              {userData && (() => {
-                const showCalendar = canAccessFeature(userData.plan, "calendar");
-                return showCalendar && (
-                  <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-lg p-6 text-white">
-                    <div className="text-2xl mb-2">📅</div>
-                    <h3 className="font-semibold mb-2">Calendar</h3>
-                    <p className="text-sm opacity-90">Family calendar and events</p>
                   </div>
                 );
               })()}

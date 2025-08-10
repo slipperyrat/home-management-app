@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
   try {
     console.log('Fetching user data for:', userId);
 
+    // Optimized query: Join users with household_members and households in one query
     const { data, error } = await supabase
       .from('users')
       .select(`
@@ -33,6 +34,8 @@ export async function GET(request: NextRequest) {
         role,
         xp,
         coins,
+        has_onboarded,
+        updated_at,
         household_members(
           role,
           household_id,
@@ -44,7 +47,7 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq('clerk_id', userId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error fetching user data:', error);
@@ -55,71 +58,57 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
+    // If user doesn't exist yet, return a default response
     if (!data) {
+      console.log('User not found in database, returning default data');
       const response = NextResponse.json({ 
-        error: "User not found in database" 
-      }, { status: 404 });
+        success: true,
+        user: {
+          email: '',
+          role: 'member',
+          plan: 'free',
+          xp: 0,
+          coins: 0,
+          household: null
+        }
+      });
       response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       return response;
     }
 
     console.log('Raw data from database:', JSON.stringify(data, null, 2));
 
-    // Extract plan and household data from the nested household data
-    const householdData = data.household_members?.[0]?.households?.[0];
-    let plan = householdData?.plan || 'free';
-    const householdId = data.household_members?.[0]?.household_id;
-    const userRole = data.household_members?.[0]?.role;
-    const createdAt = householdData?.created_at;
-    const gameMode = householdData?.game_mode || 'default';
+    // Extract data from the optimized query
+    const householdMember = data.household_members?.[0];
+    const household = householdMember?.households as any; // Type assertion for nested object
+    const householdId = householdMember?.household_id;
+    const userRole = householdMember?.role;
     
-    // After fetching the household
-    const household = data?.household_members?.[0]?.households?.[0];
-
-    // If we don't have household data, try to fetch it directly
-    if (!household && householdId) {
-      console.log('No household data found, fetching directly for household ID:', householdId);
-      const { data: householdData, error: householdError } = await supabase
-        .from('households')
-        .select('plan, game_mode, created_at')
-        .eq('id', householdId)
-        .single();
-      
-      if (householdError) {
-        console.error('Error fetching household data:', householdError);
-      } else if (householdData) {
-        console.log('Direct household data:', householdData);
-        plan = householdData.plan || 'free';
-        const createdAt = householdData.created_at;
-        const gameMode = householdData.game_mode || 'default';
-        
-        // Update the household object
-        const household = {
-          plan: householdData.plan,
-          game_mode: householdData.game_mode,
-          created_at: householdData.created_at
-        };
-      }
+    console.log('Debug - Household extraction:', {
+      householdMember: householdMember ? 'exists' : 'missing',
+      household: household ? 'exists' : 'missing', 
+      householdType: typeof household,
+      householdKeys: household ? Object.keys(household) : 'none'
+    });
+    
+    // Safe access with fallbacks
+    let plan = 'free';
+    let createdAt = null;
+    let gameMode = 'default';
+    
+    if (household && typeof household === 'object') {
+      plan = household.plan || 'free';
+      createdAt = household.created_at;
+      gameMode = household.game_mode || 'default';
+    } else {
+      console.log('Warning: household data not accessible, using defaults');
     }
 
-    console.log('Debug - Household data:', {
-      household: household,
-      plan: household?.plan,
-      created_at: household?.created_at,
-      householdId: householdId
-    });
-
-    if (household && household.plan === "free") {
-      const createdDate = new Date(household.created_at);
+    // Auto-upgrade logic for free plans after 7 days
+    if (plan === "free" && createdAt) {
+      const createdDate = new Date(createdAt);
       const now = new Date();
       const daysSinceCreation = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
-
-      console.log('Debug - Date calculation:', {
-        createdDate: createdDate,
-        now: now,
-        daysSinceCreation: daysSinceCreation,
-        shouldUpgrade: daysSinceCreation >= 7
-      });
 
       if (daysSinceCreation >= 7) {
         console.log(`Auto-upgrading household ${householdId} to premium (${daysSinceCreation} days old)`);
@@ -132,19 +121,10 @@ export async function GET(request: NextRequest) {
         if (updateError) {
           console.error('Error updating plan:', updateError);
         } else {
-          household.plan = "premium"; // Update locally too
-          plan = "premium"; // Update the plan variable too
+          plan = "premium"; // Update the plan variable
           console.log(`Successfully auto-upgraded household ${householdId} to premium`);
         }
-      } else {
-        console.log(`Household ${householdId} is ${daysSinceCreation} days old, not ready for upgrade yet`);
       }
-    } else {
-      console.log(`Household ${householdId} is not eligible for auto-upgrade:`, {
-        exists: !!household,
-        plan: household?.plan,
-        isFree: household?.plan === "free"
-      });
     }
     
     // Create userData object with household information
@@ -154,6 +134,8 @@ export async function GET(request: NextRequest) {
       plan,
       xp: data.xp || 0,
       coins: data.coins || 0,
+      has_onboarded: data.has_onboarded,
+      updated_at: data.updated_at,
       household: {
         id: householdId,
         plan,
@@ -173,10 +155,9 @@ export async function GET(request: NextRequest) {
       user: userData
     });
     
-    // Add cache control headers to prevent caching
-    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    response.headers.set('Pragma', 'no-cache');
-    response.headers.set('Expires', '0');
+    // Smart caching: Cache for 5 minutes, allow stale for 1 minute
+    response.headers.set('Cache-Control', 'private, s-maxage=300, stale-while-revalidate=60');
+    response.headers.set('Vary', 'Authorization'); // Vary by user
     
     return response;
 
