@@ -183,6 +183,50 @@ export default function OnboardingPage() {
             <p className="text-blue-100">
               Hello {user?.firstName || 'there'}! Let's get your household set up.
             </p>
+            
+            {/* Debug section */}
+            <div className="mt-4 p-3 bg-blue-800 bg-opacity-50 rounded-lg">
+              <p className="text-sm text-blue-100 mb-2">🔧 Debug Tools (You shouldn't see this if properly onboarded)</p>
+              <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/debug/user-status');
+                      const data = await response.json();
+                      console.log('🔍 User Status:', data);
+                      alert('Check console for user status. hasOnboarded: ' + data.debug?.hasOnboarded);
+                    } catch (error) {
+                      console.error('Error checking status:', error);
+                      alert('Error checking status: ' + error);
+                    }
+                  }}
+                  className="px-3 py-1 bg-blue-700 text-white text-xs rounded hover:bg-blue-600"
+                >
+                  🔍 Check Status
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/debug/fix-onboarding', { method: 'POST' });
+                      const data = await response.json();
+                      console.log('🔧 Fix Result:', data);
+                      if (data.success) {
+                        alert('✅ Onboarding status fixed! Redirecting to dashboard...');
+                        window.location.href = '/dashboard';
+                      } else {
+                        alert('❌ Failed to fix: ' + data.error);
+                      }
+                    } catch (error) {
+                      console.error('Error fixing onboarding:', error);
+                      alert('Error fixing onboarding: ' + error);
+                    }
+                  }}
+                  className="px-3 py-1 bg-green-700 text-white text-xs rounded hover:bg-green-600"
+                >
+                  🔧 Fix Onboarding
+                </button>
+              </div>
+            </div>
           </div>
 
                            {/* Progress indicator */}
