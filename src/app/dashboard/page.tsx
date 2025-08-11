@@ -3,7 +3,7 @@
 import { useAuth, useUser } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { canAccessFeature } from "@/lib/planFeatures";
+import { canAccessFeature, planFeatures } from "@/lib/planFeatures";
 import { ProBadge } from '@/components/ProBadge';
 import TestSyncButton from '@/components/TestSyncButton';
 import { getUserPowerUps } from '@/lib/supabase/rewards';
@@ -31,10 +31,30 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
 
+  // Debug function to test click events
+  const handleTestClick = (feature: string) => {
+    console.log(`🎯 Clicked on ${feature}`);
+    console.log('Router object:', router);
+    console.log('User data:', userData);
+    console.log('Can access feature:', userData ? canAccessFeature(userData.plan, feature) : 'No user data');
+    
+    try {
+      router.push(`/${feature}`);
+    } catch (error) {
+      console.error('Router error:', error);
+    }
+  };
+
   useEffect(() => {
+    console.log('🔄 Dashboard useEffect triggered');
+    console.log('isLoaded:', isLoaded);
+    console.log('isSignedIn:', isSignedIn);
+    console.log('user:', user);
+    
     if (!isLoaded) return;
 
     if (!isSignedIn) {
+      console.log('🚫 User not signed in, redirecting to sign-in');
       router.push('/sign-in');
       return;
     }
@@ -43,6 +63,7 @@ export default function DashboardPage() {
       if (!user?.id) return;
 
       try {
+        console.log('📡 Fetching user data...');
         setLoading(true);
         setError(null);
 
@@ -55,7 +76,7 @@ export default function DashboardPage() {
         const result = await response.json();
 
         if (!response.ok) {
-          console.error('Error fetching user data:', result.error);
+          console.error('❌ Error fetching user data:', result.error);
           setError(result.error || 'Failed to load user data');
           return;
         }
@@ -71,6 +92,7 @@ export default function DashboardPage() {
             updated_at: result.user.updated_at
           };
           
+          console.log('✅ User data loaded:', userData);
           setUserData(userData);
 
           // Check if user was recently onboarded (within last hour)
@@ -83,16 +105,17 @@ export default function DashboardPage() {
           // Fetch power-ups for the user
           try {
             const powerUpsData = await getUserPowerUps(user.id);
+            console.log('⚡ Power-ups loaded:', powerUpsData);
             setPowerUps(powerUpsData);
           } catch (powerUpError) {
-            console.error('Error fetching power-ups:', powerUpError);
+            console.error('❌ Error fetching power-ups:', powerUpError);
             // Don't set error for power-ups, just log it
           }
         } else {
           setError('User not found in database');
         }
       } catch (err) {
-        console.error('Exception fetching user data:', err);
+        console.error('❌ Exception fetching user data:', err);
         setError('An unexpected error occurred');
       } finally {
         setLoading(false);
@@ -166,6 +189,10 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50 py-4 sm:py-8 lg:py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="bg-white shadow rounded-lg p-4 sm:p-6">
+          {/* Debug info */}
+          <div className="mb-4 p-3 bg-yellow-100 border border-yellow-300 rounded text-xs">
+            <strong>Debug Info:</strong> User: {user?.id}, Plan: {userData?.plan}, Role: {userData?.role}
+          </div>
           <div className="text-center mb-6 sm:mb-8">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
               Welcome to Your Dashboard
@@ -176,6 +203,46 @@ export default function DashboardPage() {
                 : "👋 You're a member of this workspace"
               }
             </p>
+            
+            {/* Debug test button */}
+            <div className="mt-4 space-y-2">
+              <button 
+                onClick={() => {
+                  console.log('🧪 Test button clicked!');
+                  alert('Test button works!');
+                }}
+                className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition-colors"
+              >
+                🧪 Test Click (Debug)
+              </button>
+              
+              <button 
+                onTouchStart={() => console.log('👆 Touch start on test button')}
+                onTouchEnd={() => console.log('👆 Touch end on test button')}
+                onClick={() => {
+                  console.log('👆 Touch/Click detected!');
+                  alert('Touch/Click works!');
+                }}
+                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
+              >
+                👆 Test Touch (Debug)
+              </button>
+              
+              <button 
+                onClick={() => {
+                  console.log('🧭 Testing navigation...');
+                  try {
+                    window.location.href = '/meal-planner';
+                  } catch (error) {
+                    console.error('Navigation error:', error);
+                    alert('Navigation failed: ' + error);
+                  }
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition-colors"
+              >
+                🧭 Test Navigation (Debug)
+              </button>
+            </div>
           </div>
 
           {/* Welcome back banner for recently onboarded users */}
@@ -377,14 +444,33 @@ export default function DashboardPage() {
           {/* Feature Cards */}
           <div className="mt-6 sm:mt-8">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">Available Features</h2>
+            
+            {/* Debug feature access */}
+            <div className="mb-4 p-3 bg-gray-100 border border-gray-300 rounded text-xs">
+              <strong>Feature Access Debug:</strong><br/>
+              Plan: {userData?.plan || 'undefined'}<br/>
+              Available features for plan: {userData?.plan ? JSON.stringify(planFeatures[userData.plan] || []) : 'No user data'}<br/>
+              Can access meal_planner: {userData ? canAccessFeature(userData.plan, "meal_planner") : 'No user data'}<br/>
+              Can access collaborative_planner: {userData ? canAccessFeature(userData.plan, "collaborative_planner") : 'No user data'}<br/>
+              Can access shopping_list: {userData ? canAccessFeature(userData.plan, "shopping_list") : 'No user data'}<br/>
+              Can access chores: {userData ? canAccessFeature(userData.plan, "chores") : 'No user data'}<br/>
+              Can access xp_rewards: {userData ? canAccessFeature(userData.plan, "xp_rewards") : 'No user data'}<br/>
+              Can access leaderboard: {userData ? canAccessFeature(userData.plan, "leaderboard") : 'No user data'}<br/>
+              Can access calendar: {userData ? canAccessFeature(userData.plan, "calendar") : 'No user data'}<br/>
+              Can access reminders: {userData ? canAccessFeature(userData.plan, "reminders") : 'No user data'}
+            </div>
+            
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
               {/* Meal Planner Card */}
               {userData && (() => {
                 const showMealPlanner = canAccessFeature(userData.plan, "meal_planner");
                 return showMealPlanner && (
                   <div 
-                    onClick={() => router.push('/meal-planner')}
-                    className="bg-gradient-to-br from-orange-500 to-red-500 rounded-lg p-4 sm:p-6 text-white cursor-pointer hover:shadow-lg active:scale-95 transition-all duration-200 touch-manipulation"
+                    onClick={() => handleTestClick('meal-planner')}
+                    onTouchStart={() => console.log('👆 Touch start on meal planner')}
+                    onTouchEnd={() => console.log('👆 Touch end on meal planner')}
+                    className="bg-gradient-to-br from-orange-500 to-red-500 rounded-lg p-4 sm:p-6 text-white cursor-pointer hover:shadow-lg active:scale-95 transition-all duration-200 touch-manipulation select-none"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
                   >
                     <div className="text-2xl mb-2">🍽️</div>
                     <h3 className="font-semibold mb-2">Meal Planner</h3>
