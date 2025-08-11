@@ -238,9 +238,24 @@ export default function DashboardPage() {
                     alert('Navigation failed: ' + error);
                   }
                 }}
-                className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition-colors"
+                className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition-colors"
               >
                 🧭 Test Navigation (Debug)
+              </button>
+              
+              <button 
+                onClick={() => {
+                  console.log('🔄 Testing navigation with cache refresh...');
+                  try {
+                    window.location.href = '/meal-planner?refresh-onboarding=true';
+                  } catch (error) {
+                    console.error('Navigation error:', error);
+                    alert('Navigation failed: ' + error);
+                  }
+                }}
+                className="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 transition-colors"
+              >
+                🔄 Test Navigation + Cache Refresh (Debug)
               </button>
             </div>
           </div>

@@ -67,10 +67,12 @@ async function checkOnboardingStatus(userId: string): Promise<boolean> {
 
     if (error || !data) {
       // If user doesn't exist or error occurs, assume they need onboarding
+      console.log(`Middleware: User ${userId} not found or error:`, error);
       return false;
     }
 
     const hasOnboarded = data.has_onboarded || false;
+    console.log(`Middleware: User ${userId} has_onboarded: ${hasOnboarded}`);
     
     // Cache the result
     onboardingCache.set(userId, {
@@ -137,6 +139,13 @@ export default clerkMiddleware(async (auth, req) => {
   // Check onboarding status for signed-in users on app routes
   if (userId && !skipOnboardingCheck) {
     try {
+      // Check if user is forcing a cache refresh
+      const forceRefresh = url.searchParams.get('refresh-onboarding') === 'true';
+      if (forceRefresh) {
+        console.log(`Forcing cache refresh for user ${userId}`);
+        onboardingCache.delete(userId);
+      }
+      
       const hasOnboarded = await checkOnboardingStatus(userId);
       
       if (!hasOnboarded) {

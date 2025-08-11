@@ -66,9 +66,21 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Successfully updated user onboarding status:', updateData);
 
+    // Clear the middleware cache by calling the clear function
+    try {
+      // Import and call the clearOnboardingCache function from middleware
+      const { clearOnboardingCache } = await import('@/middleware');
+      if (typeof clearOnboardingCache === 'function') {
+        clearOnboardingCache(userId);
+        console.log('🧹 Cleared middleware cache for user:', userId);
+      }
+    } catch (cacheError) {
+      console.log('⚠️ Could not clear middleware cache (this is normal):', cacheError);
+    }
+
     return NextResponse.json({ 
       success: true,
-      message: "User onboarding status fixed",
+      message: "User onboarding status fixed and cache cleared",
       user: updateData?.[0] || null
     });
 
