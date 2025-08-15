@@ -3,7 +3,7 @@
 import { useAuth, useUser } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { canAccessFeature } from "@/lib/planFeatures";
+
 
 interface UserData {
   email: string;
@@ -109,7 +109,7 @@ export default function PlanSettingsPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -177,8 +177,7 @@ export default function PlanSettingsPage() {
             </p>
           </div>
 
-          {successMessage && (
-            <div className="mb-6 bg-green-50 border border-green-200 rounded-md p-4">
+          {successMessage ? <div className="mb-6 bg-green-50 border border-green-200 rounded-md p-4">
               <div className="flex">
                 <div className="flex-shrink-0">
                   <div className="text-green-400">✓</div>
@@ -187,8 +186,7 @@ export default function PlanSettingsPage() {
                   <p className="text-sm text-green-800">{successMessage}</p>
                 </div>
               </div>
-            </div>
-          )}
+            </div> : null}
 
           <div className="grid md:grid-cols-2 gap-8">
             {/* Current Plan Section */}

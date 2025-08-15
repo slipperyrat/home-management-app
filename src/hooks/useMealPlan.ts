@@ -28,7 +28,7 @@ interface MealPlan {
   };
 }
 
-const fetchMealPlan = async (householdId: string, weekStart: string): Promise<MealPlan | null> => {
+const fetchMealPlan = async (weekStart: string): Promise<MealPlan | null> => {
   const response = await fetch(`/api/meal-planner?week_start_date=${weekStart}`);
   
   if (!response.ok) {
@@ -49,13 +49,13 @@ const fetchMealPlan = async (householdId: string, weekStart: string): Promise<Me
   return null;
 };
 
-export const useMealPlan = (householdId?: string, weekStart?: Date) => {
+export const useMealPlan = (weekStart?: Date) => {
   const weekStartString = weekStart?.toISOString().split('T')[0];
   
   return useQuery({
-    queryKey: ['mealPlan', householdId, weekStartString],
-    queryFn: () => fetchMealPlan(householdId!, weekStartString!),
-    enabled: !!householdId && !!weekStartString, // Only run if both params exist
+    queryKey: ['mealPlan', weekStartString],
+    queryFn: () => fetchMealPlan(weekStartString!),
+    enabled: !!weekStartString, // Only run if weekStart exists
     staleTime: 5 * 60 * 1000, // 5 minutes - meal plans change more frequently
     gcTime: 15 * 60 * 1000, // 15 minutes in cache
   });

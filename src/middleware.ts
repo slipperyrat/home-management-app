@@ -1,8 +1,48 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
+import { securityConfig } from '@/lib/security/config';
 
-const buckets = new Map<string, { ts: number[] }>();
+// Improved rate limiting with better memory management
+class RateLimiter {
+  private buckets = new Map<string, { ts: number[]; count: number }>();
+  private readonly maxSize = securityConfig.rateLimit.default.maxSize;
+  
+  allow(key: string, limit = securityConfig.rateLimit.default.limit, windowMs = securityConfig.rateLimit.default.windowMs): boolean {
+    const now = Date.now();
+    const bucket = this.buckets.get(key);
+    
+    if (!bucket) {
+      this.buckets.set(key, { ts: [now], count: 1 });
+      this.cleanup();
+      return true;
+    }
+    
+    // Remove old timestamps outside the window
+    bucket.ts = bucket.ts.filter(t => now - t < windowMs);
+    
+    if (bucket.ts.length >= limit) {
+      return false;
+    }
+    
+    bucket.ts.push(now);
+    bucket.count++;
+    return true;
+  }
+  
+  private cleanup(): void {
+    if (this.buckets.size <= this.maxSize) return;
+    
+    // Remove oldest entries when we exceed max size
+    const entries = Array.from(this.buckets.entries());
+    entries.sort((a, b) => a[1].count - b[1].count);
+    
+    const toRemove = entries.slice(0, entries.length - this.maxSize);
+    toRemove.forEach(([key]) => this.buckets.delete(key));
+  }
+}
+
+const rateLimiter = new RateLimiter();
 
 // Create Supabase admin client for onboarding checks - with error handling
 let supabaseAdmin: any = null;
@@ -17,28 +57,62 @@ try {
   console.error('Failed to create Supabase admin client in middleware:', error);
 }
 
-// Cache for onboarding status to reduce database calls
-const onboardingCache = new Map<string, { hasOnboarded: boolean; timestamp: number }>();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-const MAX_CACHE_SIZE = 1000; // Prevent memory leaks
-
-// Clean up old cache entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of onboardingCache.entries()) {
-    if (now - value.timestamp > CACHE_DURATION) {
-      onboardingCache.delete(key);
+// Improved cache for onboarding status with better memory management
+class OnboardingCache {
+  private cache = new Map<string, { hasOnboarded: boolean; timestamp: number }>();
+  private readonly maxSize = securityConfig.cache.onboarding.maxSize;
+  private readonly ttl = securityConfig.cache.onboarding.ttl;
+  
+  get(userId: string): { hasOnboarded: boolean; timestamp: number } | undefined {
+    const entry = this.cache.get(userId);
+    if (!entry) return undefined;
+    
+    // Check if entry is expired
+    if (Date.now() - entry.timestamp > this.ttl) {
+      this.cache.delete(userId);
+      return undefined;
+    }
+    
+    return entry;
+  }
+  
+  set(userId: string, hasOnboarded: boolean): void {
+    this.cache.set(userId, {
+      hasOnboarded,
+      timestamp: Date.now()
+    });
+    
+    // Cleanup if cache is too large
+    if (this.cache.size > this.maxSize) {
+      this.cleanup();
     }
   }
   
-  // If cache is still too large, remove oldest entries
-  if (onboardingCache.size > MAX_CACHE_SIZE) {
-    const entries = Array.from(onboardingCache.entries());
-    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-    const toRemove = entries.slice(0, entries.length - MAX_CACHE_SIZE);
-    toRemove.forEach(([key]) => onboardingCache.delete(key));
+  delete(userId: string): void {
+    this.cache.delete(userId);
   }
-}, 10 * 60 * 1000); // Clean every 10 minutes
+  
+  private cleanup(): void {
+    const now = Date.now();
+    const entries = Array.from(this.cache.entries());
+    
+    // Remove expired entries
+    entries.forEach(([key, value]) => {
+      if (now - value.timestamp > this.ttl) {
+        this.cache.delete(key);
+      }
+    });
+    
+    // If still too large, remove oldest entries
+    if (this.cache.size > this.maxSize) {
+      entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toRemove = entries.slice(0, entries.length - this.maxSize);
+      toRemove.forEach(([key]) => this.cache.delete(key));
+    }
+  }
+}
+
+const onboardingCache = new OnboardingCache();
 
 // Function to clear cache for a specific user (can be called after onboarding completion)
 export function clearOnboardingCache(userId: string) {
@@ -48,7 +122,7 @@ export function clearOnboardingCache(userId: string) {
 async function checkOnboardingStatus(userId: string): Promise<boolean> {
   // Check cache first
   const cached = onboardingCache.get(userId);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+  if (cached) {
     return cached.hasOnboarded;
   }
 
@@ -75,10 +149,7 @@ async function checkOnboardingStatus(userId: string): Promise<boolean> {
     console.log(`Middleware: User ${userId} has_onboarded: ${hasOnboarded}`);
     
     // Cache the result
-    onboardingCache.set(userId, {
-      hasOnboarded,
-      timestamp: Date.now()
-    });
+    onboardingCache.set(userId, hasOnboarded);
 
     return hasOnboarded;
   } catch (error) {
@@ -88,35 +159,22 @@ async function checkOnboardingStatus(userId: string): Promise<boolean> {
   }
 }
 
-function allow(key: string, limit = 60, windowMs = 10_000) {
-  const now = Date.now();
-  const b = buckets.get(key) ?? { ts: [] };
-  // drop old
-  b.ts = b.ts.filter(t => now - t < windowMs);
-  if (b.ts.length >= limit) return false;
-  b.ts.push(now);
-  buckets.set(key, b);
-  return true;
-}
-
 export default clerkMiddleware(async (auth, req) => {
   const url = new URL(req.url);
   
   // Create response to add security headers
   const response = NextResponse.next();
   
-  // Add security headers
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('X-XSS-Protection', '1; mode=block');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Add security headers using centralized config
+  Object.entries(securityConfig.headers).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
   
   // Add CSP for non-API routes
   if (!url.pathname.startsWith("/api/")) {
-    response.headers.set(
-      'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://clerk.com https://*.clerk.accounts.dev https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co https://clerk.com https://*.clerk.accounts.dev https://va.vercel-scripts.com https://clerk-telemetry.com; frame-src https://clerk.com https://*.clerk.accounts.dev; worker-src 'self' blob:; manifest-src 'self';"
-    );
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const csp = isDevelopment ? securityConfig.csp.development : securityConfig.csp.default;
+    response.headers.set('Content-Security-Policy', csp);
   }
 
   // Get user authentication info
@@ -162,14 +220,7 @@ export default clerkMiddleware(async (auth, req) => {
     // CSRF Protection for mutating requests
     const mutatingMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
     if (mutatingMethods.includes(req.method)) {
-      const allowedOrigins = [
-        process.env.NEXT_PUBLIC_APP_URL,
-        'https://home-management-app-two.vercel.app',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'http://localhost:3001',
-        'http://127.0.0.1:3001'
-      ].filter(Boolean); // Remove undefined values
+      const allowedOrigins = securityConfig.allowedOrigins;
 
       let origin = req.headers.get('origin');
       
@@ -194,14 +245,19 @@ export default clerkMiddleware(async (auth, req) => {
       }
     }
 
-    // Rate Limiting
+    // Rate Limiting with improved logic
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const { userId } = await auth();
     const key = userId ? `u:${userId}` : `ip:${ip}`;
-    if (!allow(key)) {
+    
+    if (!rateLimiter.allow(key)) {
       return new Response(JSON.stringify({ error: "Too many requests" }), {
         status: 429,
-        headers: { "content-type": "application/json", "retry-after": "10" },
+        headers: { 
+          "content-type": "application/json", 
+          "retry-after": "10",
+          "x-ratelimit-limit": "60",
+          "x-ratelimit-remaining": "0"
+        },
       });
     }
   }

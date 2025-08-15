@@ -1,9 +1,8 @@
-import { clerkClient } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 
 export async function getUserData() {
-  const { getToken, userId } = await auth();
+  const { userId } = await auth();
   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
 
   const { data: user } = await supabase

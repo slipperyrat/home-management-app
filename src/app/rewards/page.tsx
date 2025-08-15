@@ -183,7 +183,7 @@ export default function RewardsPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -221,12 +221,10 @@ export default function RewardsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                  <div className="mb-8">
            <h1 className="text-3xl font-bold text-gray-900 mb-2">🎁 Reward Store</h1>
-           {userData && (
-             <div className="flex items-center space-x-4 text-sm text-gray-600">
+           {userData ? <div className="flex items-center space-x-4 text-sm text-gray-600">
                <span>XP: {userData.xp}</span>
                <span>Coins: {userData.coins}</span>
-             </div>
-           )}
+             </div> : null}
            
            {/* Temporary debug button */}
            <div className="mt-4">
@@ -247,11 +245,9 @@ export default function RewardsPage() {
 
             return (
               <div key={reward.id} className="bg-white rounded-lg shadow-md overflow-hidden relative">
-                {reward.pro_only && (
-                  <div className="absolute top-2 right-2 z-10">
+                {reward.pro_only ? <div className="absolute top-2 right-2 z-10">
                     <ProBadge size="sm" />
-                  </div>
-                )}
+                  </div> : null}
                 
                 <div className="p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -288,7 +284,7 @@ export default function RewardsPage() {
                   >
                     {isClaiming ? (
                       <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
                         Claiming...
                       </div>
                     ) : isClaimed ? (

@@ -35,10 +35,9 @@ function parseQuantity(ingredient: any): ParsedQuantity {
   if (typeof ingredient === 'string') {
     // Attempt to parse quantity from string (e.g., "2 cups flour", "1 lb chicken")
     const match = ingredient.match(/^(\d+(\.\d+)?)\s*([a-zA-Z]+)?\s*(.*)$/);
-    if (match) {
+    if (match && match[1]) {
       const amount = parseFloat(match[1]);
       const unit = match[3] || null;
-      const namePart = match[4] || '';
       return {
         amount: isNaN(amount) ? null : amount,
         unit: unit ? unit.toLowerCase() : null,

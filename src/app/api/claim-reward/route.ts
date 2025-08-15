@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
       success: true, 
       data: {
         claim: newClaim,
-        reward: reward,
+        reward,
         resourcesDeducted: {
           xp: requiredXp,
           coins: requiredCoins

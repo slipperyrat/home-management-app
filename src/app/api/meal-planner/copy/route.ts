@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserAndHousehold } from '@/lib/server/supabaseAdmin';
-import { sb } from '@/lib/server/supabaseAdmin';
+import { getUserAndHousehold, sb } from '@/lib/server/supabaseAdmin';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 const SLOTS = ['breakfast', 'lunch', 'dinner'] as const;
-
-type Day = typeof DAYS[number];
-type Slot = typeof SLOTS[number];
 
 interface DayMeals {
   breakfast: string | null;

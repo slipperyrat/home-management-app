@@ -164,7 +164,7 @@ export default function PlannerPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -258,17 +258,13 @@ export default function PlannerPage() {
                 </div>
               </div>
 
-              {item.description && (
-                <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p>
-              )}
+              {item.description ? <p className="text-gray-600 text-sm mb-3 line-clamp-2">{item.description}</p> : null}
 
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-gray-500 space-y-1 sm:space-y-0">
                 <span>Created {formatDate(item.created_at)}</span>
-                {item.due_date && (
-                  <span className="font-medium">
+                {item.due_date ? <span className="font-medium">
                     Due: {formatDate(item.due_date)}
-                  </span>
-                )}
+                  </span> : null}
               </div>
             </div>
           ))}
@@ -294,8 +290,7 @@ export default function PlannerPage() {
         )}
 
         {/* Create Plan Modal */}
-        {showCreateModal && (
-          <CreatePlanModal
+        {showCreateModal ? <CreatePlanModal
             onClose={() => setShowCreateModal(false)}
             onCreated={(newItem) => {
               setPlannerItems([newItem, ...plannerItems]); // Add to beginning
@@ -304,8 +299,7 @@ export default function PlannerPage() {
               setTimeout(() => fetchPlannerItems(), 100);
             }}
             householdId={userData?.household?.id || ''}
-          />
-        )}
+          /> : null}
       </div>
     </div>
   );
@@ -317,7 +311,7 @@ interface CreatePlanModalProps {
   householdId: string;
 }
 
-function CreatePlanModal({ onClose, onCreated, householdId }: CreatePlanModalProps) {
+function CreatePlanModal({ onClose, onCreated, householdId: _householdId }: CreatePlanModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('trip');

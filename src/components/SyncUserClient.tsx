@@ -21,7 +21,7 @@ export function SyncUserClient() {
           try {
             const errorText = await response.text();
             console.error('Response body:', errorText);
-          } catch (e) {
+          } catch {
             console.error('Could not read response body');
           }
         }

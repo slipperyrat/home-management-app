@@ -92,7 +92,7 @@ export function GameModeSelector() {
   if (!isLoaded) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -151,11 +151,9 @@ export function GameModeSelector() {
           ))}
         </div>
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        {error ? <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-800">{error}</p>
-          </div>
-        )}
+          </div> : null}
 
         <div className="flex justify-end">
           <button

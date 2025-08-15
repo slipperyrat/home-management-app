@@ -51,7 +51,7 @@ describe('Onboarding API Routes', () => {
       }
 
       // Mock the request
-      const request = new NextRequest('http://localhost:3000/api/onboarding/household', {
+      const _request = new NextRequest('http://localhost:3000/api/onboarding/household', {
         method: 'POST',
         body: JSON.stringify(mockRequestBody),
         headers: {

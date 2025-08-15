@@ -146,8 +146,8 @@ export default function ChoresPage() {
       setCreatingChore(true);
       await addChore({
         title: newChoreTitle.trim(),
-        description: newChoreDescription.trim() || undefined,
-        due_at: newChoreDueDate || undefined,
+        ...(newChoreDescription.trim() && { description: newChoreDescription.trim() }),
+        ...(newChoreDueDate && { due_at: newChoreDueDate }),
         created_by: user.id,
         household_id: userData.household.id
       });
@@ -215,7 +215,7 @@ export default function ChoresPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -311,25 +311,19 @@ export default function ChoresPage() {
                 </button>
               </div>
               
-              {chore.description && (
-                <p className="text-gray-600 mb-4">{chore.description}</p>
-              )}
+              {chore.description ? <p className="text-gray-600 mb-4">{chore.description}</p> : null}
 
               <div className="text-sm text-gray-500 mb-4">
                 Created {formatDate(chore.created_at)}
               </div>
 
-              {chore.due_at && (
-                <div className="mb-4">
+              {chore.due_at ? <div className="mb-4">
                   {formatDueDate(chore.due_at)}
-                </div>
-              )}
+                </div> : null}
 
-              {chore.assigned_to && (
-                <div className="text-sm text-gray-600">
+              {chore.assigned_to ? <div className="text-sm text-gray-600">
                   Assigned to: {chore.assigned_to}
-                </div>
-              )}
+                </div> : null}
             </div>
           ))}
         </div>

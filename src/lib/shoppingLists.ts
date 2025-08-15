@@ -136,7 +136,7 @@ async function completeShoppingItemWithRewards(itemId: string, userId: string): 
   
   // First, let's check if the user exists at all
   console.log(`🔍 Checking if user exists in database...`);
-  const { data: allUsers, error: allUsersError } = await supabase
+      const { data: allUsers } = await supabase
     .from('users')
     .select('id, clerk_id, xp, coins')
     .limit(10);

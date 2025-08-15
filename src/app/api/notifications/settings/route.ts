@@ -14,7 +14,7 @@ const NotificationSettingsSchema = z.object({
 });
 
 // GET - Fetch user's notification settings
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const { userId } = await auth();
     

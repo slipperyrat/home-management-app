@@ -91,7 +91,7 @@ export async function PUT(req: Request) {
     Object.keys(rawUpdates).forEach(key => {
       if (key === 'household_id') {
         // Never allow changing household_id
-        return;
+        
       } else if (key === 'description') {
         // Description is already sanitized as rich text by sanitizeDeep
         updates[key] = rawUpdates[key];

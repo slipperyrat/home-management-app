@@ -25,7 +25,7 @@ export default function OnboardingPage() {
   
   // Step 1: Household data
   const [householdName, setHouseholdName] = useState('');
-  const [memberCount, setMemberCount] = useState(1);
+  const [memberCount] = useState(1);
   
   // Step 2: Starter data options
   const [loadSampleRecipes, setLoadSampleRecipes] = useState(true);
@@ -48,7 +48,12 @@ export default function OnboardingPage() {
     try {
       const validation = HouseholdSchema.safeParse({ name: householdName });
       if (!validation.success) {
-        toast.error(validation.error.issues[0].message);
+        const firstIssue = validation.error.issues[0];
+        if (firstIssue) {
+          toast.error(firstIssue.message);
+        } else {
+          toast.error('Invalid household name');
+        }
         return;
       }
 
@@ -194,10 +199,10 @@ export default function OnboardingPage() {
                       const response = await fetch('/api/debug/user-status');
                       const data = await response.json();
                       console.log('🔍 User Status:', data);
-                      alert('Check console for user status. hasOnboarded: ' + data.debug?.hasOnboarded);
+                      alert(`Check console for user status. hasOnboarded: ${  data.debug?.hasOnboarded}`);
                     } catch (error) {
                       console.error('Error checking status:', error);
-                      alert('Error checking status: ' + error);
+                      alert(`Error checking status: ${  error}`);
                     }
                   }}
                   className="px-3 py-1 bg-blue-700 text-white text-xs rounded hover:bg-blue-600"
@@ -214,11 +219,11 @@ export default function OnboardingPage() {
                         alert('✅ Onboarding status fixed! Redirecting to dashboard...');
                         window.location.href = '/dashboard';
                       } else {
-                        alert('❌ Failed to fix: ' + data.error);
+                        alert(`❌ Failed to fix: ${  data.error}`);
                       }
                     } catch (error) {
                       console.error('Error fixing onboarding:', error);
-                      alert('Error fixing onboarding: ' + error);
+                      alert(`Error fixing onboarding: ${  error}`);
                     }
                   }}
                   className="px-3 py-1 bg-green-700 text-white text-xs rounded hover:bg-green-600"
@@ -244,7 +249,7 @@ export default function OnboardingPage() {
                          {step < 3 && (
                            <div className={`w-8 md:w-16 h-1 mx-2 transition-colors ${
                              currentStep > step ? 'bg-blue-600' : 'bg-gray-200'
-                           }`}></div>
+                           }`} />
                          )}
                        </div>
                      ))}
@@ -409,8 +414,8 @@ export default function OnboardingPage() {
                   <h3 className="font-medium text-green-900 mb-2">What's been set up:</h3>
                   <ul className="text-sm text-green-700 space-y-1">
                     <li>✅ Your household: {householdName}</li>
-                    {loadSampleRecipes && <li>✅ Sample recipes added</li>}
-                    {loadSamplePlannerItems && <li>✅ Sample planner items added</li>}
+                    {loadSampleRecipes ? <li>✅ Sample recipes added</li> : null}
+                    {loadSamplePlannerItems ? <li>✅ Sample planner items added</li> : null}
                     <li>✅ Your account is ready to use</li>
                   </ul>
                 </div>

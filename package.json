@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "type-check": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
@@ -16,7 +18,12 @@
     "test:e2e:headed": "playwright test --headed",
     "generate-icons": "node scripts/generateIcons.js",
     "generate-vapid-keys": "node scripts/generateVapidKeys.js",
-    "send-reminders": "tsx scripts/sendReminders.ts"
+    "send-reminders": "tsx scripts/sendReminders.ts",
+    "analyze": "ANALYZE=true next build",
+    "performance": "next build && next start",
+    "clean": "rm -rf .next out dist coverage",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\""
   },
   "dependencies": {
     "@clerk/nextjs": "^6.25.5",
@@ -39,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@next/bundle-analyzer": "^15.4.3",
     "@playwright/test": "^1.54.2",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
@@ -58,10 +66,20 @@
     "ignore-loader": "^0.1.2",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.6",
+    "prettier": "^3.3.3",
     "sharp": "^0.34.3",
     "tailwindcss": "^4.1.11",
     "tsx": "^4.19.2",
     "typescript": "^5",
     "vitest": "^3.2.4"
-  }
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "browserslist": [
+    "defaults",
+    "not ie 11",
+    "not ie_mob 11"
+  ]
 }

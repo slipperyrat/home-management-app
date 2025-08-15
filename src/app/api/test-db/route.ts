@@ -17,7 +17,7 @@ export async function GET() {
 
   try {
     // Test if we can connect to the database
-    const { data, error } = await supabase
+    const { data: _data, error } = await supabase
       .from('users')
       .select('count')
       .limit(1);

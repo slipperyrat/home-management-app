@@ -3,42 +3,6 @@ import { sb, getUserAndHousehold, createErrorResponse, ServerError } from '@/lib
 import { CreateRecipeSchema, validateRequest, createValidationErrorResponse } from '@/lib/validation';
 import { sanitizeDeep, createSanitizePolicy } from '@/lib/security/sanitize';
 
-interface Recipe {
-  id: string;
-  title: string;
-  description: string;
-  ingredients: Ingredient[];
-  instructions: string[];
-  prep_time: number;
-  cook_time: number;
-  servings: number;
-  image_url?: string;
-  tags: string[];
-  household_id: string;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface Ingredient {
-  name: string;
-  amount: number;
-  unit: string;
-  category: string;
-}
-
-interface CreateRecipeRequest {
-  title: string;
-  description?: string;
-  ingredients: Ingredient[];
-  instructions: string[];
-  prep_time: number;
-  cook_time: number;
-  servings: number;
-  image_url?: string;
-  tags?: string[];
-}
-
 export async function GET(request: NextRequest) {
   try {
     const { householdId } = await getUserAndHousehold();

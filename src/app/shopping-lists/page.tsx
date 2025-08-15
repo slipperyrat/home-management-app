@@ -151,7 +151,7 @@ export default function ShoppingListsPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -236,8 +236,7 @@ export default function ShoppingListsPage() {
               </div>
 
               {/* Progress bar */}
-              {list.shopping_items && list.shopping_items.length > 0 && (
-                <div className="mb-3 sm:mb-4">
+              {list.shopping_items && list.shopping_items.length > 0 ? <div className="mb-3 sm:mb-4">
                   <div className="flex justify-between text-sm text-gray-600 mb-2">
                     <span>Progress</span>
                     <span>
@@ -252,8 +251,7 @@ export default function ShoppingListsPage() {
                       }}
                     />
                   </div>
-                </div>
-              )}
+                </div> : null}
 
               <div className="text-blue-600 text-sm font-medium flex items-center">
                 <span>View details</span>

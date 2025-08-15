@@ -57,7 +57,7 @@ export default function PushNotificationSetup() {
           const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
           const subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: applicationServerKey,
+            applicationServerKey,
           });
 
           console.log('Push subscription created:', subscription);

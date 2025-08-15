@@ -90,7 +90,7 @@ export default function CalendarPage() {
           // Check if user can access calendar feature
           if (!canAccessFeature(userDataObj.plan, 'calendar')) {
             router.push('/upgrade');
-            return;
+            
           }
         } else {
           setError('User not found in database');
@@ -137,7 +137,7 @@ export default function CalendarPage() {
 
       await addCalendarEvent({
         title: formData.title,
-        description: formData.description || undefined,
+        ...(formData.description && { description: formData.description }),
         start_time: formData.start_time,
         end_time: formData.end_time,
         created_by: user.id,
@@ -194,7 +194,7 @@ export default function CalendarPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -338,9 +338,7 @@ export default function CalendarPage() {
                             )}
                           </div>
                           
-                          {event.description && (
-                            <p className="text-gray-600 mb-2">{event.description}</p>
-                          )}
+                          {event.description ? <p className="text-gray-600 mb-2">{event.description}</p> : null}
                           
                           <div className="text-sm text-gray-500">
                             <div>📅 {formatDateTime(event.start_time)} - {formatDateTime(event.end_time)}</div>

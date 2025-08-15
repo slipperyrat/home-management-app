@@ -3,9 +3,40 @@ import withPWA from "next-pwa";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  // Exclude Supabase Edge Functions from the build
-  webpack: (config, { isServer }) => {
+  // Performance optimizations
+  poweredByHeader: false,
+  compress: true,
+  generateEtags: false,
+  
+  // Build optimizations
+  distDir: '.next',
+  generateBuildId: async () => {
+    return 'build-' + Date.now();
+  },
+  
+  // Experimental features for better performance
+  experimental: {
+    optimizePackageImports: ['@clerk/nextjs', '@supabase/supabase-js'],
+    turbo: {
+      rules: {
+        '*.svg': {
+          loaders: ['@svgr/webpack'],
+          as: '*.js',
+        },
+      },
+    },
+  },
+  
+  // Image optimization
+  images: {
+    formats: ['image/webp', 'image/avif'],
+    minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+  },
+  
+  // Webpack optimizations
+  webpack: (config, { isServer, dev }) => {
     // Create a new config object to avoid read-only property issues
     const newConfig = { ...config };
     
@@ -24,12 +55,49 @@ const nextConfig: NextConfig = {
       };
     }
     
+    // Production optimizations
+    if (!dev && !isServer) {
+      // Optimize bundle splitting
+      newConfig.optimization = {
+        ...newConfig.optimization,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            vendor: {
+              test: /[\\/]node_modules[\\/]/,
+              name: 'vendors',
+              chunks: 'all',
+            },
+            clerk: {
+              test: /[\\/]node_modules[\\/]@clerk[\\/]/,
+              name: 'clerk',
+              chunks: 'all',
+              priority: 10,
+            },
+            supabase: {
+              test: /[\\/]node_modules[\\/]@supabase[\\/]/,
+              name: 'supabase',
+              chunks: 'all',
+              priority: 10,
+            },
+          },
+        },
+      };
+    }
+    
+    // Bundle analyzer
+    if (process.env.ANALYZE === 'true') {
+      const { BundleAnalyzerPlugin } = require('@next/bundle-analyzer');
+      newConfig.plugins.push(
+        new BundleAnalyzerPlugin({
+          analyzerMode: 'static',
+          openAnalyzer: false,
+          reportFilename: 'bundle-analysis.html',
+        })
+      );
+    }
+    
     return newConfig;
-  },
-  // Additional build exclusions
-  distDir: '.next',
-  generateBuildId: async () => {
-    return 'build-' + Date.now();
   },
 };
 
@@ -47,10 +115,45 @@ const pwaConfig = withPWA({
         cacheName: 'offlineCache',
         expiration: {
           maxEntries: 200,
+          maxAgeSeconds: 24 * 60 * 60, // 24 hours
+        },
+        cacheableResponse: {
+          statuses: [0, 200],
+        },
+      },
+    },
+    {
+      urlPattern: /^https:\/\/.*\.supabase\.co/,
+      handler: 'StaleWhileRevalidate',
+      options: {
+        cacheName: 'supabaseCache',
+        expiration: {
+          maxEntries: 100,
+          maxAgeSeconds: 5 * 60, // 5 minutes
+        },
+      },
+    },
+    {
+      urlPattern: /^https:\/\/.*\.clerk\.com/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'clerkCache',
+        expiration: {
+          maxEntries: 50,
+          maxAgeSeconds: 60 * 60, // 1 hour
         },
       },
     },
   ],
+  fallbacks: {
+    document: '/offline',
+  },
+  // Better PWA configuration
+  sw: 'sw.js',
+  dynamicStartUrl: false,
+  reloadOnOnline: true,
+  cacheOnFrontEndNav: true,
+  disable: process.env.NODE_ENV === 'development',
 })(nextConfig as any);
 
 export default withSentryConfig(pwaConfig, {
@@ -80,7 +183,7 @@ disableLogger: true,
 
 // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
 // See the following for more information:
-// https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
+// https://docs.sentry.io/javascript/guides/nextjs/manual-setup/
 // https://vercel.com/docs/cron-jobs
 automaticVercelMonitors: true,
 });

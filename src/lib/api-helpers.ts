@@ -1,8 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { sanitizeDeep, SanitizePolicy } from '@/lib/security/sanitize';
-import { createValidationErrorResponse } from '@/lib/validation';
 import { ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
+
+// Standard API response types
+export interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string | undefined;
+}
+
+export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
 
 // Define a type for the handler function
 type ApiHandler<T> = (
@@ -53,16 +69,121 @@ export function withSanitizedBody<T extends z.ZodSchema>(
   };
 }
 
-/**
- * Helper to create standardized error responses
- */
-export function createApiError(message: string, status: number = 400) {
-  return Response.json({ error: message }, { status });
+// Helper functions for creating consistent API responses
+export function createSuccessResponse<T>(data: T, message?: string, status: number = 200): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: true,
+    data,
+    ...(message && { message }),
+  };
+  
+  return NextResponse.json(response, { status });
 }
 
-/**
- * Helper to create standardized success responses
- */
-export function createApiSuccess<T>(data: T, status: number = 200) {
-  return Response.json({ success: true, ...data }, { status });
+export function createApiErrorResponse(error: string, status: number = 400): NextResponse<ApiResponse> {
+  const response: ApiResponse = {
+    success: false,
+    error,
+  };
+  
+  return NextResponse.json(response, { status });
+}
+
+export function createValidationErrorResponse(error: string): NextResponse<ApiResponse> {
+  return createApiErrorResponse(`Validation Error: ${error}`, 400);
+}
+
+export function createUnauthorizedResponse(message: string = 'Unauthorized'): NextResponse<ApiResponse> {
+  return createApiErrorResponse(message, 401);
+}
+
+export function createForbiddenResponse(message: string = 'Forbidden'): NextResponse<ApiResponse> {
+  return createApiErrorResponse(message, 403);
+}
+
+export function createNotFoundResponse(message: string = 'Not Found'): NextResponse<ApiResponse> {
+  return createApiErrorResponse(message, 404);
+}
+
+export function createInternalErrorResponse(message: string = 'Internal Server Error'): NextResponse<ApiResponse> {
+  return createApiErrorResponse(message, 500);
+}
+
+export function createTooManyRequestsResponse(message: string = 'Too Many Requests'): NextResponse<ApiResponse> {
+  return createApiErrorResponse(message, 429);
+}
+
+// Helper for pagination
+export function createPaginatedResponse<T>(
+  data: T[],
+  page: number,
+  limit: number,
+  total: number,
+  message?: string
+): NextResponse<PaginatedResponse<T>> {
+  const totalPages = Math.ceil(total / limit);
+  
+  const response: PaginatedResponse<T> = {
+    success: true,
+    data,
+    message,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+    },
+  };
+  
+  return NextResponse.json(response);
+}
+
+// Helper for setting cache headers
+export function setCacheHeaders(response: NextResponse, maxAge: number = 300, staleWhileRevalidate?: number): NextResponse {
+  const cacheControl = staleWhileRevalidate 
+    ? `public, s-maxage=${maxAge}, stale-while-revalidate=${staleWhileRevalidate}`
+    : `public, s-maxage=${maxAge}`;
+    
+  response.headers.set('Cache-Control', cacheControl);
+  response.headers.set('Vary', 'Authorization');
+  
+  return response;
+}
+
+// Helper for setting no-cache headers
+export function setNoCacheHeaders(response: NextResponse): NextResponse {
+  response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  response.headers.set('Pragma', 'no-cache');
+  response.headers.set('Expires', '0');
+  
+  return response;
+}
+
+// Helper for validation with Zod
+export function validateWithZod<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; error: string } {
+  try {
+    const validatedData = schema.parse(data);
+    return { success: true, data: validatedData };
+  } catch (error) {
+    if (error instanceof z.ZodError && error.issues) {
+      const errorMessage = error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+      return { success: false, error: errorMessage };
+    }
+    return { success: false, error: 'Validation failed' };
+  }
+}
+
+// Helper for handling async operations with proper error handling
+export async function handleAsyncOperation<T>(
+  operation: () => Promise<T>,
+  errorMessage: string = 'Operation failed'
+): Promise<{ success: true; data: T } | { success: false; error: string }> {
+  try {
+    const data = await operation();
+    return { success: true, data };
+  } catch (error) {
+    console.error(`${errorMessage}:`, error);
+    const message = error instanceof Error ? error.message : errorMessage;
+    return { success: false, error: message };
+  }
 }

@@ -36,7 +36,7 @@ describe('PWA Features', () => {
   describe('PWA Manifest', () => {
     it('should have correct manifest structure', async () => {
       // Test the manifest.json structure
-      const manifestPath = 'public/manifest.json'
+      const _manifestPath = 'public/manifest.json'
       
       // Mock manifest content
       const expectedManifest = {

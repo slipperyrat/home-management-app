@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
             .eq('user_id', subscription.user_id);
         }
         
-        return { success: false, userId: subscription.user_id, error: error };
+        return { success: false, userId: subscription.user_id, error };
       }
     });
 

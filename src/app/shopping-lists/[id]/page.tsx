@@ -3,7 +3,7 @@
 import { useAuth, useUser } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getShoppingItems, addShoppingItem, toggleShoppingItemComplete } from '@/lib/shoppingLists';
+import { getShoppingItems, addShoppingItem } from '@/lib/shoppingLists';
 import { debugUser } from '@/lib/debugUser';
 
 interface ShoppingItem {
@@ -205,7 +205,7 @@ export default function ShoppingListDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -279,7 +279,7 @@ export default function ShoppingListDetailPage() {
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 text-sm font-medium whitespace-nowrap"
             >
               {loading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
               ) : (
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -359,7 +359,7 @@ export default function ShoppingListDetailPage() {
                       className="flex-shrink-0 w-8 h-8 sm:w-6 sm:h-6 border-2 border-gray-300 rounded-full mr-3 sm:mr-4 hover:border-blue-500 disabled:opacity-50 flex items-center justify-center touch-manipulation"
                     >
                       {togglingItems.has(item.id) && (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
                       )}
                     </button>
                     <div className="flex-1 min-w-0">
@@ -367,11 +367,9 @@ export default function ShoppingListDetailPage() {
                         <span className="text-gray-900 font-medium truncate">
                           {item.name}
                         </span>
-                        {item.quantity && (
-                          <span className="text-gray-500 text-sm sm:ml-2">
+                        {item.quantity ? <span className="text-gray-500 text-sm sm:ml-2">
                             ({item.quantity})
-                          </span>
-                        )}
+                          </span> : null}
                       </div>
                     </div>
                     <div className="text-xs sm:text-sm text-gray-500 ml-2 hidden sm:block">
@@ -399,7 +397,7 @@ export default function ShoppingListDetailPage() {
                       className="flex-shrink-0 w-8 h-8 sm:w-6 sm:h-6 bg-green-500 border-2 border-green-500 rounded-full mr-3 sm:mr-4 flex items-center justify-center hover:bg-green-600 disabled:opacity-50 touch-manipulation"
                     >
                       {togglingItems.has(item.id) ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                       ) : (
                         <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -411,15 +409,13 @@ export default function ShoppingListDetailPage() {
                         <span className="text-gray-500 line-through truncate">
                           {item.name}
                         </span>
-                        {item.quantity && (
-                          <span className="text-gray-400 text-sm sm:ml-2">
+                        {item.quantity ? <span className="text-gray-400 text-sm sm:ml-2">
                             ({item.quantity})
-                          </span>
-                        )}
+                          </span> : null}
                       </div>
                     </div>
                     <div className="text-xs sm:text-sm text-gray-500 ml-2 hidden sm:block">
-                      {item.completed_at && formatDate(item.completed_at)}
+                      {item.completed_at ? formatDate(item.completed_at) : null}
                     </div>
                   </div>
                 ))}

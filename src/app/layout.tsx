@@ -6,7 +6,8 @@ import { Analytics } from '@vercel/analytics/react';
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import PWAStatus from "@/components/PWAStatus";
 import PushNotificationSetup from "@/components/PushNotificationSetup";
-// import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import HeartbeatProvider from "@/components/HeartbeatProvider";
 import "./globals.css";
 import { ReactNode } from "react";
 
@@ -40,6 +41,18 @@ export const metadata = {
     title: "Home Management App",
     description: "Collaborative tools for everyday life",
   },
+  // Performance optimizations
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
 };
 
 // Add NavBar as a client component for auth state
@@ -59,18 +72,32 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <meta name="msapplication-TileColor" content="#2563eb" />
           <meta name="msapplication-tap-highlight" content="no" />
           <meta name="theme-color" content="#2563eb" />
+          
+          {/* Performance optimizations */}
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link rel="dns-prefetch" href="https://clerk.com" />
+          <link rel="dns-prefetch" href="https://*.supabase.co" />
+          
+          {/* Resource hints */}
+          <link rel="preload" href="/icons/icon-192x192.png" as="image" />
+          <link rel="modulepreload" href="/_next/static/chunks/webpack.js" />
         </head>
         <body>
-          <QueryProvider>
-            <PWAStatus />
-            <NavBar />
-            <SyncUserClient />
-            {children}
-            <Toaster position="top-right" />
-            <PWAInstallPrompt />
-                              <PushNotificationSetup />
-            <Analytics />
-          </QueryProvider>
+          <ErrorBoundary>
+            <QueryProvider>
+              <PWAStatus />
+              <NavBar />
+              <SyncUserClient />
+              <HeartbeatProvider>
+                {children}
+              </HeartbeatProvider>
+              <Toaster position="top-right" />
+              <PWAInstallPrompt />
+              <PushNotificationSetup />
+              <Analytics />
+            </QueryProvider>
+          </ErrorBoundary>
         </body>
       </html>
     </ClerkProvider>

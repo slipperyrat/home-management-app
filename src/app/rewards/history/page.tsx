@@ -22,7 +22,16 @@ function formatDate(dateString: string) {
 }
 
 export default function RewardHistoryPage() {
-  const [history, setHistory] = useState<any[]>([])
+  const [history, setHistory] = useState<Array<{
+    rewards: Array<{
+      name: string;
+      pro_only: boolean;
+      xp_cost: number;
+      coin_cost: number;
+    }>;
+    created_at: string;
+    reward_id: string;
+  }>>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -46,8 +55,8 @@ export default function RewardHistoryPage() {
         const data = await getRewardHistory(user.id)
         console.log('📊 Reward history result:', data)
         setHistory(data)
-      } catch (error) {
-        console.error('❌ Error fetching reward history:', error)
+      } catch {
+        console.error('❌ Error fetching reward history')
         setHistory([])
       } finally {
         setLoading(false)
@@ -63,25 +72,30 @@ export default function RewardHistoryPage() {
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">🎖️ Claimed Rewards</h1>
       <div className="space-y-4">
-        {history.map((entry, i) => (
-          <div key={i} className="p-4 rounded shadow bg-white">
-            <div className="flex justify-between items-center">
-              <div>
-                <div className="font-semibold text-lg">
-                  {entry.rewards.name}{' '}
-                  {entry.rewards.pro_only && <ProBadge size="sm" />}
+        {history.map((entry, i) => {
+          const reward = entry.rewards[0]; // Get the first reward from the array
+          if (!reward) return null; // Skip if no reward data
+          
+          return (
+            <div key={i} className="p-4 rounded shadow bg-white">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="font-semibold text-lg">
+                    {reward.name}{' '}
+                    {reward.pro_only ? <ProBadge size="sm" /> : null}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    Claimed on {formatDate(entry.created_at)}
+                  </div>
                 </div>
-                <div className="text-sm text-gray-600">
-                  Claimed on {formatDate(entry.created_at)}
+                <div className="text-right text-sm">
+                  <div>🟡 {reward.xp_cost} XP</div>
+                  <div>🪙 {reward.coin_cost} Coins</div>
                 </div>
-              </div>
-              <div className="text-right text-sm">
-                <div>🟡 {entry.rewards.xp_cost} XP</div>
-                <div>🪙 {entry.rewards.coin_cost} Coins</div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   )

@@ -90,11 +90,9 @@ export default function TestNotificationPage() {
           Test Service Worker Notification
         </button>
         
-        {status && (
-          <div className="p-4 bg-gray-100 rounded">
+        {status ? <div className="p-4 bg-gray-100 rounded">
             <strong>Status:</strong> {status}
-          </div>
-        )}
+          </div> : null}
       </div>
     </div>
   );

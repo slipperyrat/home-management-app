@@ -63,7 +63,7 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
     role = 'owner';
   } else {
     // Join existing household as member
-    householdId = existingHouseholds[0].id;
+    householdId = existingHouseholds[0]?.id || '';
     role = 'member';
   }
 
@@ -74,10 +74,10 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
   if (!userRow) {
     // New user - set initial values
     const { error: upsertError } = await supabase.from('users').upsert({
-      id: id,
+      id,
       clerk_id: id,
-      email: email,
-      role: role,
+      email,
+      role,
       xp: 0,
       coins: 0,
     });
@@ -89,8 +89,8 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
   } else {
     // Existing user - only update email and role, preserve XP/coins
     const { error: updateError } = await supabase.from('users').update({
-      email: email,
-      role: role,
+      email,
+      role,
     }).eq('clerk_id', id);
     if (updateError) {
       console.error('❌ Error updating user:', updateError);

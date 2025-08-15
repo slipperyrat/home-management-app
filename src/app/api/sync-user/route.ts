@@ -2,11 +2,9 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
 import { syncUser } from "@/lib/syncUser";
 
-export async function POST(req: Request) {
+export async function POST(_req: Request) {
   try {
     console.log("🚀 API route called");
-    const authHeader = req.headers.get("authorization");
-    const jwt = authHeader?.replace("Bearer ", "");
     const clerkUser = await currentUser();
 
     console.log("🔄 Syncing user", clerkUser?.id);

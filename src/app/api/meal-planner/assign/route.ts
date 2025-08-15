@@ -2,10 +2,6 @@ import { NextResponse } from 'next/server'
 import { sb, getUserAndHousehold } from '@/lib/server/supabaseAdmin'
 import { addRecipeIngredientsToGroceries } from '@/lib/server/addRecipeIngredients'
 import { AssignMealSchema, validateRequest, createValidationErrorResponse } from '@/lib/validation'
-import { sanitizeDeep, sanitizeText } from '@/lib/security/sanitize'
-
-const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
-const SLOTS = ['breakfast','lunch','dinner']
 
 export async function POST(req: Request) {
   try {

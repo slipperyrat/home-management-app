@@ -6,7 +6,7 @@ import { useAuth } from '@clerk/nextjs';
 export default function NotificationPermission() {
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isSupported, setIsSupported] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
+
   const [showPrompt, setShowPrompt] = useState(false);
   const { userId } = useAuth();
 
@@ -25,6 +25,9 @@ export default function NotificationPermission() {
         return () => clearTimeout(timer);
       }
     }
+    
+    // Return empty cleanup function for cases where no timer is set
+    return () => {};
   }, [userId]);
 
   const requestPermission = async () => {
@@ -67,7 +70,6 @@ export default function NotificationPermission() {
       });
 
       if (response.ok) {
-        setIsSubscribed(true);
         console.log('Successfully subscribed to push notifications');
       }
     } catch (error) {

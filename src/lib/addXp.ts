@@ -24,6 +24,10 @@ export async function addXp(userId: string, xpToAdd: number = 5) {
 
   // If multiple users found, use the first one (you might want to clean up duplicates)
   const currentUser = currentUsers[0];
+  if (!currentUser) {
+    console.warn(`⚠️ No user data found for id ${userId}`);
+    return null;
+  }
   const currentXp = currentUser.xp || 0;
   const newXp = currentXp + xpToAdd;
 

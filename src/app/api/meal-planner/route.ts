@@ -8,17 +8,6 @@ interface DayMeals {
   dinner?: string | null;
 }
 
-interface MealPlanData {
-  id: string;
-  household_id: string;
-  week_start_date: string; // YYYY-MM-DD format
-  meals: {
-    [day: string]: DayMeals; // monday, tuesday, etc.
-  };
-  created_at: string;
-  updated_at: string;
-}
-
 interface CreateMealPlanRequest {
   week_start_date: string;
   meals: {
@@ -59,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      mealPlan: mealPlan
+      mealPlan
     });
 
   } catch (error) {
@@ -103,7 +92,7 @@ export async function PUT(request: NextRequest) {
       }
 
       if (dayMeals && typeof dayMeals === 'object') {
-        for (const [mealType, recipeId] of Object.entries(dayMeals)) {
+        for (const [mealType, _recipeId] of Object.entries(dayMeals)) {
           if (!validMealTypes.includes(mealType)) {
             throw new ServerError(`Invalid meal_type: ${mealType}. Must be one of: ${validMealTypes.join(', ')}`, 400);
           }

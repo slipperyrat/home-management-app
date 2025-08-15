@@ -5,7 +5,7 @@ import { useState } from 'react';
 export default function SetRolePage() {
   const [clerkId, setClerkId] = useState('');
   const [role, setRole] = useState<'member' | 'owner'>('member');
-  const [response, setResponse] = useState<any>(null);
+  const [response, setResponse] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -24,7 +24,7 @@ export default function SetRolePage() {
 
       const data = await res.json();
       setResponse(data);
-    } catch (error) {
+    } catch {
       setResponse({ error: 'Failed to send request' });
     } finally {
       setLoading(false);
@@ -77,14 +77,12 @@ export default function SetRolePage() {
             </button>
           </form>
 
-          {response && (
-            <div className="mt-6">
+          {response ? <div className="mt-6">
               <h2 className="text-lg font-medium text-gray-900 mb-2">Response:</h2>
               <pre className="bg-gray-100 p-4 rounded-md overflow-auto text-sm">
                 {JSON.stringify(response, null, 2)}
               </pre>
-            </div>
-          )}
+            </div> : null}
         </div>
       </div>
     </div>

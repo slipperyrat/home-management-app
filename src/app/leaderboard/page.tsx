@@ -1,6 +1,6 @@
 'use client';
 
-import { useAuth, useUser } from '@clerk/nextjs';
+import { useAuth } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -18,7 +18,6 @@ interface LeaderboardData {
 
 export default function LeaderboardPage() {
   const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
   const router = useRouter();
   
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -65,7 +64,7 @@ export default function LeaderboardPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading leaderboard...</p>
         </div>
       </div>

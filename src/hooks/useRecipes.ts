@@ -24,7 +24,7 @@ interface Recipe {
   created_by: string;
 }
 
-const fetchRecipes = async (householdId: string): Promise<Recipe[]> => {
+const fetchRecipes = async (_householdId: string): Promise<Recipe[]> => {
   const response = await fetch(`/api/recipes`);
   
   if (!response.ok) {

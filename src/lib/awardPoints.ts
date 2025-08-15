@@ -112,7 +112,12 @@ export async function awardPoints({
 
 // Convenience functions for common use cases
 export async function awardXP(userId: string, amount: number, reason?: string): Promise<AwardPointsResult> {
-  return awardPoints({ userId, amount, type: 'xp', reason });
+  return awardPoints({ 
+    userId, 
+    amount, 
+    type: 'xp', 
+    ...(reason && { reason })
+  });
 }
 
 export async function awardCoins(userId: string, amount: number, reason?: string): Promise<AwardPointsResult> {
@@ -136,11 +141,16 @@ export async function awardCoins(userId: string, amount: number, reason?: string
       userId, 
       amount: adjustedAmount, 
       type: 'coins', 
-      reason: reason ? `${reason}${hasDoubleCoin ? ' (doubled by power-up)' : ''}` : undefined 
+      ...(reason && { reason: `${reason}${hasDoubleCoin ? ' (doubled by power-up)' : ''}` })
     });
   } catch (error) {
     console.error(`❌ Error checking power-ups for user ${userId}:`, error);
     // Fall back to default behavior if power-up check fails
-    return awardPoints({ userId, amount, type: 'coins', reason });
+    return awardPoints({ 
+      userId, 
+      amount, 
+      type: 'coins', 
+      ...(reason && { reason })
+    });
   }
 } 

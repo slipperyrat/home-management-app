@@ -1,6 +1,6 @@
 'use client';
 
-import { useAuth, useUser } from '@clerk/nextjs';
+import { useAuth } from '@clerk/nextjs';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -8,17 +8,7 @@ import { useUserData } from '@/hooks/useUserData';
 import { useRecipes } from '@/hooks/useRecipes';
 import { useMealPlan } from '@/hooks/useMealPlan';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { FeatureErrorBoundary } from '@/components/ErrorBoundary';
-
-interface UserData {
-  email: string;
-  role: 'owner' | 'member';
-  plan: 'free' | 'premium';
-  household: {
-    id: string;
-    plan: string;
-  };
-}
+// import { FeatureErrorBoundary } from '@/components/ErrorBoundary'; // This component was removed
 
 interface Recipe {
   id: string;
@@ -40,32 +30,21 @@ interface Ingredient {
   category: string;
 }
 
-interface MealPlan {
-  id: string;
-  household_id: string;
-  week_start_date: string;
-  meals: {
-    [day: string]: {
-      breakfast?: Recipe | string | null;
-      lunch?: Recipe | string | null;
-      dinner?: Recipe | string | null;
-    };
-  };
-}
+
 
 export default function MealPlannerPage() {
   const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
+
   const router = useRouter();
   const queryClient = useQueryClient();
   
   // Use React Query hooks for data fetching
-  const { data: userData, isLoading: userDataLoading, error: userDataError } = useUserData();
+  const { userData, isLoading: userDataLoading, error: userDataError } = useUserData();
   const { data: recipes, isLoading: recipesLoading, error: recipesError } = useRecipes(userData?.household?.id);
   
   const [currentWeek, setCurrentWeek] = useState<Date>(new Date());
   const weekStartDate = getWeekStart(currentWeek);
-  const { data: mealPlan, isLoading: mealPlanLoading, error: mealPlanError } = useMealPlan(userData?.household?.id, weekStartDate);
+  const { data: mealPlan, isLoading: mealPlanLoading, error: mealPlanError } = useMealPlan(weekStartDate);
   
 
 
@@ -73,7 +52,7 @@ export default function MealPlannerPage() {
   const loading = userDataLoading || recipesLoading || mealPlanLoading;
   const error = userDataError || recipesError || mealPlanError;
   
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [selectedRecipe] = useState<Recipe | null>(null);
   const [showRecipeModal, setShowRecipeModal] = useState(false);
   const [showCreateRecipeModal, setShowCreateRecipeModal] = useState(false);
 
@@ -104,7 +83,7 @@ export default function MealPlannerPage() {
 
       return response.json();
     },
-          onSuccess: (result, variables) => {
+          onSuccess: (result, _variables) => {
         // Invalidate the specific meal plan query to refetch data
         const weekStartString = weekStartDate.toISOString().split('T')[0];
 
@@ -147,38 +126,14 @@ export default function MealPlannerPage() {
     },
   });
 
-  const createRecipeMutation = useMutation({
-    mutationFn: async (recipeData: any) => {
-      const response = await fetch('/api/recipes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(recipeData),
-      });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to create recipe');
-      }
-
-      return response.json();
-    },
-    onSuccess: () => {
-      // Invalidate recipes query to refetch data
-      queryClient.invalidateQueries({ queryKey: ['recipes'] });
-      toast.success('Recipe created successfully!');
-      setShowCreateRecipeModal(false);
-    },
-    onError: (error) => {
-      toast.error(`Failed to create recipe: ${error.message}`);
-    },
-  });
 
   useEffect(() => {
     if (!isLoaded) return;
 
     if (!isSignedIn) {
       router.push('/sign-in');
-      return;
+      
     }
   }, [isLoaded, isSignedIn, router]);
 
@@ -217,6 +172,8 @@ export default function MealPlannerPage() {
     const dateObj = new Date(date);
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const dayName = dayNames[dateObj.getDay()];
+    
+    if (!dayName) return undefined;
     
     const dayMeals = mealPlan.meals[dayName];
     if (!dayMeals) return undefined;
@@ -361,7 +318,7 @@ export default function MealPlannerPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -431,8 +388,8 @@ export default function MealPlannerPage() {
                       </svg>
                     </button>
                     <span className="text-xs sm:text-sm font-medium text-gray-900 min-w-0">
-                      <span className="hidden sm:inline">{formatDate(weekDays[0])} - {formatDate(weekDays[6])}</span>
-                      <span className="sm:hidden">{weekDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {weekDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                      <span className="hidden sm:inline">{weekDays[0] && formatDate(weekDays[0])} - {weekDays[6] && formatDate(weekDays[6])}</span>
+                      <span className="sm:hidden">{weekDays[0]?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {weekDays[6]?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                     </span>
                     <button
                       onClick={() => navigateWeek('next')}
@@ -458,7 +415,7 @@ export default function MealPlannerPage() {
           </div>
 
           {/* Weekly Grid */}
-          <FeatureErrorBoundary featureName="Meal Planner Grid">
+          {/* <FeatureErrorBoundary featureName="Meal Planner Grid"> */}
             {/* Desktop Grid - Hidden on mobile */}
             <div className="hidden lg:block">
               <div className="grid grid-cols-7 gap-4 p-6">
@@ -476,37 +433,52 @@ export default function MealPlannerPage() {
                     {/* Breakfast */}
                     <div className="space-y-1">
                       <div className="text-xs font-medium text-gray-700">Breakfast</div>
-                      <MealSlot
-                        date={date.toISOString().split('T')[0]}
-                        mealType="breakfast"
-                        recipe={getMealForDay(date.toISOString().split('T')[0], 'breakfast')}
-                        onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'breakfast', recipe)}
-                        recipes={recipes || []}
-                      />
+                      {(() => {
+                        const breakfastRecipe = getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast');
+                        return (
+                          <MealSlot
+                            date={date.toISOString().split('T')[0] || ''}
+                            mealType="breakfast"
+                            recipe={breakfastRecipe || undefined}
+                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
+                            recipes={recipes || []}
+                          />
+                        );
+                      })()}
                     </div>
 
                     {/* Lunch */}
                     <div className="space-y-1">
                       <div className="text-xs font-medium text-gray-700">Lunch</div>
-                      <MealSlot
-                        date={date.toISOString().split('T')[0]}
-                        mealType="lunch"
-                        recipe={getMealForDay(date.toISOString().split('T')[0], 'lunch')}
-                        onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'lunch', recipe)}
-                        recipes={recipes || []}
-                      />
+                      {(() => {
+                        const lunchRecipe = getMealForDay(date.toISOString().split('T')[0] || '', 'lunch');
+                        return (
+                          <MealSlot
+                            date={date.toISOString().split('T')[0] || ''}
+                            mealType="lunch"
+                            recipe={lunchRecipe || undefined}
+                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
+                            recipes={recipes || []}
+                          />
+                        );
+                      })()}
                     </div>
 
                     {/* Dinner */}
                     <div className="space-y-1">
                       <div className="text-xs font-medium text-gray-700">Dinner</div>
-                      <MealSlot
-                        date={date.toISOString().split('T')[0]}
-                        mealType="dinner"
-                        recipe={getMealForDay(date.toISOString().split('T')[0], 'dinner')}
-                        onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'dinner', recipe)}
-                        recipes={recipes || []}
-                      />
+                      {(() => {
+                        const dinnerRecipe = getMealForDay(date.toISOString().split('T')[0] || '', 'dinner');
+                        return (
+                          <MealSlot
+                            date={date.toISOString().split('T')[0] || ''}
+                            mealType="dinner"
+                            recipe={dinnerRecipe || undefined}
+                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
+                            recipes={recipes || []}
+                          />
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}
@@ -533,10 +505,10 @@ export default function MealPlannerPage() {
                       <div className="space-y-2">
                         <div className="text-sm font-medium text-gray-700 text-center">🌅 Breakfast</div>
                         <MealSlot
-                          date={date.toISOString().split('T')[0]}
+                          date={date.toISOString().split('T')[0] || ''}
                           mealType="breakfast"
-                          recipe={getMealForDay(date.toISOString().split('T')[0], 'breakfast')}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'breakfast', recipe)}
+                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
                           recipes={recipes || []}
                           isMobile={true}
                         />
@@ -546,10 +518,10 @@ export default function MealPlannerPage() {
                       <div className="space-y-2">
                         <div className="text-sm font-medium text-gray-700 text-center">☀️ Lunch</div>
                         <MealSlot
-                          date={date.toISOString().split('T')[0]}
+                          date={date.toISOString().split('T')[0] || ''}
                           mealType="lunch"
-                          recipe={getMealForDay(date.toISOString().split('T')[0], 'lunch')}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'lunch', recipe)}
+                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
                           recipes={recipes || []}
                           isMobile={true}
                         />
@@ -559,10 +531,10 @@ export default function MealPlannerPage() {
                       <div className="space-y-2">
                         <div className="text-sm font-medium text-gray-700 text-center">🌙 Dinner</div>
                         <MealSlot
-                          date={date.toISOString().split('T')[0]}
+                          date={date.toISOString().split('T')[0] || ''}
                           mealType="dinner"
-                          recipe={getMealForDay(date.toISOString().split('T')[0], 'dinner')}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0], 'dinner', recipe)}
+                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
                           recipes={recipes || []}
                           isMobile={true}
                         />
@@ -572,23 +544,20 @@ export default function MealPlannerPage() {
                 ))}
               </div>
             </div>
-          </FeatureErrorBoundary>
+          {/* </FeatureErrorBoundary> */}
 
           {/* Recipe Modal */}
-          {showRecipeModal && selectedRecipe && (
-            <RecipeModal
+          {showRecipeModal && selectedRecipe ? <RecipeModal
               recipe={selectedRecipe}
               onClose={() => setShowRecipeModal(false)}
               onAddToGroceryList={() => {
                 addToGroceryList(selectedRecipe);
                 setShowRecipeModal(false);
               }}
-            />
-          )}
+            /> : null}
 
           {/* Create Recipe Modal */}
-          {showCreateRecipeModal && (
-            <CreateRecipeModal
+          {showCreateRecipeModal ? <CreateRecipeModal
               onClose={() => {
                 console.log('🔍 Closing create recipe modal');
                 setShowCreateRecipeModal(false);
@@ -598,8 +567,7 @@ export default function MealPlannerPage() {
                 // React Query will automatically refetch recipes due to our mutation
                 setShowCreateRecipeModal(false);
               }}
-            />
-          )}
+            /> : null}
         </div>
       </div>
     </div>
@@ -609,13 +577,13 @@ export default function MealPlannerPage() {
 interface MealSlotProps {
   date: string;
   mealType: 'breakfast' | 'lunch' | 'dinner';
-  recipe?: Recipe;
+  recipe: Recipe | undefined;
   onAssign: (recipe: Recipe) => void;
   recipes: Recipe[];
   isMobile?: boolean;
 }
 
-function MealSlot({ date, mealType, recipe, onAssign, recipes, isMobile = false }: MealSlotProps) {
+function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes, isMobile = false }: MealSlotProps) {
   const [showDropdown, setShowDropdown] = useState(false);
 
   return (
@@ -638,8 +606,7 @@ function MealSlot({ date, mealType, recipe, onAssign, recipes, isMobile = false 
         </button>
       )}
 
-      {showDropdown && (
-        <div className={`absolute z-50 mt-1 bg-white border border-gray-200 rounded-md shadow-lg ${isMobile ? 'w-72 left-0 right-0' : 'w-64'}`}>
+      {showDropdown ? <div className={`absolute z-50 mt-1 bg-white border border-gray-200 rounded-md shadow-lg ${isMobile ? 'w-72 left-0 right-0' : 'w-64'}`}>
           <div className="p-3">
             <div className={`font-medium text-gray-700 mb-3 ${isMobile ? 'text-sm' : 'text-xs'}`}>
               Select Recipe
@@ -679,8 +646,7 @@ function MealSlot({ date, mealType, recipe, onAssign, recipes, isMobile = false 
               )}
             </div>
           </div>
-        </div>
-      )}
+        </div> : null}
     </div>
   );
 }
@@ -772,7 +738,16 @@ function CreateRecipeModal({ onClose, onCreated }: CreateRecipeModalProps) {
 
   function updateIngredient(index: number, field: keyof Ingredient, value: string | number) {
     const updated = [...ingredients];
-    updated[index] = { ...updated[index], [field]: value };
+    const currentIngredient = updated[index];
+    if (!currentIngredient) return;
+    
+    updated[index] = {
+      name: currentIngredient.name || '',
+      amount: currentIngredient.amount || 0,
+      unit: currentIngredient.unit || '',
+      category: currentIngredient.category || '',
+      [field]: value
+    };
     setIngredients(updated);
   }
 
@@ -815,7 +790,7 @@ function CreateRecipeModal({ onClose, onCreated }: CreateRecipeModalProps) {
           instructions: validInstructions,
           prep_time: prepTime,
           cook_time: cookTime,
-          servings: servings,
+          servings,
           tags: []
         }),
       });

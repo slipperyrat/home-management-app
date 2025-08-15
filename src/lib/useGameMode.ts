@@ -29,17 +29,14 @@ export function useGameMode(): GameModeData {
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !user?.id) {
-      setLoading(false);
       return;
     }
 
     async function fetchUserData() {
       try {
-        setLoading(true);
         const response = await fetch('/api/user-data');
         const result = await response.json();
 
@@ -50,8 +47,6 @@ export function useGameMode(): GameModeData {
         }
       } catch (err) {
         console.error('Exception fetching user data:', err);
-      } finally {
-        setLoading(false);
       }
     }
 

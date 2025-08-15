@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Also update the role in the users table
-    const { data: updatedUserInUsers, error: usersUpdateError } = await supabase
+    const { data: _updatedUserInUsers, error: usersUpdateError } = await supabase
       .from('users')
       .update({ role })
       .eq('clerk_id', clerkId)

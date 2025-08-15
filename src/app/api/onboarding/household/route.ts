@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
-import { withSanitizedBody } from '@/lib/api-helpers';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
 
 const HouseholdSchema = z.object({
@@ -20,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validatedData = HouseholdSchema.parse(body);
-    const { householdName, memberCount, gameMode } = validatedData;
+    const { householdName, gameMode } = validatedData;
 
     // Create household
     const { data: household, error: householdError } = await sb()

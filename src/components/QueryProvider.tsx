@@ -30,10 +30,16 @@ export function QueryProvider({ children }: QueryProviderProps) {
           refetchOnWindowFocus: false, // Disable for now to reduce API calls
           // Don't refetch on reconnect to reduce load
           refetchOnReconnect: false,
+          // Optimize network requests
+          networkMode: 'online',
+          // Better error handling
+          throwOnError: false,
         },
         mutations: {
           // Don't retry mutations by default
           retry: false,
+          // Better error handling for mutations
+          throwOnError: false,
         },
       },
     })
