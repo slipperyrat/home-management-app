@@ -80,22 +80,25 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
       role,
       xp: 0,
       coins: 0,
+      household_id: householdId, // Add household_id
+      has_onboarded: false, // Set initial onboarding status
     });
     if (upsertError) {
       console.error('❌ Error upserting user:', upsertError);
     } else {
-      console.log('✅ Created new user:', { id, clerk_id: id, email, role, xp: 0, coins: 0 });
+      console.log('✅ Created new user:', { id, clerk_id: id, email, role, xp: 0, coins: 0, household_id: householdId });
     }
   } else {
-    // Existing user - only update email and role, preserve XP/coins
+    // Existing user - update email, role, and household_id
     const { error: updateError } = await supabase.from('users').update({
       email,
       role,
+      household_id: householdId, // Add household_id
     }).eq('clerk_id', id);
     if (updateError) {
       console.error('❌ Error updating user:', updateError);
     } else {
-      console.log('✅ Updated existing user:', { id, clerk_id: id, email, role });
+      console.log('✅ Updated existing user:', { id, clerk_id: id, email, role, household_id: householdId });
     }
   }
 
