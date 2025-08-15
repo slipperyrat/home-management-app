@@ -17,7 +17,9 @@ export function useHeartbeat() {
 
     // Set up interval for periodic heartbeats
     intervalRef.current = setInterval(() => {
-      postEventTypes.heartbeat(userData.household_id);
+      if (userData?.household_id) {
+        postEventTypes.heartbeat(userData.household_id);
+      }
     }, 15 * 60 * 1000); // 15 minutes
 
     // Track user activity
@@ -35,7 +37,9 @@ export function useHeartbeat() {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         // Post heartbeat when tab becomes visible
-        postEventTypes.heartbeat(userData.household_id);
+        if (userData?.household_id) {
+          postEventTypes.heartbeat(userData.household_id);
+        }
       }
     };
 
