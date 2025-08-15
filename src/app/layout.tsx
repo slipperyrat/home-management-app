@@ -11,6 +11,8 @@ import HeartbeatProvider from "@/components/HeartbeatProvider";
 import "./globals.css";
 import { ReactNode } from "react";
 
+// Force rebuild to clear MIME type cache issues - 2024-01-15 15:35 UTC
+
 export const metadata = {
   title: "Home Management App",
   description: "Collaborative tools for everyday life - manage your household with ease",

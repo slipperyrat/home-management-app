@@ -123,16 +123,22 @@ export default function OnboardingPage() {
             action: {
               label: recipesAdded > 0 ? 'View Meal Planner' : 'View Planner',
               onClick: () => {
-                if (recipesAdded > 0) {
-                  window.open('/meal-planner', '_blank');
-                } else {
-                  window.open('/planner', '_blank');
+                if (typeof window !== 'undefined') {
+                  if (recipesAdded > 0) {
+                    window.open('/meal-planner', '_blank');
+                  } else {
+                    window.open('/planner', '_blank');
+                  }
                 }
               },
             },
             cancel: plansAdded > 0 && recipesAdded > 0 ? {
               label: 'View Planner',
-              onClick: () => window.open('/planner', '_blank'),
+              onClick: () => {
+                if (typeof window !== 'undefined') {
+                  window.open('/planner', '_blank');
+                }
+              },
             } : undefined,
           });
         } else {
