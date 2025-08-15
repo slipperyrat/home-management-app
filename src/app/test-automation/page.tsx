@@ -6,6 +6,7 @@ import { useUserData } from '@/hooks/useUserData';
 import { postEventTypes } from '@/lib/postEvent';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '@/types/supabase';
+import Link from 'next/link';
 
 export default function TestAutomationPage() {
   const { user } = useUser();
@@ -218,7 +219,7 @@ export default function TestAutomationPage() {
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• Create a test rule above</li>
               <li>• Trigger a heartbeat event</li>
-              <li>• Check the <a href="/inbox" className="text-blue-600 hover:underline">Inbox</a> to see events</li>
+              <li>• Check the <Link href="/inbox" className="text-blue-600 hover:underline">Inbox</Link> to see events</li>
               <li>• Check automation jobs status</li>
             </ul>
           </div>

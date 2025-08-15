@@ -6,6 +6,7 @@ import { useUserData } from '@/hooks/useUserData';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '@/types/supabase';
 import { postEventTypes } from '@/lib/postEvent';
+import Link from 'next/link';
 
 interface Bill {
   id: string;
@@ -326,7 +327,7 @@ export default function BillsPage() {
           <p className="text-sm text-blue-700">
             This bills system is integrated with the automation engine. When you create bills manually or receive them via email, 
             automation rules can trigger actions like notifications, reminders, and more. Check the{' '}
-            <a href="/inbox" className="underline">Inbox</a> to see automation events in action.
+            <Link href="/inbox" className="underline">Inbox</Link> to see automation events in action.
           </p>
         </div>
       </div>
