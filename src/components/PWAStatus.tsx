@@ -33,7 +33,9 @@ export default function PWAStatus() {
       navigator.serviceWorker.getRegistration().then(registration => {
         if (registration && registration.waiting) {
           registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          if (typeof window !== 'undefined') {
           window.location.reload();
+        }
         }
       });
     }

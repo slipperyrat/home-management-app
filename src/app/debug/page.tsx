@@ -101,7 +101,11 @@ export default function DebugPage() {
           <h2 className="text-xl font-semibold mb-4">Actions</h2>
           <div className="space-y-2">
             <button 
-              onClick={() => window.location.reload()}
+              onClick={() => {
+          if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        }}
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
             >
               Refresh Page

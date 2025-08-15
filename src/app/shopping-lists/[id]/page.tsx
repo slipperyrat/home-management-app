@@ -228,7 +228,11 @@ export default function ShoppingListDetailPage() {
             <p className="text-gray-600 mb-4">{error}</p>
             <div className="space-y-3">
               <button 
-                onClick={() => window.location.reload()}
+                onClick={() => {
+          if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        }}
                 className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 mr-2"
               >
                 Try Again
