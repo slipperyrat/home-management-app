@@ -1,4 +1,6 @@
-# Home Management App
+# Home Management App - AI Automation Hub
+
+*Last updated: 2024-01-15 15:30 UTC - Force rebuild to clear MIME type cache*
 
 A comprehensive home management application built with Next.js, featuring meal planning, task management, and household collaboration.
 
