@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/ssr';
+import { createBrowserClient } from '@supabase/ssr';
 import { Database } from '@/types/supabase';
 
 export interface PostEventParams {
@@ -16,7 +16,10 @@ export interface PostEventError {
 }
 
 export async function postEvent(params: PostEventParams): Promise<any> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   
   try {
     const { data, error } = await supabase
