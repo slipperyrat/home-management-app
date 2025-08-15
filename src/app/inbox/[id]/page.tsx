@@ -6,13 +6,14 @@ import Link from 'next/link';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 interface PageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default async function EventDetailPage({ params }: PageProps) {
   const { userId } = await auth();
+  const resolvedParams = await params;
   
   if (!userId) {
     redirect('/sign-in');
@@ -35,7 +36,7 @@ export default async function EventDetailPage({ params }: PageProps) {
   const { data: event, error } = await supabase
     .from('household_events')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', resolvedParams.id)
     .eq('household_id', userData.household_id)
     .single();
 
