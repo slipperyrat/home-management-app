@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       return apiResponse.unauthorized('User not authenticated');
     }
 
-    // Optimized query: Join users with household_members and households in one query
+    // Query users table directly since it has household_id
     const { data, error } = await supabase
       .from('users')
       .select(`
@@ -30,15 +30,7 @@ export async function GET(request: NextRequest) {
         coins,
         has_onboarded,
         updated_at,
-        household_members(
-          role,
-          household_id,
-          households(
-            plan,
-            game_mode,
-            created_at
-          )
-        )
+        household_id
       `)
       .eq('clerk_id', userId)
       .maybeSingle();
@@ -63,21 +55,14 @@ export async function GET(request: NextRequest) {
       return setCacheHeaders(response, 300, 60);
     }
 
-    // Extract data from the optimized query
-    const householdMember = data.household_members?.[0];
-    const household = householdMember?.households as any; // Type assertion for nested object
-    const householdId = householdMember?.household_id;
+    // Extract data from the direct query
+    const householdId = data.household_id;
     
-    // Safe access with fallbacks
+    // For now, use default values since we're not querying household details
+    // TODO: Add separate query for household details if needed
     let plan = 'free';
     let createdAt = null;
     let gameMode = 'default';
-    
-    if (household && typeof household === 'object') {
-      plan = household.plan || 'free';
-      createdAt = household.created_at;
-      gameMode = household.game_mode || 'default';
-    }
 
     // Auto-upgrade logic for free plans after 7 days
     if (plan === "free" && createdAt) {
@@ -111,6 +96,7 @@ export async function GET(request: NextRequest) {
       coins: data.coins || 0,
       has_onboarded: data.has_onboarded,
       updated_at: data.updated_at,
+      household_id: householdId, // Add direct household_id
       household: {
         id: householdId,
         plan,
