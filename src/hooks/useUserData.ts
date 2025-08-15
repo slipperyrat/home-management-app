@@ -11,6 +11,7 @@ export interface UserData {
   coins: number;
   has_onboarded?: boolean;
   updated_at?: string;
+  household_id?: string;
   household?: {
     id: string;
     plan: string;

@@ -37,7 +37,7 @@ export default async function EventDetailPage({ params }: PageProps) {
     .from('household_events')
     .select('*')
     .eq('id', resolvedParams.id)
-    .eq('household_id', userData.household_id)
+            .eq('household_id', userData.household_id)
     .single();
 
   if (error || !event) {
