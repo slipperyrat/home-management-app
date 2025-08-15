@@ -217,7 +217,7 @@ export default function OnboardingPage() {
                       console.log('🔧 Fix Result:', data);
                       if (data.success) {
                         alert('✅ Onboarding status fixed! Redirecting to dashboard...');
-                        window.location.href = '/dashboard';
+                        router.push('/dashboard');
                       } else {
                         alert(`❌ Failed to fix: ${  data.error}`);
                       }
