@@ -9,7 +9,7 @@ const DispatchSchema = z.object({
     household_id: z.string(),
     type: z.string(),
     source: z.string(),
-    payload: z.record(z.any()),
+    payload: z.record(z.string(), z.any()),
     occurred_at: z.string()
   })
 });
