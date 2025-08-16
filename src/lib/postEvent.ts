@@ -38,6 +38,29 @@ export async function postEvent(params: PostEventParams): Promise<any> {
       throw new Error(error.message);
     }
 
+    // Trigger automation dispatcher to process this event
+    try {
+      const automationResponse = await fetch('/api/automation/dispatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event: data
+        }),
+      });
+
+      if (automationResponse.ok) {
+        const result = await automationResponse.json();
+        console.log('Automation triggered:', result);
+      } else {
+        console.warn('Failed to trigger automation:', automationResponse.status);
+      }
+    } catch (automationError) {
+      console.warn('Automation dispatch failed:', automationError);
+      // Don't fail the main event posting if automation fails
+    }
+
     return data;
   } catch (error) {
     const postEventError: PostEventError = {
