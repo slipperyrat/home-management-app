@@ -1,7 +1,7 @@
+import { auth } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { auth } from '@clerk/nextjs/server';
 import InboxEvents from '@/components/Inbox/InboxEvents';
 
 export default async function InboxPage() {
@@ -16,7 +16,7 @@ export default async function InboxPage() {
   // Get user's household - try both clerk_id and id patterns
   let { data: userData } = await supabase
     .from('users')
-    .select('household_id, id, has_onboarded')
+    .select('household_id, id, onboarding_completed')
     .eq('clerk_id', userId)
     .single();
     
@@ -24,7 +24,7 @@ export default async function InboxPage() {
   if (!userData) {
     const { data: userDataById } = await supabase
       .from('users')
-      .select('household_id, id, has_onboarded')
+      .select('household_id, id, onboarding_completed')
       .eq('id', userId)
       .single();
     userData = userDataById;
@@ -60,7 +60,7 @@ export default async function InboxPage() {
                       <strong>User ID:</strong> {userId}<br/>
                       <strong>User Data Found:</strong> {userData ? 'Yes' : 'No'}<br/>
                       <strong>Household ID:</strong> {userData?.household_id || 'Missing'}<br/>
-                      <strong>Has Onboarded:</strong> {userData?.has_onboarded ? 'Yes' : 'No'}<br/>
+                      <strong>Onboarding Completed:</strong> {userData?.onboarding_completed ? 'Yes' : 'No'}<br/>
                     </p>
                     <p className="mt-2">
                       This suggests there's a mismatch between your Clerk user ID and the database record.
