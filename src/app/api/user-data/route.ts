@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         household_id
       `)
-      .eq('clerk_id', userId)
+      .eq('id', userId)  // Changed from clerk_id to id
       .maybeSingle();
 
     if (error) {
