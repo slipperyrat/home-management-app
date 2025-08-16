@@ -19,8 +19,8 @@ export async function POST(_req: NextRequest) {
     // Update the user's onboarding status
     const { data, error } = await supabase
       .from('users')
-      .update({ has_onboarded: true })
-      .eq('clerk_id', userId)
+      .update({ onboarding_completed: true })
+      .eq('id', userId)
       .select()
       .single();
 

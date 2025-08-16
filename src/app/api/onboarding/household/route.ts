@@ -4,9 +4,7 @@ import { z } from 'zod';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
 
 const HouseholdSchema = z.object({
-  householdName: z.string().min(1).max(100),
-  memberCount: z.number().min(1).max(20),
-  gameMode: z.enum(['casual', 'competitive']).default('casual'),
+  name: z.string().min(1).max(100),
 });
 
 export async function POST(request: NextRequest) {
@@ -19,14 +17,14 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validatedData = HouseholdSchema.parse(body);
-    const { householdName, gameMode } = validatedData;
+    const { name } = validatedData;
 
     // Create household
     const { data: household, error: householdError } = await sb()
       .from('households')
       .insert({
-        name: householdName,
-        game_mode: gameMode,
+        name: name,
+        game_mode: 'default',
         created_by: userId,
       })
       .select()
@@ -52,11 +50,10 @@ export async function POST(request: NextRequest) {
       throw new ServerError('Failed to add user to household', 500);
     }
 
-    // Update user's onboarding status
+    // Update user's onboarding status and household_id
     const { error: userError } = await sb()
       .from('users')
       .update({
-        onboarding_completed: true,
         household_id: household.id,
         updated_at: new Date().toISOString(),
       })
@@ -67,7 +64,7 @@ export async function POST(request: NextRequest) {
       throw new ServerError('Failed to update user', 500);
     }
 
-    console.log(`✅ Created household "${householdName}" for user: ${userId}`);
+    console.log(`✅ Created household "${name}" for user: ${userId}`);
 
     return NextResponse.json({
       success: true,

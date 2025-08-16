@@ -39,8 +39,15 @@ export default function OnboardingPage() {
     }
   }, [user]);
 
+  // Handle authentication redirect in useEffect to avoid SSR issues
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !isSignedIn) {
+      router.push('/sign-in');
+    }
+  }, [isSignedIn, router]);
+
+  // Don't render anything if not signed in (will redirect via useEffect)
   if (!isSignedIn) {
-    router.push('/sign-in');
     return null;
   }
 

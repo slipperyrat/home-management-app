@@ -20,7 +20,7 @@ export async function GET(_req: NextRequest) {
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('clerk_id', userId)
+      .eq('id', userId)
       .single();
 
     if (error) {
@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest) {
       success: true,
       user: data,
       clerkUserId: userId,
-      hasOnboarded: data?.has_onboarded || false
+      hasOnboarded: data?.onboarding_completed || false
     });
 
   } catch (error) {

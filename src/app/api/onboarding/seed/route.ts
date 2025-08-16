@@ -4,33 +4,75 @@ import { z } from 'zod';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
 
 const SeedDataSchema = z.object({
-  chores: z.array(z.object({
-    title: z.string().min(1).max(100),
-    description: z.string().optional(),
-    points: z.number().min(1).max(100),
-    frequency: z.enum(['daily', 'weekly', 'monthly']).default('weekly'),
-    category: z.string().default('general'),
-  })),
-  recipes: z.array(z.object({
-    name: z.string().min(1).max(100),
-    ingredients: z.array(z.object({
-      name: z.string().min(1).max(100),
-      amount: z.number().min(0.1),
-      unit: z.string().min(1).max(20),
-    })),
-    instructions: z.array(z.string().min(1)),
-    prepTime: z.number().min(1),
-    cookTime: z.number().min(0),
-    servings: z.number().min(1),
-    difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
-  })),
-  rewards: z.array(z.object({
-    name: z.string().min(1).max(100),
-    description: z.string().optional(),
-    pointsCost: z.number().min(1).max(1000),
-    category: z.string().default('general'),
-  })),
+  sampleRecipes: z.boolean().default(true),
+  samplePlans: z.boolean().default(true),
 });
+
+// Sample data generators
+const generateSampleRecipes = () => [
+  {
+    name: 'Quick Breakfast Bowl',
+    ingredients: [
+      { name: 'Oats', amount: 1, unit: 'cup' },
+      { name: 'Banana', amount: 1, unit: 'piece' },
+      { name: 'Honey', amount: 2, unit: 'tbsp' },
+      { name: 'Almonds', amount: 0.25, unit: 'cup' }
+    ],
+    instructions: [
+      'Cook oats with water according to package directions',
+      'Slice banana and add to bowl',
+      'Drizzle with honey and sprinkle almonds',
+      'Serve hot or cold'
+    ],
+    prepTime: 5,
+    cookTime: 10,
+    servings: 1,
+    difficulty: 'easy'
+  },
+  {
+    name: 'Simple Pasta Dinner',
+    ingredients: [
+      { name: 'Pasta', amount: 8, unit: 'oz' },
+      { name: 'Olive Oil', amount: 2, unit: 'tbsp' },
+      { name: 'Garlic', amount: 3, unit: 'cloves' },
+      { name: 'Parmesan', amount: 0.5, unit: 'cup' }
+    ],
+    instructions: [
+      'Boil pasta according to package directions',
+      'Heat oil in pan and sauté minced garlic',
+      'Toss cooked pasta with garlic oil',
+      'Top with grated parmesan and serve'
+    ],
+    prepTime: 10,
+    cookTime: 15,
+    servings: 4,
+    difficulty: 'easy'
+  }
+];
+
+const generateSamplePlans = () => [
+  {
+    title: 'Weekly Grocery Shopping',
+    description: 'Plan meals and create shopping list for the week',
+    points: 25,
+    frequency: 'weekly',
+    category: 'planning'
+  },
+  {
+    title: 'House Cleaning',
+    description: 'Deep clean kitchen and bathrooms',
+    points: 50,
+    frequency: 'weekly',
+    category: 'cleaning'
+  },
+  {
+    title: 'Laundry Day',
+    description: 'Wash, dry, and fold all household laundry',
+    points: 30,
+    frequency: 'weekly',
+    category: 'household'
+  }
+];
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validatedData = SeedDataSchema.parse(body);
-    const { chores, recipes, rewards } = validatedData;
+    const { sampleRecipes, samplePlans } = validatedData;
 
     // Get user's household
     const { data: user, error: userError } = await sb()
@@ -56,30 +98,13 @@ export async function POST(request: NextRequest) {
     }
 
     const householdId = user.household_id;
+    let recipesAdded = 0;
+    let plansAdded = 0;
 
-    // Seed chores
-    if (chores.length > 0) {
-      const choresWithHousehold = chores.map(chore => ({
-        ...chore,
-        household_id: householdId,
-        created_by: userId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
-
-      const { error: choresError } = await sb()
-        .from('chores')
-        .insert(choresWithHousehold);
-
-      if (choresError) {
-        console.error('Error seeding chores:', choresError);
-        throw new ServerError('Failed to seed chores', 500);
-      }
-    }
-
-    // Seed recipes
-    if (recipes.length > 0) {
-      const recipesWithHousehold = recipes.map(recipe => ({
+    // Generate and seed sample recipes if requested
+    if (sampleRecipes) {
+      const sampleRecipesData = generateSampleRecipes();
+      const recipesWithHousehold = sampleRecipesData.map(recipe => ({
         ...recipe,
         household_id: householdId,
         created_by: userId,
@@ -93,40 +118,42 @@ export async function POST(request: NextRequest) {
 
       if (recipesError) {
         console.error('Error seeding recipes:', recipesError);
-        throw new ServerError('Failed to seed recipes', 500);
+        // Don't fail the entire request, just log the error
+      } else {
+        recipesAdded = sampleRecipesData.length;
       }
     }
 
-    // Seed rewards
-    if (rewards.length > 0) {
-      const rewardsWithHousehold = rewards.map(reward => ({
-        ...reward,
+    // Generate and seed sample planner items if requested
+    if (samplePlans) {
+      const samplePlansData = generateSamplePlans();
+      const plansWithHousehold = samplePlansData.map(plan => ({
+        ...plan,
         household_id: householdId,
         created_by: userId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }));
 
-      const { error: rewardsError } = await sb()
-        .from('rewards')
-        .insert(rewardsWithHousehold);
+      const { error: plansError } = await sb()
+        .from('chores')
+        .insert(plansWithHousehold);
 
-      if (rewardsError) {
-        console.error('Error seeding rewards:', rewardsError);
-        throw new ServerError('Failed to seed rewards', 500);
+      if (plansError) {
+        console.error('Error seeding planner items:', plansError);
+        // Don't fail the entire request, just log the error
+      } else {
+        plansAdded = samplePlansData.length;
       }
     }
 
-    console.log(`✅ Seeded data for household: ${householdId}`);
+    console.log(`✅ Seeded data for household: ${householdId} - Recipes: ${recipesAdded}, Plans: ${plansAdded}`);
 
     return NextResponse.json({
       success: true,
       message: 'Data seeded successfully',
-      summary: {
-        chores: chores.length,
-        recipes: recipes.length,
-        rewards: rewards.length,
-      }
+      recipesAdded,
+      plansAdded
     });
 
   } catch (error) {
