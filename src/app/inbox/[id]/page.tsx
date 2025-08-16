@@ -25,7 +25,7 @@ export default async function EventDetailPage({ params }: PageProps) {
   const { data: userData } = await supabase
     .from('users')
     .select('household_id')
-    .eq('clerk_id', userId)
+    .eq('id', userId)
     .single();
 
   if (!userData?.household_id) {

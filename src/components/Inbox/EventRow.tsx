@@ -90,15 +90,21 @@ export default function EventRow({ event }: EventRowProps) {
             </div>
           </div>
           
-          {showPayload && Object.keys(event.payload).length > 0 && (
+          {showPayload && (
             <div className="mt-3 p-3 bg-gray-50 rounded-md">
-              <pre className="text-xs text-gray-700 whitespace-pre-wrap">
-                {JSON.stringify(event.payload, null, 2)}
-              </pre>
+              {Object.keys(event.payload).length > 0 ? (
+                <pre className="text-xs text-gray-700 whitespace-pre-wrap">
+                  {JSON.stringify(event.payload, null, 2)}
+                </pre>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  No additional data
+                </div>
+              )}
             </div>
           )}
           
-          {Object.keys(event.payload).length === 0 && (
+          {!showPayload && Object.keys(event.payload).length === 0 && (
             <div className="mt-1 text-sm text-gray-500">
               No additional data
             </div>
