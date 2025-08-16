@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
 
     // Call the Supabase automation worker function
     const { data, error } = await sb().functions.invoke('automation-worker', {
-      body: {
+      body: {},
+      query: {
         household_id: householdId
       }
     });
