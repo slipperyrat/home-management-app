@@ -30,7 +30,6 @@ export default function TestAutomationPage() {
   });
 
   const [selectedRuleType, setSelectedRuleType] = useState('heartbeat');
-  const [ruleConditions, setRuleConditions] = useState({});
 
   // Predefined rule templates for different scenarios
   const ruleTemplates = {
