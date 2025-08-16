@@ -27,7 +27,7 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
   const { data: userRow, error: userError } = await supabase
     .from('users')
     .select('id')
-    .eq('clerk_id', id)
+    .eq('id', id)  // Changed from clerk_id to id
     .single();
   
   console.log('User check result:', { userRow, userError });
@@ -74,7 +74,7 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
   if (!userRow) {
     // New user - set initial values
     const { error: upsertError } = await supabase.from('users').upsert({
-      clerk_id: id,
+      id: id,  // Changed from clerk_id to id
       email,
       role,
       xp: 0,
@@ -94,7 +94,7 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
       role,
       household_id: householdId, // Add household_id
       // Note: We don't update has_onboarded for existing users to preserve their onboarding status
-    }).eq('clerk_id', id);
+    }).eq('id', id);  // Changed from clerk_id to id
     if (updateError) {
       console.error('❌ Error updating existing user:', updateError);
     } else {
