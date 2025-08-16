@@ -133,11 +133,11 @@ async function checkOnboardingStatus(userId: string): Promise<boolean> {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from('users')
-      .select('has_onboarded')
-      .eq('clerk_id', userId)
-      .single();
+          const { data, error } = await supabaseAdmin
+        .from('users')
+        .select('onboarding_completed')
+        .eq('id', userId)
+        .single();
 
     if (error || !data) {
       // If user doesn't exist or error occurs, assume they need onboarding
@@ -145,7 +145,7 @@ async function checkOnboardingStatus(userId: string): Promise<boolean> {
       return false;
     }
 
-    const hasOnboarded = data.has_onboarded || false;
+          const hasOnboarded = data.onboarding_completed || false;
     console.log(`Middleware: User ${userId} has_onboarded: ${hasOnboarded}`);
     
     // Cache the result

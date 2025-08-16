@@ -5,14 +5,14 @@ export async function POST(_request: NextRequest) {
   try {
     const { userId } = await getUserAndHousehold();
 
-    // Sets users.has_onboarded = true for current user
+    // Sets users.onboarding_completed = true for current user
     const { error: userError } = await sb()
       .from('users')
       .update({ 
-        has_onboarded: true,
+        onboarding_completed: true,
         updated_at: new Date().toISOString()
       })
-      .eq('clerk_id', userId);
+      .eq('id', userId);
 
     if (userError) {
       console.error('Error updating user onboarding status:', userError);

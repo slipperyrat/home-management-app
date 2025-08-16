@@ -80,7 +80,7 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
       xp: 0,
       coins: 0,
       household_id: householdId, // Add household_id
-      has_onboarded: false, // Set initial onboarding status for new users only
+      onboarding_completed: false, // Set initial onboarding status for new users only
     });
     if (upsertError) {
       console.error('❌ Error upserting user:', upsertError);

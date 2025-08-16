@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         role,
         xp,
         coins,
-        has_onboarded,
+        onboarding_completed,
         updated_at,
         household_id
       `)
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       plan,
       xp: data.xp || 0,
       coins: data.coins || 0,
-      has_onboarded: data.has_onboarded,
+      has_onboarded: data.onboarding_completed,
       updated_at: data.updated_at,
       household_id: householdId, // Add direct household_id
       household: {
