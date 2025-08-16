@@ -80,7 +80,7 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
       xp: 0,
       coins: 0,
       household_id: householdId, // Add household_id
-      has_onboarded: false, // Set initial onboarding status
+      has_onboarded: false, // Set initial onboarding status for new users only
     });
     if (upsertError) {
       console.error('❌ Error upserting user:', upsertError);
@@ -88,14 +88,15 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
       console.log('✅ Created new user:', { clerk_id: id, email, role, xp: 0, coins: 0, household_id: householdId });
     }
   } else {
-    // Existing user - update email, role, and household_id
+    // Existing user - update email, role, and household_id, but preserve has_onboarded status
     const { error: updateError } = await supabase.from('users').update({
       email,
       role,
       household_id: householdId, // Add household_id
+      // Note: We don't update has_onboarded for existing users to preserve their onboarding status
     }).eq('clerk_id', id);
     if (updateError) {
-      console.error('❌ Error updating user:', updateError);
+      console.error('❌ Error updating existing user:', updateError);
     } else {
       console.log('✅ Updated existing user:', { clerk_id: id, email, role, household_id: householdId });
     }
