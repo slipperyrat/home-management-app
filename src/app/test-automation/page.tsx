@@ -103,27 +103,30 @@ export default function TestAutomationPage() {
     }
 
     setLoading(true);
-    setMessage('');
+    setMessage('Checking automation jobs...');
 
     try {
-      const { data, error } = await supabase
-        .from('automation_jobs')
-        .select('*')
-        .eq('household_id', userData.household_id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+      console.log('Checking automation jobs for household:', userData.household_id);
+      
+      const response = await fetch(`/api/automation/check-jobs?household_id=${userData.household_id}`);
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to check automation jobs');
+      }
 
-      if (data && data.length > 0) {
-        setMessage(`Found ${data.length} automation jobs. Check the Inbox for details.`);
-        console.log('Automation jobs:', data);
+      const result = await response.json();
+      console.log('API response:', result);
+
+      if (result.jobs && result.jobs.length > 0) {
+        setMessage(`Found ${result.count} automation jobs. Check the Inbox for details.`);
+        console.log('Automation jobs:', result.jobs);
       } else {
         setMessage('No automation jobs found. Try creating a rule and triggering a heartbeat first.');
       }
     } catch (error) {
       console.error('Error checking automation jobs:', error);
-      setMessage(`Error checking automation jobs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
