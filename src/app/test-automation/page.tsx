@@ -46,22 +46,28 @@ export default function TestAutomationPage() {
     setMessage('');
 
     try {
-      const { data, error } = await supabase
-        .from('automation_rules')
-        .insert({
+      const response = await fetch('/api/automation/create-rule', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           household_id: userData.household_id,
           name: testRule.name,
           description: testRule.description,
           trigger_types: testRule.triggerTypes,
           actions: testRule.actions,
-          created_by: user?.id || ''
-        })
-        .select()
-        .single();
+          conditions: {}
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create rule');
+      }
 
-      setMessage(`Test rule created successfully! ID: ${data.id}`);
+      const result = await response.json();
+      setMessage(`Test rule created successfully! ID: ${result.rule.id}`);
     } catch (error) {
       console.error('Error creating test rule:', error);
       setMessage(`Error creating test rule: ${error instanceof Error ? error.message : 'Unknown error'}`);
