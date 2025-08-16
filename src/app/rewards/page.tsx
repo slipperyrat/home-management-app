@@ -73,14 +73,14 @@ export default function RewardsPage() {
           return;
         }
 
-        if (userResult.success && userResult.user) {
+        if (userResult.success && userResult.data) {
           const userDataObj = {
-            email: userResult.user.email,
-            role: userResult.user.role,
-            plan: userResult.user.plan || 'free',
-            xp: userResult.user.xp || 0,
-            coins: userResult.user.coins || 0,
-            household: userResult.user.household
+            email: userResult.data.email,
+            role: userResult.data.role,
+            plan: userResult.data.plan || 'free',
+            xp: userResult.data.xp || 0,
+            coins: userResult.data.coins || 0,
+            household: userResult.data.household
           };
           
           setUserData(userDataObj);

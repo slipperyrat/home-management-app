@@ -46,11 +46,11 @@ export default function PlanSettingsPage() {
           return;
         }
 
-        if (result.success && result.user) {
+        if (result.success && result.data) {
           setUserData({
-            email: result.user.email,
-            role: result.user.role,
-            plan: result.user.plan || 'free'
+            email: result.data.email,
+            role: result.data.role,
+            plan: result.data.plan || 'free'
           });
         } else {
           setError('User not found in database');

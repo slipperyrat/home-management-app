@@ -43,8 +43,8 @@ export default function DebugPage() {
           return;
         }
 
-        if (userResult.success && userResult.user) {
-          setUserData(userResult.user);
+        if (userResult.success && userResult.data) {
+          setUserData(userResult.data);
         } else {
           setError('User not found in database');
         }

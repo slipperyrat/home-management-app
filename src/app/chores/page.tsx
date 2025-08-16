@@ -83,14 +83,14 @@ export default function ChoresPage() {
           return;
         }
 
-        if (result.success && result.user) {
+        if (result.success && result.data) {
           setUserData({
-            email: result.user.email,
-            role: result.user.role,
-            plan: result.user.plan || 'free',
-            xp: result.user.xp || 0,
-            coins: result.user.coins || 0,
-            household: result.user.household
+            email: result.data.email,
+            role: result.data.role,
+            plan: result.data.plan || 'free',
+            xp: result.data.xp || 0,
+            coins: result.data.coins || 0,
+            household: result.data.household
           });
         } else {
           setError('User not found in database');

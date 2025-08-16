@@ -64,12 +64,12 @@ export default function PlannerPage() {
           return;
         }
 
-        if (result.success && result.user) {
+        if (result.success && result.data) {
           setUserData({
-            email: result.user.email,
-            role: result.user.role,
-            plan: result.user.plan || 'free',
-            household: result.user.household
+            email: result.data.email,
+            role: result.data.role,
+            plan: result.data.plan || 'free',
+            household: result.data.household
           });
         } else {
           setError('User not found in database');
