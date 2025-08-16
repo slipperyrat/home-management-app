@@ -140,10 +140,10 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Get query parameters
-    const url = new URL(req.url);
-    const householdId = url.searchParams.get('household_id');
-    const limit = parseInt(url.searchParams.get('limit') || '10');
+    // Get request body parameters
+    const body = await req.json();
+    const householdId = body.household_id;
+    const limit = parseInt(body.limit || '10');
 
     // Fetch pending jobs
     let query = supabase

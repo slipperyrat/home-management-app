@@ -1,0 +1,5 @@
+[33m2ceb254[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Improve automation job status display and add pending jobs check
+[33m8631408[m Fix TypeScript build error by removing unused ruleConditions variable
+[33m58d791e[m Add comprehensive automation testing with multiple rule templates and event types
+[33mdfa254c[m Add automation worker trigger button and API endpoint to test automation system
+[33m23a75f7[m  Fix Inbox event handling issues
