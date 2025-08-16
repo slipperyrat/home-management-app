@@ -10,9 +10,9 @@ const CreateRuleSchema = z.object({
   trigger_types: z.array(z.string()),
   actions: z.array(z.object({
     name: z.string(),
-    params: z.record(z.any())
+    params: z.record(z.string(), z.any())
   })),
-  conditions: z.record(z.any()).optional()
+  conditions: z.record(z.string(), z.any()).optional()
 });
 
 export async function POST(request: NextRequest) {
