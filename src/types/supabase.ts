@@ -8,36 +8,39 @@ export interface Database {
         Row: {
           id: string;
           name: string;
+          plan: string;
+          game_mode: string;
           created_at: string;
         };
         Insert: {
           id?: string;
           name: string;
+          plan?: string;
+          game_mode?: string;
           created_at?: string;
         };
         Update: {
           id?: string;
           name?: string;
+          plan?: string;
+          game_mode?: string;
           created_at?: string;
         };
       };
       household_members: {
         Row: {
-          id: string;
           household_id: string;
           user_id: string;
           role: string;
           created_at: string;
         };
         Insert: {
-          id?: string;
           household_id: string;
           user_id: string;
           role: string;
           created_at?: string;
         };
         Update: {
-          id?: string;
           household_id?: string;
           user_id?: string;
           role?: string;
@@ -265,19 +268,34 @@ export interface Database {
         Row: {
           id: string;
           clerk_id: string;
+          email: string;
+          role: string;
+          xp: number;
+          coins: number;
           household_id?: string;
+          has_onboarded: boolean;
           created_at: string;
         };
         Insert: {
           id?: string;
           clerk_id: string;
+          email: string;
+          role: string;
+          xp?: number;
+          coins?: number;
           household_id?: string;
+          has_onboarded?: boolean;
           created_at?: string;
         };
         Update: {
           id?: string;
           clerk_id?: string;
+          email?: string;
+          role?: string;
+          xp?: number;
+          coins?: number;
           household_id?: string;
+          has_onboarded?: boolean;
           created_at?: string;
         };
       };

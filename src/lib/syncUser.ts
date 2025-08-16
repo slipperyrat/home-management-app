@@ -74,7 +74,6 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
   if (!userRow) {
     // New user - set initial values
     const { error: upsertError } = await supabase.from('users').upsert({
-      id,
       clerk_id: id,
       email,
       role,
@@ -86,7 +85,7 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
     if (upsertError) {
       console.error('❌ Error upserting user:', upsertError);
     } else {
-      console.log('✅ Created new user:', { id, clerk_id: id, email, role, xp: 0, coins: 0, household_id: householdId });
+      console.log('✅ Created new user:', { clerk_id: id, email, role, xp: 0, coins: 0, household_id: householdId });
     }
   } else {
     // Existing user - update email, role, and household_id
@@ -98,7 +97,7 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
     if (updateError) {
       console.error('❌ Error updating user:', updateError);
     } else {
-      console.log('✅ Updated existing user:', { id, clerk_id: id, email, role, household_id: householdId });
+      console.log('✅ Updated existing user:', { clerk_id: id, email, role, household_id: householdId });
     }
   }
 
