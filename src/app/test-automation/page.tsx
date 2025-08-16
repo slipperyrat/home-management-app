@@ -29,6 +29,107 @@ export default function TestAutomationPage() {
     ]
   });
 
+  const [selectedRuleType, setSelectedRuleType] = useState('heartbeat');
+  const [ruleConditions, setRuleConditions] = useState({});
+
+  // Predefined rule templates for different scenarios
+  const ruleTemplates = {
+    heartbeat: {
+      name: 'Heartbeat Monitor',
+      description: 'Monitors app activity and sends notifications',
+      triggerTypes: ['heartbeat'],
+      actions: [
+        {
+          name: 'notify',
+          params: {
+            user_id: user?.id || '',
+            title: 'App Activity Detected',
+            message: 'Your home management app is active and running!',
+            type: 'info',
+            category: 'automation'
+          }
+        }
+      ]
+    },
+    choreCompleted: {
+      name: 'Chore Completion Celebration',
+      description: 'Rewards users when they complete chores',
+      triggerTypes: ['chore.completed'],
+      actions: [
+        {
+          name: 'notify',
+          params: {
+            user_id: user?.id || '',
+            title: 'Chore Completed! 🎉',
+            message: 'Great job! You\'ve earned XP for completing a chore.',
+            type: 'success',
+            category: 'automation'
+          }
+        }
+      ]
+    },
+    billReceived: {
+      name: 'Bill Management Assistant',
+      description: 'Automatically processes incoming bills',
+      triggerTypes: ['bill.email.received'],
+      actions: [
+        {
+          name: 'notify',
+          params: {
+            user_id: user?.id || '',
+            title: 'New Bill Received',
+            message: 'A new bill has been automatically detected and processed.',
+            type: 'warning',
+            category: 'automation'
+          }
+        },
+        {
+          name: 'create_bill',
+          params: {
+            name: 'Auto-detected Bill',
+            amount: 0,
+            currency: 'AUD',
+            due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
+            category: 'utilities',
+            description: 'Automatically created from email'
+          }
+        }
+      ]
+    },
+    shoppingListUpdated: {
+      name: 'Shopping List Monitor',
+      description: 'Tracks shopping list changes and notifies household',
+      triggerTypes: ['shopping_list.updated'],
+      actions: [
+        {
+          name: 'notify',
+          params: {
+            user_id: user?.id || '',
+            title: 'Shopping List Updated',
+            message: 'Someone in your household has updated the shopping list.',
+            type: 'info',
+            category: 'automation'
+          }
+        }
+      ]
+    }
+  };
+
+  const updateRuleFromTemplate = (templateKey: keyof typeof ruleTemplates) => {
+    const template = ruleTemplates[templateKey];
+    setTestRule({
+      ...template,
+      actions: template.actions.map((action: any) => ({
+        ...action,
+        params: {
+          ...action.params,
+          user_id: user?.id || ''
+        }
+      }))
+    });
+    setSelectedRuleType(templateKey);
+  };
+
   const createTestRule = async () => {
     if (!userData?.household_id) {
       setMessage('No household ID found');
@@ -84,6 +185,74 @@ export default function TestAutomationPage() {
     } catch (error) {
       console.error('Error triggering heartbeat:', error);
       setMessage(`Error triggering heartbeat: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const triggerChoreCompleted = async () => {
+    if (!userData?.household_id) {
+      setMessage('No household ID found');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      await postEventTypes.choreCompleted(userData.household_id, 'test-chore-id', user?.id || '');
+      setMessage('Chore completed event triggered! Check the Inbox to see if automation rules fired.');
+    } catch (error) {
+      console.error('Error triggering chore completed:', error);
+      setMessage(`Error triggering chore completed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const triggerBillReceived = async () => {
+    if (!userData?.household_id) {
+      setMessage('No household ID found');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const billData = {
+        name: 'Test Utility Bill',
+        amount: 125.50,
+        due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 14 days from now
+        category: 'utilities',
+        source: 'email'
+      };
+      
+      await postEventTypes.billReceived(userData.household_id, billData);
+      setMessage('Bill received event triggered! Check the Inbox to see if automation rules fired.');
+    } catch (error) {
+      console.error('Error triggering bill received:', error);
+      setMessage(`Error triggering bill received: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const triggerShoppingListUpdated = async () => {
+    if (!userData?.household_id) {
+      setMessage('No household ID found');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      await postEventTypes.shoppingListUpdated(userData.household_id, 'test-list-id', 'items_added');
+      setMessage('Shopping list updated event triggered! Check the Inbox to see if automation rules fired.');
+    } catch (error) {
+      console.error('Error triggering shopping list updated:', error);
+      setMessage(`Error triggering shopping list updated: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -184,6 +353,56 @@ export default function TestAutomationPage() {
           {/* Create Test Rule */}
           <div className="bg-white shadow rounded-lg p-6">
             <h2 className="text-lg font-medium mb-4">Create Test Rule</h2>
+            
+            {/* Rule Templates */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Choose Rule Template
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => updateRuleFromTemplate('heartbeat')}
+                  className={`px-3 py-2 text-sm rounded-md border ${
+                    selectedRuleType === 'heartbeat' 
+                      ? 'bg-blue-100 border-blue-300 text-blue-800' 
+                      : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Heartbeat Monitor
+                </button>
+                <button
+                  onClick={() => updateRuleFromTemplate('choreCompleted')}
+                  className={`px-3 py-2 text-sm rounded-md border ${
+                    selectedRuleType === 'choreCompleted' 
+                      ? 'bg-blue-100 border-blue-300 text-blue-800' 
+                      : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Chore Completion
+                </button>
+                <button
+                  onClick={() => updateRuleFromTemplate('billReceived')}
+                  className={`px-3 py-2 text-sm rounded-md border ${
+                    selectedRuleType === 'billReceived' 
+                      ? 'bg-blue-100 border-blue-300 text-blue-800' 
+                      : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Bill Management
+                </button>
+                <button
+                  onClick={() => updateRuleFromTemplate('shoppingListUpdated')}
+                  className={`px-3 py-2 text-sm rounded-md border ${
+                    selectedRuleType === 'shoppingListUpdated' 
+                      ? 'bg-blue-100 border-blue-300 text-blue-800' 
+                      : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Shopping List
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -209,6 +428,15 @@ export default function TestAutomationPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Trigger Types
+                </label>
+                <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded border">
+                  {testRule.triggerTypes.join(', ')}
+                </div>
+              </div>
+
               <button
                 onClick={createTestRule}
                 disabled={loading}
@@ -229,6 +457,30 @@ export default function TestAutomationPage() {
                 className="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
               >
                 {loading ? 'Triggering...' : 'Trigger Heartbeat Event'}
+              </button>
+              
+              <button
+                onClick={triggerChoreCompleted}
+                disabled={loading}
+                className="w-full bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 disabled:opacity-50"
+              >
+                {loading ? 'Triggering...' : 'Trigger Chore Completed Event'}
+              </button>
+              
+              <button
+                onClick={triggerBillReceived}
+                disabled={loading}
+                className="w-full bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 disabled:opacity-50"
+              >
+                {loading ? 'Triggering...' : 'Trigger Bill Received Event'}
+              </button>
+              
+              <button
+                onClick={triggerShoppingListUpdated}
+                disabled={loading}
+                className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {loading ? 'Triggering...' : 'Trigger Shopping List Updated Event'}
               </button>
             </div>
           </div>
@@ -266,11 +518,13 @@ export default function TestAutomationPage() {
           <div className="bg-gray-50 rounded-lg p-4">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Next Steps</h3>
             <ul className="text-sm text-gray-600 space-y-1">
-              <li>• Create a test rule above</li>
-              <li>• Trigger a heartbeat event</li>
+              <li>• Choose a rule template (Heartbeat, Chore, Bill, Shopping List)</li>
+              <li>• Customize the rule name and description if desired</li>
+              <li>• Create the automation rule</li>
+              <li>• Trigger the corresponding event type</li>
               <li>• Run the automation worker to process jobs</li>
               <li>• Check the <Link href="/inbox" className="text-blue-600 hover:underline">Inbox</Link> to see notifications</li>
-              <li>• Check automation jobs status</li>
+              <li>• Test different rule types and see how they interact</li>
             </ul>
           </div>
         </div>
