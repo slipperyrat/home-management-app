@@ -192,9 +192,11 @@ export default clerkMiddleware(async (auth, req) => {
     url.pathname.startsWith('/favicon') ||
     url.pathname.includes('.') ||  // Static files
     url.pathname === '/' ||  // Allow home page access
+    url.pathname === '/dashboard' ||  // Allow dashboard access (users can complete onboarding from there)
     url.pathname.startsWith('/user-button')  // Clerk user button routes
   
   // Check onboarding status for signed-in users on app routes
+  // Note: Dashboard is excluded from this check so users can access it and complete onboarding from there
   if (userId && !skipOnboardingCheck) {
     try {
       // Check if user is forcing a cache refresh
