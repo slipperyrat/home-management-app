@@ -125,6 +125,42 @@ export default function TestAutomationPage() {
     }
   };
 
+  const runAutomationWorker = async () => {
+    if (!userData?.household_id) {
+      setMessage('No household ID found');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('Running automation worker...');
+
+    try {
+      console.log('Running automation worker for household:', userData.household_id);
+      
+      // Call the Supabase automation worker function directly
+      const response = await fetch(`/api/automation/run-worker?household_id=${userData.household_id}`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to run automation worker');
+      }
+
+      const result = await response.json();
+      console.log('Worker response:', result);
+
+      if (result.jobsProcessed > 0) {
+        setMessage(`Automation worker processed ${result.jobsProcessed} jobs. ${result.jobsSucceeded} succeeded, ${result.jobsFailed} failed. Check the Inbox for notifications.`);
+      } else {
+        setMessage('No pending automation jobs found to process.');
+      }
+    } catch (error) {
+      console.error('Error running automation worker:', error);
+      setMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!user || !userData?.household_id) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -208,6 +244,14 @@ export default function TestAutomationPage() {
               >
                 {loading ? 'Checking...' : 'Check Automation Jobs'}
               </button>
+              
+              <button
+                onClick={runAutomationWorker}
+                disabled={loading}
+                className="w-full bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 disabled:opacity-50"
+              >
+                {loading ? 'Running...' : 'Run Automation Worker'}
+              </button>
             </div>
           </div>
 
@@ -224,7 +268,8 @@ export default function TestAutomationPage() {
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• Create a test rule above</li>
               <li>• Trigger a heartbeat event</li>
-              <li>• Check the <Link href="/inbox" className="text-blue-600 hover:underline">Inbox</Link> to see events</li>
+              <li>• Run the automation worker to process jobs</li>
+              <li>• Check the <Link href="/inbox" className="text-blue-600 hover:underline">Inbox</Link> to see notifications</li>
               <li>• Check automation jobs status</li>
             </ul>
           </div>
