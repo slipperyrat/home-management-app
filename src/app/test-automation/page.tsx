@@ -4,8 +4,6 @@ import { useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { useUserData } from '@/hooks/useUserData';
 import { postEventTypes } from '@/lib/postEvent';
-import { createBrowserClient } from '@supabase/ssr';
-import { Database } from '@/types/supabase';
 import Link from 'next/link';
 
 export default function TestAutomationPage() {
@@ -30,11 +28,6 @@ export default function TestAutomationPage() {
       }
     ]
   });
-
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const createTestRule = async () => {
     if (!userData?.household_id) {
