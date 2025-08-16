@@ -280,8 +280,19 @@ export default function TestAutomationPage() {
       console.log('API response:', result);
 
       if (result.jobs && result.jobs.length > 0) {
-        setMessage(`Found ${result.count} automation jobs. Check the Inbox for details.`);
+        // Count jobs by status
+        const statusCounts = result.jobs.reduce((acc: any, job: any) => {
+          acc[job.status] = (acc[job.status] || 0) + 1;
+          return acc;
+        }, {});
+
+        const statusText = Object.entries(statusCounts)
+          .map(([status, count]) => `${status}: ${count}`)
+          .join(', ');
+
+        setMessage(`Found ${result.count} total automation jobs. Status breakdown: ${statusText}. Pending jobs: ${statusCounts.pending || 0}`);
         console.log('Automation jobs:', result.jobs);
+        console.log('Status breakdown:', statusCounts);
       } else {
         setMessage('No automation jobs found. Try creating a rule and triggering a heartbeat first.');
       }
@@ -323,6 +334,42 @@ export default function TestAutomationPage() {
       }
     } catch (error) {
       console.error('Error running automation worker:', error);
+      setMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkPendingJobs = async () => {
+    if (!userData?.household_id) {
+      setMessage('No household ID found');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('Checking pending automation jobs...');
+
+    try {
+      console.log('Checking pending automation jobs for household:', userData.household_id);
+      
+      const response = await fetch(`/api/automation/check-jobs?household_id=${userData.household_id}&status=pending`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to check pending automation jobs');
+      }
+
+      const result = await response.json();
+      console.log('Pending jobs response:', result);
+
+      if (result.jobs && result.jobs.length > 0) {
+        setMessage(`Found ${result.count} pending automation jobs ready to process.`);
+        console.log('Pending automation jobs:', result.jobs);
+      } else {
+        setMessage('No pending automation jobs found. All jobs have been processed.');
+      }
+    } catch (error) {
+      console.error('Error checking pending automation jobs:', error);
       setMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
@@ -502,6 +549,14 @@ export default function TestAutomationPage() {
                 className="w-full bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 disabled:opacity-50"
               >
                 {loading ? 'Running...' : 'Run Automation Worker'}
+              </button>
+
+              <button
+                onClick={checkPendingJobs}
+                disabled={loading}
+                className="w-full bg-teal-600 text-white px-4 py-2 rounded-md hover:bg-teal-700 disabled:opacity-50"
+              >
+                {loading ? 'Checking...' : 'Check Pending Jobs'}
               </button>
             </div>
           </div>
