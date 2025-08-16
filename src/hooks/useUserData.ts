@@ -41,7 +41,7 @@ async function fetchUserData(): Promise<UserData> {
   }
   
   const result = await response.json();
-  return result.user;
+  return result.data;
 }
 
 async function fetchPowerUps(userId: string): Promise<PowerUp[]> {
@@ -53,7 +53,7 @@ async function fetchPowerUps(userId: string): Promise<PowerUp[]> {
   }
   
   const result = await response.json();
-  return result.powerUps || [];
+  return result.data || [];
 }
 
 export function useUserData() {
