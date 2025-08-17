@@ -38,37 +38,46 @@ export async function GET(_request: NextRequest) {
     console.log(`🏠 User household_id: ${householdId}`);
 
     // Get all users in the same household with their XP
-    const { data: householdUsers, error: usersError } = await supabase
+    // First get the household member IDs
+    const { data: memberIds, error: membersError } = await supabase
       .from('household_members')
-      .select(`
-        user_id,
-        users!inner (
-          id,
-          xp,
-          email
-        )
-      `)
-      .eq('household_id', householdId)
+      .select('user_id')
+      .eq('household_id', householdId);
+
+    if (membersError) {
+      console.error('❌ Error fetching household members:', membersError);
+      return NextResponse.json({ error: 'Failed to fetch household members' }, { status: 500 });
+    }
+
+    if (!memberIds || memberIds.length === 0) {
+      console.log('📭 No household members found');
+      return NextResponse.json({ 
+        success: true, 
+        leaderboard: [],
+        householdId 
+      });
+    }
+
+    // Then get the user data for all members
+    const userIds = memberIds.map(m => m.user_id);
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('id, xp, email')
+      .in('id', userIds)
+      .order('xp', { ascending: false })
       .limit(10);
 
     if (usersError) {
-      console.error('❌ Error fetching household users:', usersError);
+      console.error('❌ Error fetching users:', usersError);
       return NextResponse.json({ error: 'Failed to fetch leaderboard data' }, { status: 500 });
     }
 
-    // Transform the data to match the expected format and sort by XP (descending)
-    const leaderboard = householdUsers
-      ?.map((member, index) => {
-        // Handle case where users might be an array or single object
-        const user = Array.isArray(member.users) ? member.users[0] : member.users;
-        return {
-          id: user?.id || `user-${index}`,
-          xp: user?.xp || 0,
-          username: user?.email || `User ${index + 1}`
-        };
-      })
-      .sort((a, b) => b.xp - a.xp) // Sort by XP descending
-      .slice(0, 10) || [];
+    // Transform the data to match the expected format
+    const leaderboard = users?.map(user => ({
+      id: user.id,
+      xp: user.xp || 0,
+      username: user.email || `User ${user.id.slice(-4)}`
+    })) || [];
 
     console.log(`📊 Leaderboard data:`, leaderboard);
 
