@@ -76,7 +76,23 @@ export async function GET(_request: NextRequest) {
       userHouseholdId = member?.household_id || null;
     }
 
-    const result = {
+    const result: {
+      success: boolean;
+      tables: {
+        available: string[];
+        hasUsers: boolean;
+        hasHouseholds: boolean;
+        hasHouseholdMembers: boolean;
+      };
+      userColumns: string[];
+      userStatus: {
+        exists: boolean;
+        householdMemberExists: boolean;
+        householdId: string | null;
+      };
+      missingTables: string[];
+      missingColumns: string[];
+    } = {
       success: true,
       tables: {
         available: tableNames,
