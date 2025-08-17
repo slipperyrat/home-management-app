@@ -116,6 +116,22 @@ export default function DebugPage() {
             >
               Sync User
             </button>
+            <button 
+              onClick={async () => {
+                try {
+                  const response = await fetch('/api/debug/check-db');
+                  const result = await response.json();
+                  console.log('🔍 Database check result:', result);
+                  alert(`Database Status:\n\nTables: ${result.tables.available.join(', ')}\n\nMissing Tables: ${result.missingTables.join(', ') || 'None'}\n\nMissing Columns: ${result.missingColumns.join(', ') || 'None'}`);
+                } catch (err) {
+                  console.error('Error checking database:', err);
+                  alert('Error checking database. See console for details.');
+                }
+              }}
+              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 ml-2"
+            >
+              Check Database
+            </button>
           </div>
         </div>
       </div>
