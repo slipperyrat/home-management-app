@@ -247,7 +247,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
   /**
    * Generate AI suggestions based on parsed data
    */
-  private async generateSuggestions(parsedItems: ParsedItem[], householdId: string): Promise<any[]> {
+  private async generateSuggestions(parsedItems: ParsedItem[], _householdId: string): Promise<any[]> {
     const suggestions = [];
 
     for (const item of parsedItems) {
