@@ -3,6 +3,13 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_url_here
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 
+# Clerk Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key_here
+CLERK_SECRET_KEY=your_clerk_secret_key_here
+
+# OpenAI Configuration
+OPENAI_API_KEY=your_openai_api_key_here
+
 # VAPID Keys for Push Notifications
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=your_vapid_public_key_here
 VAPID_PRIVATE_KEY=your_vapid_private_key_here
@@ -11,5 +18,9 @@ VAPID_SUBJECT=mailto:your_email@example.com
 # App Configuration
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# Sentry Configuration (optional)
+# Sentry (Optional)
 SENTRY_DSN=your_sentry_dsn_here
+SENTRY_AUTH_TOKEN=your_sentry_auth_token_here
+
+# Vercel (Optional)
+VERCEL_URL=your_vercel_url_here
