@@ -99,15 +99,22 @@ export async function POST(request: NextRequest) {
     const feedbackStatus = correctionType === 'mark_done' ? 'completed' : 
                           correctionType === 'ignore' ? 'ignored' : 'corrected';
 
-    const { error: updateError } = await supabase
+    console.log('🔄 Updating suggestion feedback status:', { suggestionId, feedbackStatus });
+
+    const { data: updateResult, error: updateError } = await supabase
       .from('ai_suggestions')
       .update({ user_feedback: feedbackStatus })
-      .eq('id', suggestionId);
+      .eq('id', suggestionId)
+      .select('id, user_feedback');
 
     if (updateError) {
-      console.warn('Failed to update suggestion feedback status:', updateError);
-      // Don't fail the whole request if this update fails
+      console.error('❌ Failed to update suggestion feedback status:', updateError);
+      return NextResponse.json({ 
+        error: 'Failed to update suggestion status' 
+      }, { status: 500 });
     }
+
+    console.log('✅ Successfully updated suggestion:', updateResult);
 
     return NextResponse.json({ 
       success: true, 

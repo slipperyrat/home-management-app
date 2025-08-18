@@ -61,6 +61,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch AI suggestions' }, { status: 500 });
     }
 
+    console.log(`🔍 API: Fetched ${suggestions?.length || 0} suggestions with status=${status}`);
+    if (suggestions && suggestions.length > 0) {
+      console.log('🔍 API: Sample suggestion user_feedback:', suggestions[0].user_feedback);
+    }
+
     return NextResponse.json({
       success: true,
       data: suggestions || []
