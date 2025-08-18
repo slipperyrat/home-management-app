@@ -48,6 +48,7 @@ export interface AIProcessingResult {
 export class AIEmailProcessor {
   private openai: OpenAI;
   private supabase: any;
+  private suggestionProcessor: AISuggestionProcessor;
 
   // Confidence thresholds for AI extraction quality
   private static readonly HIGH_CONFIDENCE_THRESHOLD = 0.9;
