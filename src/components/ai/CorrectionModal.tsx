@@ -89,7 +89,18 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto z-50">
+      <DialogContent 
+        className="max-w-2xl max-h-[90vh] overflow-y-auto z-50 relative bg-white"
+        style={{ 
+          position: 'fixed', 
+          top: '50%', 
+          left: '50%', 
+          transform: 'translate(-50%, -50%)',
+          border: '2px solid red',
+          backgroundColor: 'white',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="w-5 h-5" />
