@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
       correction_type: correctionType,
       correction_data: correctionData || null,
       user_notes: userNotes,
-      ai_model_version: suggestion.parsed_item?.ai_model_used || 'unknown',
+      ai_model_version: 'gpt-3.5-turbo', // Default model version
       confidence_score_before: suggestion.parsed_item?.confidence_score || null
     };
 
