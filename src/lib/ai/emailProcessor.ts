@@ -199,7 +199,7 @@ export class AIEmailProcessor {
       // Handle "21/08" or "08/21" format
       if (dateString.match(/^\d{1,2}\/\d{1,2}$/)) {
         const parts = dateString.split('/');
-        if (parts.length === 2) {
+        if (parts.length === 2 && parts[0] && parts[1]) {
           const day = parseInt(parts[0]);
           const month = parseInt(parts[1]);
           if (!isNaN(day) && !isNaN(month)) {
@@ -215,7 +215,7 @@ export class AIEmailProcessor {
       // Handle "21-08" or "08-21" format
       if (dateString.match(/^\d{1,2}-\d{1,2}$/)) {
         const parts = dateString.split('-');
-        if (parts.length === 2) {
+        if (parts.length === 2 && parts[0] && parts[1]) {
           const day = parseInt(parts[0]);
           const month = parseInt(parts[1]);
           if (!isNaN(day) && !isNaN(month)) {
