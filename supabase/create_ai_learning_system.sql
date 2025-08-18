@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS ai_correction_patterns (
     'missing_data', 'incorrect_data', 'wrong_classification', 'low_confidence', 'user_override'
   )),
   
+  -- Correction details
+  correction_type TEXT NOT NULL CHECK (correction_type IN (
+    'correct', 'ignore', 'mark_done'
+  )),
+  
   -- Detailed analysis
   original_ai_output JSONB, -- What the AI originally suggested
   corrected_output JSONB,   -- What the user corrected it to

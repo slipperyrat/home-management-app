@@ -35,6 +35,7 @@ export class AILearningService {
         correction_id: request.correction_id,
         pattern_type: analysis.pattern_type,
         issue_category: analysis.issue_category,
+        correction_type: request.correction_type as 'correct' | 'ignore' | 'mark_done',
         original_ai_output: request.original_suggestion,
         corrected_output: request.user_correction,
         correction_reason: request.user_notes,

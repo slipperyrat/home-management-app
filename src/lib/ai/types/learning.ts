@@ -10,6 +10,9 @@ export interface AICorrectionPattern {
   pattern_type: 'email_format' | 'data_extraction' | 'classification' | 'confidence_threshold' | 'user_preference';
   issue_category: 'missing_data' | 'incorrect_data' | 'wrong_classification' | 'low_confidence' | 'user_override';
   
+  // Correction details
+  correction_type: 'correct' | 'ignore' | 'mark_done';
+  
   // Detailed analysis
   original_ai_output: any;
   corrected_output: any;
