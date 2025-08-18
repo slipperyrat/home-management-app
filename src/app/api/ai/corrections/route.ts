@@ -129,13 +129,17 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
-    
-    // Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication with Clerk
+    const { userId } = await auth();
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Create Supabase client with service role key for database operations
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
     // Get household ID from query params
     const { searchParams } = new URL(request.url);
@@ -151,7 +155,7 @@ export async function GET(request: NextRequest) {
     const { data: householdMember, error: memberError } = await supabase
       .from('household_members')
       .select('household_id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('household_id', householdId)
       .single();
 
