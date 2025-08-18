@@ -79,6 +79,7 @@ export default function AIEmailDashboard() {
 
   async function fetchData() {
     try {
+      console.log('🔄 Starting fetchData...');
       setLoading(true);
       
       // Fetch email queue
@@ -110,6 +111,8 @@ export default function AIEmailDashboard() {
         console.log('🔍 Fetched processed suggestions:', processedData.data);
         setProcessedSuggestions(processedData.data || []);
       }
+
+      console.log('✅ fetchData completed');
 
     } catch (error) {
       console.error('Error fetching AI email data:', error);

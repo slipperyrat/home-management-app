@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -87,18 +87,15 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent 
-        className="max-w-2xl max-h-[90vh] overflow-y-auto"
-        aria-describedby="correction-modal-description"
-      >
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="w-5 h-5" />
             AI Suggestion Correction
           </DialogTitle>
-          <div id="correction-modal-description" className="sr-only">
+          <DialogDescription className="sr-only">
             Modal for correcting AI suggestions with options to fix information, mark as done, ignore, or provide custom corrections.
-          </div>
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
