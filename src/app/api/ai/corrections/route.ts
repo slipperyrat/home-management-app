@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
+import { AILearningService } from '@/lib/ai/services/aiLearningService';
 
 export async function POST(request: NextRequest) {
   try {
@@ -115,6 +116,28 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ Successfully updated suggestion:', updateResult);
+
+    // 🧠 AI Learning: Analyze the correction for pattern learning
+    try {
+      const learningService = new AILearningService();
+      
+      const learningRequest = {
+        correction_id: correction.id,
+        household_id: suggestion.household_id,
+        original_suggestion: suggestion.suggestion_data,
+        user_correction: correctionData || {},
+        correction_type: correctionType,
+        user_notes: userNotes
+      };
+
+      console.log('🧠 Starting AI learning analysis...');
+      const learningResult = await learningService.analyzeCorrection(learningRequest);
+      console.log('✅ AI learning analysis completed:', learningResult);
+
+    } catch (learningError) {
+      console.warn('⚠️ AI learning failed (non-critical):', learningError);
+      // Don't fail the main correction request if learning fails
+    }
 
     return NextResponse.json({ 
       success: true, 
