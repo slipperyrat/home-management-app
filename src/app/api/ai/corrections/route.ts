@@ -138,7 +138,11 @@ export async function POST(request: NextRequest) {
 
     } catch (learningError) {
       console.error('❌ AI learning failed (non-critical):', learningError);
-      console.error('❌ Error details:', learningError.message, learningError.stack);
+      if (learningError instanceof Error) {
+        console.error('❌ Error details:', learningError.message, learningError.stack);
+      } else {
+        console.error('❌ Error details:', String(learningError));
+      }
       // Don't fail the main correction request if learning fails
     }
 
