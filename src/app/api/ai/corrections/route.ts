@@ -118,9 +118,12 @@ export async function POST(request: NextRequest) {
     console.log('✅ Successfully updated suggestion:', updateResult);
 
     // 🧠 AI Learning: Analyze the correction for pattern learning
+    console.log('🧠 About to start AI Learning process...');
+    
     try {
       console.log('🧠 Creating AI Learning Service...');
       const learningService = new AILearningService();
+      console.log('🧠 AI Learning Service created successfully');
       
       const learningRequest = {
         correction_id: correction.id,
@@ -145,6 +148,8 @@ export async function POST(request: NextRequest) {
       }
       // Don't fail the main correction request if learning fails
     }
+    
+    console.log('🧠 AI Learning process completed (success or failure)');
 
     return NextResponse.json({ 
       success: true, 
