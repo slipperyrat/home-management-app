@@ -332,7 +332,7 @@ export class AILearningService {
   /**
    * Update email format preferences based on corrections
    */
-  private async updateEmailFormatPreferences(pattern: AICorrectionPattern): Promise<void> {
+  private async updateEmailFormatPreferences(_pattern: AICorrectionPattern): Promise<void> {
     // This would update the household profile with learned email format preferences
     console.log('📧 Updating email format preferences based on correction pattern');
   }
@@ -340,7 +340,7 @@ export class AILearningService {
   /**
    * Update bill provider patterns based on corrections
    */
-  private async updateBillProviderPatterns(pattern: AICorrectionPattern): Promise<void> {
+  private async updateBillProviderPatterns(_pattern: AICorrectionPattern): Promise<void> {
     // This would update the household profile with learned bill provider patterns
     console.log('💰 Updating bill provider patterns based on correction pattern');
   }
@@ -348,7 +348,7 @@ export class AILearningService {
   /**
    * Adjust confidence thresholds based on corrections
    */
-  private async adjustConfidenceThreshold(pattern: AICorrectionPattern): Promise<void> {
+  private async adjustConfidenceThreshold(_pattern: AICorrectionPattern): Promise<void> {
     // This would adjust confidence thresholds for future suggestions
     console.log('🎯 Adjusting confidence thresholds based on correction pattern');
   }
