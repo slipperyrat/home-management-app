@@ -74,8 +74,8 @@ export async function POST(request: NextRequest) {
         result.processingTime
       );
 
-      // Store suggestions
-      await processor.storeSuggestions(householdId, parsedItemIds, result.suggestions);
+      // Store suggestions and auto-process them
+      await processor.storeSuggestions(householdId, parsedItemIds, result.suggestions, userId);
 
       // Update queue status
       await supabase

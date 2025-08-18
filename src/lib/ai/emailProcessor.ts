@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
+import { AISuggestionProcessor } from './suggestionProcessor';
 
 // Types for AI email processing
 export interface EmailData {
@@ -239,6 +240,8 @@ export class AIEmailProcessor {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+    
+    this.suggestionProcessor = new AISuggestionProcessor();
   }
 
   /**
@@ -613,19 +616,23 @@ Only include fields that are relevant to the item type. Be as accurate as possib
   }
 
   /**
-   * Store AI suggestions in the database
+   * Store AI suggestions in the database and automatically process them
    */
   async storeSuggestions(
     householdId: string,
     parsedItemIds: string[],
-    suggestions: any[]
+    suggestions: any[],
+    userId?: string
   ): Promise<void> {
+    const storedSuggestions: any[] = [];
+
+    // First, store all suggestions
     for (let i = 0; i < suggestions.length; i++) {
       const suggestion = suggestions[i];
       const parsedItemId = parsedItemIds[i] || null;
 
       try {
-        await this.supabase
+        const { data: storedSuggestion, error } = await this.supabase
           .from('ai_suggestions')
           .insert({
             household_id: householdId,
@@ -634,9 +641,49 @@ Only include fields that are relevant to the item type. Be as accurate as possib
             suggestion_data: suggestion.data,
             ai_reasoning: suggestion.reasoning,
             user_feedback: 'pending'
-          });
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Failed to store suggestion:', error);
+          continue;
+        }
+
+        if (storedSuggestion) {
+          storedSuggestions.push(storedSuggestion);
+        }
       } catch (error) {
         console.error('Failed to store suggestion:', error);
+      }
+    }
+
+    // Then, automatically process suggestions if we have a user ID
+    if (userId && storedSuggestions.length > 0) {
+      try {
+        console.log(`🔄 Auto-processing ${storedSuggestions.length} AI suggestions...`);
+        
+        const processingResults = await this.suggestionProcessor.processSuggestions(
+          storedSuggestions,
+          householdId,
+          userId
+        );
+
+        // Log the processing results
+        await this.suggestionProcessor.logProcessingResults(processingResults, householdId);
+
+        // Log summary
+        const successfulCount = processingResults.filter(r => r.success).length;
+        const failedCount = processingResults.filter(r => !r.success).length;
+        
+        console.log(`✅ Auto-processed ${successfulCount} suggestions successfully`);
+        if (failedCount > 0) {
+          console.log(`❌ Failed to process ${failedCount} suggestions`);
+        }
+
+      } catch (error) {
+        console.error('Failed to auto-process suggestions:', error);
+        // Don't fail the main process if auto-processing fails
       }
     }
   }
