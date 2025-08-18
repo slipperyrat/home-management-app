@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS ai_household_profiles (
 -- 3. Pattern learning rules and triggers
 CREATE TABLE IF NOT EXISTS ai_learning_rules (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  household_id UUID REFERENCES households(id) ON DELETE CASCADE, -- Allow NULL for global rules
   
   -- Rule definition
   rule_name TEXT NOT NULL,
@@ -159,6 +159,8 @@ CREATE TRIGGER update_ai_learning_rules_timestamp
   FOR EACH ROW EXECUTE FUNCTION update_ai_learning_timestamps();
 
 -- Insert default learning rules for common scenarios
+-- Global rules (household_id = NULL) apply to all households
+-- Household-specific rules can override or extend these global rules
 INSERT INTO ai_learning_rules (household_id, rule_name, rule_description, rule_type, trigger_conditions, learning_actions) VALUES
   (NULL, 'Email Format Learning', 'Learn common email formats from corrections', 'email_parsing', 
    '{"correction_type": "correct", "pattern_type": "email_format"}', 
