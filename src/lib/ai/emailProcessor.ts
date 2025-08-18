@@ -50,7 +50,6 @@ export class AIEmailProcessor {
   private supabase: any;
 
   // Confidence thresholds for AI extraction quality
-  private static readonly CONFIDENCE_THRESHOLD = 0.75;
   private static readonly HIGH_CONFIDENCE_THRESHOLD = 0.9;
   private static readonly MEDIUM_CONFIDENCE_THRESHOLD = 0.75;
 
