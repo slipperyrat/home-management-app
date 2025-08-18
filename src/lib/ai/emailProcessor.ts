@@ -198,21 +198,33 @@ export class AIEmailProcessor {
 
       // Handle "21/08" or "08/21" format
       if (dateString.match(/^\d{1,2}\/\d{1,2}$/)) {
-        const [day, month] = dateString.split('/');
-        const currentYear = new Date().getFullYear();
-        const date = new Date(currentYear, parseInt(month) - 1, parseInt(day));
-        if (!isNaN(date.getTime())) {
-          return date.toISOString();
+        const parts = dateString.split('/');
+        if (parts.length === 2) {
+          const day = parseInt(parts[0]);
+          const month = parseInt(parts[1]);
+          if (!isNaN(day) && !isNaN(month)) {
+            const currentYear = new Date().getFullYear();
+            const date = new Date(currentYear, month - 1, day);
+            if (!isNaN(date.getTime())) {
+              return date.toISOString();
+            }
+          }
         }
       }
 
       // Handle "21-08" or "08-21" format
       if (dateString.match(/^\d{1,2}-\d{1,2}$/)) {
-        const [day, month] = dateString.split('-');
-        const currentYear = new Date().getFullYear();
-        const date = new Date(currentYear, parseInt(month) - 1, parseInt(day));
-        if (!isNaN(date.getTime())) {
-          return date.toISOString();
+        const parts = dateString.split('-');
+        if (parts.length === 2) {
+          const day = parseInt(parts[0]);
+          const month = parseInt(parts[1]);
+          if (!isNaN(day) && !isNaN(month)) {
+            const currentYear = new Date().getFullYear();
+            const date = new Date(currentYear, month - 1, day);
+            if (!isNaN(date.getTime())) {
+              return date.toISOString();
+            }
+          }
         }
       }
 
