@@ -94,8 +94,8 @@ export interface AISuggestionImprovement {
 }
 
 export interface LearningAnalysisResult {
-  pattern_type: string;
-  issue_category: string;
+  pattern_type: AICorrectionPattern['pattern_type'];
+  issue_category: AICorrectionPattern['issue_category'];
   confidence_impact: number;
   suggested_improvements: string[];
   learning_priority: 'high' | 'medium' | 'low';

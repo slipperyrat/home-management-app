@@ -196,7 +196,7 @@ export class AILearningService {
   /**
    * Generate suggested improvements based on the pattern
    */
-  private generateSuggestedImprovements(pattern_type: string, issue_category: string): string[] {
+  private generateSuggestedImprovements(pattern_type: AICorrectionPattern['pattern_type'], issue_category: AICorrectionPattern['issue_category']): string[] {
     const improvements: string[] = [];
 
     switch (pattern_type) {
@@ -303,7 +303,7 @@ export class AILearningService {
   /**
    * Execute a learning rule
    */
-  private async executeLearningRule(rule: AILearningRule, pattern: AICorrectionPattern, trigger: LearningRuleTrigger): Promise<void> {
+  private async executeLearningRule(rule: AILearningRule, pattern: AICorrectionPattern, _trigger: LearningRuleTrigger): Promise<void> {
     try {
       const actions = rule.learning_actions;
       
