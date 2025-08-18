@@ -14,6 +14,9 @@ export interface ParsedItem {
   itemType: 'bill' | 'receipt' | 'event' | 'appointment' | 'delivery' | 'other';
   confidenceScore: number;
   extractedData: any;
+  // Review status based on confidence
+  reviewStatus: 'auto_approved' | 'needs_review' | 'manual_review';
+  reviewReason?: string;
   billAmount?: number;
   billDueDate?: string;
   billProvider?: string;
@@ -26,6 +29,11 @@ export interface ParsedItem {
   eventDate?: string;
   eventLocation?: string;
   eventDescription?: string;
+  // Delivery-specific fields
+  deliveryDate?: string | null;
+  deliveryProvider?: string;
+  deliveryTrackingNumber?: string;
+  deliveryStatus?: string;
 }
 
 export interface AIProcessingResult {
@@ -39,6 +47,188 @@ export interface AIProcessingResult {
 export class AIEmailProcessor {
   private openai: OpenAI;
   private supabase: any;
+
+  // Confidence thresholds for AI extraction quality
+  private static readonly CONFIDENCE_THRESHOLD = 0.75;
+  private static readonly HIGH_CONFIDENCE_THRESHOLD = 0.9;
+  private static readonly MEDIUM_CONFIDENCE_THRESHOLD = 0.75;
+
+  /**
+   * Calculate confidence statistics for logging and monitoring
+   */
+  private calculateConfidenceStats(parsedItems: ParsedItem[]): {
+    totalItems: number;
+    averageConfidence: number;
+    confidenceDistribution: { high: number; medium: number; low: number };
+    reviewDistribution: { auto_approved: number; needs_review: number };
+    lowConfidenceItems: Array<{ itemType: string; confidence: number; reason: string }>;
+  } {
+    if (parsedItems.length === 0) {
+      return {
+        totalItems: 0,
+        averageConfidence: 0,
+        confidenceDistribution: { high: 0, medium: 0, low: 0 },
+        reviewDistribution: { auto_approved: 0, needs_review: 0 },
+        lowConfidenceItems: []
+      };
+    }
+
+    const totalConfidence = parsedItems.reduce((sum, item) => sum + item.confidenceScore, 0);
+    const averageConfidence = totalConfidence / parsedItems.length;
+
+    const confidenceDistribution = {
+      high: parsedItems.filter(item => item.confidenceScore >= AIEmailProcessor.HIGH_CONFIDENCE_THRESHOLD).length,
+      medium: parsedItems.filter(item => 
+        item.confidenceScore >= AIEmailProcessor.MEDIUM_CONFIDENCE_THRESHOLD && 
+        item.confidenceScore < AIEmailProcessor.HIGH_CONFIDENCE_THRESHOLD
+      ).length,
+      low: parsedItems.filter(item => item.confidenceScore < AIEmailProcessor.MEDIUM_CONFIDENCE_THRESHOLD).length
+    };
+
+    const reviewDistribution = {
+      auto_approved: parsedItems.filter(item => item.reviewStatus === 'auto_approved').length,
+      needs_review: parsedItems.filter(item => item.reviewStatus === 'needs_review').length
+    };
+
+    const lowConfidenceItems = parsedItems
+      .filter(item => item.reviewStatus === 'needs_review')
+      .map(item => ({
+        itemType: item.itemType,
+        confidence: item.confidenceScore,
+        reason: item.reviewReason || 'Low confidence'
+      }));
+
+    return {
+      totalItems: parsedItems.length,
+      averageConfidence: Math.round(averageConfidence * 1000) / 1000, // Round to 3 decimal places
+      confidenceDistribution,
+      reviewDistribution,
+      lowConfidenceItems
+    };
+  }
+
+  /**
+   * Assess confidence level and determine review status
+   */
+  private assessConfidence(confidenceScore: number): { reviewStatus: 'auto_approved' | 'needs_review' | 'manual_review'; reviewReason: string } {
+    if (confidenceScore >= AIEmailProcessor.HIGH_CONFIDENCE_THRESHOLD) {
+      return {
+        reviewStatus: 'auto_approved',
+        reviewReason: `High confidence (${(confidenceScore * 100).toFixed(1)}%) - Auto-approved`
+      };
+    } else if (confidenceScore >= AIEmailProcessor.MEDIUM_CONFIDENCE_THRESHOLD) {
+      return {
+        reviewStatus: 'auto_approved',
+        reviewReason: `Medium confidence (${(confidenceScore * 100).toFixed(1)}%) - Auto-approved`
+      };
+    } else {
+      return {
+        reviewStatus: 'needs_review',
+        reviewReason: `Low confidence (${(confidenceScore * 100).toFixed(1)}%) - Needs human review`
+      };
+    }
+  }
+
+  /**
+   * Parse various delivery date formats and return ISO string or null
+   */
+  private parseDeliveryDate(dateString: string | undefined): string | null {
+    if (!dateString || dateString.trim() === '') {
+      return null;
+    }
+
+    const trimmed = dateString.trim();
+    
+    // Handle "Expected: Wed 21 Aug" format
+    if (trimmed.match(/Expected:\s*(.+)/i)) {
+      const datePart = trimmed.replace(/Expected:\s*/i, '').trim();
+      return this.parseRelativeDate(datePart);
+    }
+
+    // Handle "Delivery by August 21" format
+    if (trimmed.match(/Delivery\s+by\s+(.+)/i)) {
+      const datePart = trimmed.replace(/Delivery\s+by\s+/i, '').trim();
+      return this.parseRelativeDate(datePart);
+    }
+
+    // Handle "Arriving: 21 Aug" format
+    if (trimmed.match(/Arriving:\s*(.+)/i)) {
+      const datePart = trimmed.replace(/Arriving:\s*/i, '').trim();
+      return this.parseRelativeDate(datePart);
+    }
+
+    // Handle "ETA: 21 Aug" format
+    if (trimmed.match(/ETA:\s*(.+)/i)) {
+      const datePart = trimmed.replace(/ETA:\s*/i, '').trim();
+      return this.parseRelativeDate(datePart);
+    }
+
+    // Handle "Scheduled: 21 Aug" format
+    if (trimmed.match(/Scheduled:\s*(.+)/i)) {
+      const datePart = trimmed.replace(/Scheduled:\s*/i, '').trim();
+      return this.parseRelativeDate(datePart);
+    }
+
+    // Try to parse the date directly
+    return this.parseRelativeDate(trimmed);
+  }
+
+  /**
+   * Parse relative dates like "Wed 21 Aug", "August 21", "21 Aug", etc.
+   */
+  private parseRelativeDate(dateString: string): string | null {
+    try {
+      // Handle "Wed 21 Aug" format
+      if (dateString.match(/^\w{3}\s+\d{1,2}\s+\w{3}$/i)) {
+        const currentYear = new Date().getFullYear();
+        const date = new Date(`${dateString} ${currentYear}`);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString();
+        }
+      }
+
+      // Handle "August 21" or "21 Aug" format
+      if (dateString.match(/^(\w+\s+\d{1,2}|\d{1,2}\s+\w+)$/i)) {
+        const currentYear = new Date().getFullYear();
+        const date = new Date(`${dateString} ${currentYear}`);
+        if (!isNaN(date.getTime())) {
+          return date.toISOString();
+        }
+      }
+
+      // Handle "21/08" or "08/21" format
+      if (dateString.match(/^\d{1,2}\/\d{1,2}$/)) {
+        const [day, month] = dateString.split('/');
+        const currentYear = new Date().getFullYear();
+        const date = new Date(currentYear, parseInt(month) - 1, parseInt(day));
+        if (!isNaN(date.getTime())) {
+          return date.toISOString();
+        }
+      }
+
+      // Handle "21-08" or "08-21" format
+      if (dateString.match(/^\d{1,2}-\d{1,2}$/)) {
+        const [day, month] = dateString.split('-');
+        const currentYear = new Date().getFullYear();
+        const date = new Date(currentYear, parseInt(month) - 1, parseInt(day));
+        if (!isNaN(date.getTime())) {
+          return date.toISOString();
+        }
+      }
+
+      // Try to parse as ISO string
+      const isoDate = new Date(dateString);
+      if (!isNaN(isoDate.getTime())) {
+        return isoDate.toISOString();
+      }
+
+      // If all else fails, return null
+      return null;
+    } catch (error) {
+      console.warn(`Failed to parse date: ${dateString}`, error);
+      return null;
+    }
+  }
 
   constructor() {
     this.openai = new OpenAI({
@@ -97,11 +287,13 @@ export class AIEmailProcessor {
       // Generate suggestions based on parsed data
       const suggestions = await this.generateSuggestions(parsedResponse, householdId);
       
-      // Log successful processing
+      // Enhanced logging with confidence details
+      const confidenceStats = this.calculateConfidenceStats(parsedResponse);
       await this.logProcessing(householdId, 'info', 'AI email processing completed successfully', {
         emailSubject: emailData.subject,
         parsedItemsCount: parsedResponse.length,
         suggestionsCount: suggestions.length,
+        confidenceStats,
         step: 'complete'
       });
 
@@ -149,8 +341,9 @@ Body: ${emailData.body.substring(0, 2000)}${emailData.body.length > 2000 ? '...'
 Instructions:
 1. Identify if this email contains bills, receipts, events, appointments, deliveries, or other important information
 2. Extract key details like amounts, dates, providers, stores, locations, etc.
-3. Assign a confidence score (0.0 to 1.0) for each identified item
+3. Assign a confidence score (0.0 to 1.0) for each identified item - be honest about uncertainty
 4. Categorize the content appropriately
+5. If you're unsure about any details, use a lower confidence score (below 0.75)
 
 Return format (JSON array):
 [
@@ -174,7 +367,11 @@ Return format (JSON array):
     "eventTitle": "Dentist Appointment",
     "eventDate": "2024-02-20T14:00:00Z",
     "eventLocation": "123 Dental Clinic",
-    "eventDescription": "Regular checkup appointment"
+    "eventDescription": "Regular checkup appointment",
+    "deliveryDate": "Expected: Wed 21 Aug",
+    "deliveryProvider": "Amazon",
+    "deliveryTrackingNumber": "1Z999AA1234567890",
+    "deliveryStatus": "In Transit"
   }
 ]
 
@@ -225,10 +422,16 @@ Only include fields that are relevant to the item type. Be as accurate as possib
       throw new Error(`Invalid confidence score: ${item.confidenceScore}`);
     }
 
+    // Assess confidence and determine review status
+    const confidenceAssessment = this.assessConfidence(item.confidenceScore);
+
     return {
       itemType: item.itemType,
       confidenceScore: item.confidenceScore,
       extractedData: item.extractedData,
+      // Review status based on confidence
+      reviewStatus: confidenceAssessment.reviewStatus,
+      reviewReason: confidenceAssessment.reviewReason,
       billAmount: item.billAmount,
       billDueDate: item.billDueDate,
       billProvider: item.billProvider,
@@ -241,6 +444,11 @@ Only include fields that are relevant to the item type. Be as accurate as possib
       eventDate: item.eventDate,
       eventLocation: item.eventLocation,
       eventDescription: item.eventDescription,
+      // Parse and validate delivery fields
+      deliveryDate: item.itemType === 'delivery' ? this.parseDeliveryDate(item.deliveryDate) : undefined,
+      deliveryProvider: item.deliveryProvider,
+      deliveryTrackingNumber: item.deliveryTrackingNumber,
+      deliveryStatus: item.deliveryStatus,
     };
   }
 
@@ -299,10 +507,13 @@ Only include fields that are relevant to the item type. Be as accurate as possib
             type: 'chore_creation',
             data: {
               action: 'schedule_delivery_tasks',
-              deliveryDate: item.eventDate,
-              description: `Prepare for delivery: ${item.eventDescription}`,
+              deliveryDate: item.deliveryDate,
+              description: `Prepare for delivery: ${item.eventDescription || 'Package delivery'}`,
+              provider: item.deliveryProvider,
+              trackingNumber: item.deliveryTrackingNumber,
+              status: item.deliveryStatus,
             },
-            reasoning: `Delivery scheduled for ${item.eventDate}. Suggest creating preparation tasks.`
+            reasoning: `Delivery ${item.deliveryDate ? `scheduled for ${item.deliveryDate}` : 'detected'} from ${item.deliveryProvider || 'delivery service'}. Suggest creating preparation tasks.`
           });
           break;
       }
@@ -357,6 +568,9 @@ Only include fields that are relevant to the item type. Be as accurate as possib
             household_id: householdId,
             item_type: item.itemType,
             confidence_score: item.confidenceScore,
+            // Store review status and confidence details
+            review_status: item.reviewStatus,
+            review_reason: item.reviewReason,
             extracted_data: item.extractedData,
             bill_amount: item.billAmount,
             bill_due_date: item.billDueDate,
@@ -370,6 +584,11 @@ Only include fields that are relevant to the item type. Be as accurate as possib
             event_date: item.eventDate,
             event_location: item.eventLocation,
             event_description: item.eventDescription,
+            // Store delivery-specific fields
+            delivery_date: item.deliveryDate,
+            delivery_provider: item.deliveryProvider,
+            delivery_tracking_number: item.deliveryTrackingNumber,
+            delivery_status: item.deliveryStatus,
             ai_model_used: aiModelUsed,
             processing_time_ms: processingTimeMs,
           })

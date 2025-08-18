@@ -28,10 +28,18 @@ export async function GET(_request: NextRequest) {
 
     const householdId = userHousehold.household_id;
 
-    // Get AI suggestions for the household
+    // Get AI suggestions for the household with parsed item data
     const { data: suggestions, error } = await supabase
       .from('ai_suggestions')
-      .select('*')
+      .select(`
+        *,
+        parsed_item:ai_parsed_items(
+          item_type,
+          confidence_score,
+          review_status,
+          review_reason
+        )
+      `)
       .eq('household_id', householdId)
       .order('created_at', { ascending: false })
       .limit(100);
