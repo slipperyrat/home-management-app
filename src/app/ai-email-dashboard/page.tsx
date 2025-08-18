@@ -231,6 +231,9 @@ export default function AIEmailDashboard() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">AI Suggestions</p>
                 <p className="text-2xl font-bold text-gray-900">{suggestions.length}</p>
+                <p className="text-xs text-gray-500">
+                  {suggestions.filter(s => s.user_feedback === 'pending').length} pending
+                </p>
               </div>
             </div>
           </div>
@@ -269,6 +272,11 @@ export default function AIEmailDashboard() {
                 }`}
               >
                 AI Suggestions ({suggestions.length})
+                {suggestions.filter(s => s.user_feedback === 'pending').length > 0 && (
+                  <span className="ml-2 bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">
+                    {suggestions.filter(s => s.user_feedback === 'pending').length} pending
+                  </span>
+                )}
               </button>
             </nav>
           </div>
@@ -383,14 +391,42 @@ export default function AIEmailDashboard() {
                 {suggestions.length === 0 ? (
                   <p className="text-gray-500 text-center py-8">No AI suggestions yet</p>
                 ) : (
-                  <div className="grid gap-4">
-                    {suggestions.map((suggestion) => (
-                      <SuggestionCard
-                        key={suggestion.id}
-                        suggestion={suggestion}
-                        onCorrectionSaved={fetchData}
-                      />
-                    ))}
+                  <div className="space-y-4">
+                    {/* Pending Suggestions */}
+                    {suggestions.filter(s => s.user_feedback === 'pending').length > 0 && (
+                      <div>
+                        <h4 className="text-md font-medium text-gray-700 mb-3">Pending Actions</h4>
+                        <div className="grid gap-4">
+                          {suggestions
+                            .filter(suggestion => suggestion.user_feedback === 'pending')
+                            .map((suggestion) => (
+                              <SuggestionCard
+                                key={suggestion.id}
+                                suggestion={suggestion}
+                                onCorrectionSaved={fetchData}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Completed/Processed Suggestions */}
+                    {suggestions.filter(s => s.user_feedback !== 'pending').length > 0 && (
+                      <div>
+                        <h4 className="text-md font-medium text-gray-700 mb-3">Processed Suggestions</h4>
+                        <div className="grid gap-4">
+                          {suggestions
+                            .filter(suggestion => suggestion.user_feedback !== 'pending')
+                            .map((suggestion) => (
+                              <SuggestionCard
+                                key={suggestion.id}
+                                suggestion={suggestion}
+                                onCorrectionSaved={fetchData}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
