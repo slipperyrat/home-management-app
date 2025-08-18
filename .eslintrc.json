@@ -1,0 +1,23 @@
+{
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": "warn",
+    "@typescript-eslint/no-empty-object-type": "warn",
+    "react/jsx-no-leaked-render": "warn",
+    "react/jsx-no-bind": "warn",
+    "react-hooks/exhaustive-deps": "warn",
+    "no-console": "warn",
+    "prefer-const": "warn",
+    "object-shorthand": "warn",
+    "no-useless-return": "warn",
+    "react/no-unescaped-entities": "warn",
+    "react/self-closing-comp": "warn",
+    "jsx-a11y/click-events-have-key-events": "warn",
+    "jsx-a11y/heading-has-content": "warn",
+    "react/no-array-index-key": "warn",
+    "no-alert": "warn",
+    "react/jsx-no-useless-fragment": "warn",
+    "prefer-destructuring": "warn"
+  }
+}

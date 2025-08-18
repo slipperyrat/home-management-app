@@ -129,15 +129,7 @@ export default function AIEmailDashboard() {
     }
   }
 
-  function getSuggestionIcon(suggestionType: string) {
-    switch (suggestionType) {
-      case 'bill_action': return '💳';
-      case 'shopping_list_update': return '🛒';
-      case 'calendar_event': return '📅';
-      case 'chore_creation': return '✅';
-      default: return '💡';
-    }
-  }
+
 
   function formatDate(dateString: string) {
     return new Date(dateString).toLocaleDateString('en-US', {

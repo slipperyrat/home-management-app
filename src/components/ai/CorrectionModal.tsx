@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
+
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, XCircle, Eye, Edit3, MessageSquare } from 'lucide-react';
+import { CheckCircle, XCircle, Edit3, MessageSquare } from 'lucide-react';
 
 export interface AISuggestion {
   id: string;
@@ -76,15 +76,7 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
     }
   };
 
-  const getCorrectionTypeIcon = (type: string) => {
-    switch (type) {
-      case 'correct': return <Edit3 className="w-4 h-4" />;
-      case 'mark_done': return <CheckCircle className="w-4 h-4" />;
-      case 'ignore': return <XCircle className="w-4 h-4" />;
-      case 'custom': return <MessageSquare className="w-4 h-4" />;
-      default: return <Edit3 className="w-4 h-4" />;
-    }
-  };
+
 
   const getCorrectionTypeDescription = (type: string) => {
     switch (type) {
