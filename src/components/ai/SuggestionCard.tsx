@@ -143,7 +143,11 @@ export function SuggestionCard({ suggestion, onCorrectionSaved }: SuggestionCard
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setIsCorrectionModalOpen(true)}
+                onClick={() => {
+                  console.log('🔍 Correct button clicked for suggestion:', suggestion.id);
+                  setIsCorrectionModalOpen(true);
+                  console.log('🔍 Modal state set to true');
+                }}
                 className="flex items-center gap-2"
               >
                 <Edit3 className="w-4 h-4" />

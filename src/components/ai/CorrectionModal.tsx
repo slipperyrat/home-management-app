@@ -44,6 +44,8 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
   const [customData, setCustomData] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  console.log('🔍 CorrectionModal render:', { isOpen, suggestion: suggestion?.id });
+
   if (!suggestion) return null;
 
   const handleSave = async () => {
@@ -87,13 +89,13 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto z-50">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="w-5 h-5" />
             AI Suggestion Correction
           </DialogTitle>
-          <DialogDescription className="sr-only">
+          <DialogDescription className="text-sm text-gray-600">
             Modal for correcting AI suggestions with options to fix information, mark as done, ignore, or provide custom corrections.
           </DialogDescription>
         </DialogHeader>
