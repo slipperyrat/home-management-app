@@ -204,14 +204,25 @@ export async function GET(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Get household ID from query params
+    // Get household ID from query params or user's household
     const { searchParams } = new URL(request.url);
-    const householdId = searchParams.get('household_id');
+    let householdId = searchParams.get('household_id');
 
+    // If no household_id provided, get it from user's household membership
     if (!householdId) {
-      return NextResponse.json({ 
-        error: 'household_id is required' 
-      }, { status: 400 });
+      const { data: userHousehold, error: householdError } = await supabase
+        .from('household_members')
+        .select('household_id')
+        .eq('user_id', userId)
+        .single();
+
+      if (householdError || !userHousehold) {
+        return NextResponse.json({ 
+          error: 'No household found for user' 
+        }, { status: 400 });
+      }
+
+      householdId = userHousehold.household_id;
     }
 
     // Check if user has access to this household
