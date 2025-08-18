@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         household_id,
         ai_reasoning,
         suggestion_data,
-        parsed_item:ai_parsed_items!inner(
+        parsed_item:ai_parsed_items(
           confidence_score,
           ai_model_used
         )
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       correction_data: correctionData || null,
       user_notes: userNotes,
       ai_model_version: 'gpt-3.5-turbo', // Default model version
-      confidence_score_before: suggestion.parsed_item?.confidence_score || null
+      confidence_score_before: suggestion.parsed_item?.[0]?.confidence_score || null
     };
 
     // Insert the correction
