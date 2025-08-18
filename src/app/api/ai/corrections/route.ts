@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
 
     // 🧠 AI Learning: Analyze the correction for pattern learning
     try {
+      console.log('🧠 Creating AI Learning Service...');
       const learningService = new AILearningService();
       
       const learningRequest = {
@@ -130,12 +131,14 @@ export async function POST(request: NextRequest) {
         user_notes: userNotes
       };
 
+      console.log('🧠 Learning request prepared:', learningRequest);
       console.log('🧠 Starting AI learning analysis...');
       const learningResult = await learningService.analyzeCorrection(learningRequest);
       console.log('✅ AI learning analysis completed:', learningResult);
 
     } catch (learningError) {
-      console.warn('⚠️ AI learning failed (non-critical):', learningError);
+      console.error('❌ AI learning failed (non-critical):', learningError);
+      console.error('❌ Error details:', learningError.message, learningError.stack);
       // Don't fail the main correction request if learning fails
     }
 
