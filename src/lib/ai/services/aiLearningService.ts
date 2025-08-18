@@ -178,7 +178,7 @@ export class AILearningService {
   /**
    * Calculate learning priority
    */
-  private calculateLearningPriority(pattern_type: string, issue_category: string): 'high' | 'medium' | 'low' {
+  private calculateLearningPriority(pattern_type: AICorrectionPattern['pattern_type'], _issue_category: AICorrectionPattern['issue_category']): 'high' | 'medium' | 'low' {
     // High priority for classification and data extraction issues
     if (pattern_type === 'classification' || pattern_type === 'data_extraction') {
       return 'high';
