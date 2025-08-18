@@ -70,7 +70,7 @@ export class AIEmailProcessor {
       
       // Process with OpenAI
       const aiResponse = await this.openai.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
@@ -343,7 +343,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
     emailQueueId: string,
     householdId: string,
     parsedItems: ParsedItem[],
-    aiModelUsed: string = 'gpt-4',
+    aiModelUsed: string = 'gpt-3.5-turbo',
     processingTimeMs: number
   ): Promise<string[]> {
     const itemIds: string[] = [];

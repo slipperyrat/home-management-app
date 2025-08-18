@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
         queueEntry.id,
         householdId,
         result.parsedItems,
-        'gpt-4',
+        'gpt-3.5-turbo',
         result.processingTime
       );
 

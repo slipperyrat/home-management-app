@@ -128,12 +128,5 @@ COMMENT ON TABLE ai_suggestions IS 'AI suggestions based on parsed email data';
 COMMENT ON TABLE ai_email_rules IS 'Custom rules for email parsing and categorization';
 COMMENT ON TABLE ai_processing_logs IS 'Detailed logs of AI processing for debugging';
 
--- Insert some default email parsing rules for common patterns
-INSERT INTO ai_email_rules (household_id, rule_name, rule_description, rule_type, rule_pattern, priority) VALUES
-  (NULL, 'Bill - Energy Provider', 'Detect energy bill emails', 'sender_pattern', '.*@(originenergy|agl|energyaustralia|redenergy)\\.com\\.au', 10),
-  (NULL, 'Bill - Internet Provider', 'Detect internet bill emails', 'sender_pattern', '.*@(telstra|optus|tpg|internode)\\.com\\.au', 10),
-  (NULL, 'Receipt - Grocery Store', 'Detect grocery receipt emails', 'sender_pattern', '.*@(coles|woolworths|aldi|iga)\\.com\\.au', 10),
-  (NULL, 'Receipt - Online Shopping', 'Detect online shopping receipts', 'subject_pattern', '.*(order|receipt|confirmation|invoice).*', 5),
-  (NULL, 'Appointment - Medical', 'Detect medical appointment emails', 'sender_pattern', '.*@(.*medical|.*clinic|.*hospital|.*health)\\.com', 8),
-  (NULL, 'Delivery - Package', 'Detect package delivery notifications', 'subject_pattern', '.*(delivery|shipped|tracking|package).*', 6)
-ON CONFLICT DO NOTHING;
+-- Note: Default rules will be created per household when needed
+-- You can add custom rules for your household through the AI Email Dashboard
