@@ -398,18 +398,24 @@ Only include fields that are relevant to the item type. Be as accurate as possib
    */
   private parseAIResponse(aiContent: string): ParsedItem[] {
     try {
+      console.log('🤖 Raw AI response:', aiContent);
+      
       // Clean the response (remove markdown if present)
       const cleanContent = aiContent.replace(/```json\n?|\n?```/g, '').trim();
+      console.log('🧹 Cleaned AI response:', cleanContent);
       
       // Parse JSON
       const parsed = JSON.parse(cleanContent);
+      console.log('📊 Parsed AI response:', parsed);
       
       if (!Array.isArray(parsed)) {
         throw new Error('AI response is not an array');
       }
 
       // Validate and transform each item
-      return parsed.map(item => this.validateAndTransformItem(item));
+      const transformed = parsed.map(item => this.validateAndTransformItem(item));
+      console.log('✅ Transformed items:', transformed);
+      return transformed;
       
     } catch (error) {
       console.error('Failed to parse AI response:', error);
@@ -471,9 +477,11 @@ Only include fields that are relevant to the item type. Be as accurate as possib
    * Generate AI suggestions based on parsed data
    */
   private async generateSuggestions(parsedItems: ParsedItem[], _householdId: string): Promise<any[]> {
+    console.log('🔍 Generating suggestions for parsed items:', parsedItems);
     const suggestions = [];
 
     for (const item of parsedItems) {
+      console.log(`🔍 Processing item type: ${item.itemType}`, item);
       switch (item.itemType) {
         case 'bill':
           suggestions.push({
@@ -636,6 +644,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
     suggestions: any[],
     userId?: string
   ): Promise<void> {
+    console.log('💾 Storing suggestions:', { householdId, parsedItemIds, suggestions, userId });
     const storedSuggestions: any[] = [];
 
     // First, store all suggestions
