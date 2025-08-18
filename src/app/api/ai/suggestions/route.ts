@@ -7,7 +7,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
     
@@ -28,8 +28,11 @@ export async function GET(_request: NextRequest) {
 
     const householdId = userHousehold.household_id;
 
-    // Get AI suggestions for the household with parsed item data
-    const { data: suggestions, error } = await supabase
+    // Check if we want processed suggestions or pending ones
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status') || 'pending';
+
+    let query = supabase
       .from('ai_suggestions')
       .select(`
         *,
@@ -40,7 +43,16 @@ export async function GET(_request: NextRequest) {
           review_reason
         )
       `)
-      .eq('household_id', householdId)
+      .eq('household_id', householdId);
+
+    // Filter by status
+    if (status === 'pending') {
+      query = query.eq('user_feedback', 'pending');
+    } else if (status === 'processed') {
+      query = query.neq('user_feedback', 'pending');
+    }
+
+    const { data: suggestions, error } = await query
       .order('created_at', { ascending: false })
       .limit(100);
 

@@ -61,7 +61,8 @@ export default function AIEmailDashboard() {
   
   const [emailQueue, setEmailQueue] = useState<EmailQueueEntry[]>([]);
   const [parsedItems, setParsedItems] = useState<ParsedItem[]>([]);
-  const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
+  const [pendingSuggestions, setPendingSuggestions] = useState<AISuggestion[]>([]);
+  const [processedSuggestions, setProcessedSuggestions] = useState<AISuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'queue' | 'parsed' | 'suggestions'>('queue');
 
@@ -94,12 +95,20 @@ export default function AIEmailDashboard() {
         setParsedItems(itemsData.data || []);
       }
 
-      // Fetch suggestions
-      const suggestionsResponse = await fetch('/api/ai/suggestions');
-      if (suggestionsResponse.ok) {
-        const suggestionsData = await suggestionsResponse.json();
-        console.log('🔍 Fetched suggestions:', suggestionsData.data);
-        setSuggestions(suggestionsData.data || []);
+      // Fetch pending suggestions
+      const pendingResponse = await fetch('/api/ai/suggestions?status=pending');
+      if (pendingResponse.ok) {
+        const pendingData = await pendingResponse.json();
+        console.log('🔍 Fetched pending suggestions:', pendingData.data);
+        setPendingSuggestions(pendingData.data || []);
+      }
+
+      // Fetch processed suggestions
+      const processedResponse = await fetch('/api/ai/suggestions?status=processed');
+      if (processedResponse.ok) {
+        const processedData = await processedResponse.json();
+        console.log('🔍 Fetched processed suggestions:', processedData.data);
+        setProcessedSuggestions(processedData.data || []);
       }
 
     } catch (error) {
@@ -224,20 +233,20 @@ export default function AIEmailDashboard() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <span className="text-2xl">💡</span>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">AI Suggestions</p>
-                <p className="text-2xl font-bold text-gray-900">{suggestions.length}</p>
-                <p className="text-xs text-gray-500">
-                  {suggestions.filter(s => s.user_feedback === 'pending').length} pending
-                </p>
-              </div>
-            </div>
-          </div>
+                     <div className="bg-white rounded-lg shadow p-6">
+             <div className="flex items-center">
+               <div className="p-2 bg-yellow-100 rounded-lg">
+                 <span className="text-2xl">💡</span>
+               </div>
+               <div className="ml-4">
+                 <p className="text-sm font-medium text-gray-600">AI Suggestions</p>
+                 <p className="text-2xl font-bold text-gray-900">{pendingSuggestions.length + processedSuggestions.length}</p>
+                 <p className="text-xs text-gray-500">
+                   {pendingSuggestions.length} pending
+                 </p>
+               </div>
+             </div>
+           </div>
         </div>
 
         {/* Tab Navigation */}
@@ -264,21 +273,21 @@ export default function AIEmailDashboard() {
               >
                 Parsed Items ({parsedItems.length})
               </button>
-              <button
-                onClick={() => setActiveTab('suggestions')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'suggestions'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                AI Suggestions ({suggestions.length})
-                {suggestions.filter(s => s.user_feedback === 'pending').length > 0 && (
-                  <span className="ml-2 bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">
-                    {suggestions.filter(s => s.user_feedback === 'pending').length} pending
-                  </span>
-                )}
-              </button>
+                             <button
+                 onClick={() => setActiveTab('suggestions')}
+                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                   activeTab === 'suggestions'
+                     ? 'border-blue-500 text-blue-600'
+                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                 }`}
+               >
+                 AI Suggestions ({pendingSuggestions.length + processedSuggestions.length})
+                 {pendingSuggestions.length > 0 && (
+                   <span className="ml-2 bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs">
+                     {pendingSuggestions.length} pending
+                   </span>
+                 )}
+               </button>
             </nav>
           </div>
 
@@ -386,52 +395,48 @@ export default function AIEmailDashboard() {
               </div>
             )}
 
-            {activeTab === 'suggestions' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">AI Suggestions</h3>
-                {suggestions.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">No AI suggestions yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Pending Suggestions */}
-                    {suggestions.filter(s => s.user_feedback === 'pending').length > 0 && (
-                      <div>
-                        <h4 className="text-md font-medium text-gray-700 mb-3">Pending Actions</h4>
-                        <div className="grid gap-4">
-                          {suggestions
-                            .filter(suggestion => suggestion.user_feedback === 'pending')
-                            .map((suggestion) => (
-                              <SuggestionCard
-                                key={suggestion.id}
-                                suggestion={suggestion}
-                                onCorrectionSaved={fetchData}
-                              />
-                            ))}
-                        </div>
-                      </div>
-                    )}
+                         {activeTab === 'suggestions' && (
+               <div className="space-y-4">
+                 <h3 className="text-lg font-medium text-gray-900 mb-4">AI Suggestions</h3>
+                 {pendingSuggestions.length === 0 && processedSuggestions.length === 0 ? (
+                   <p className="text-gray-500 text-center py-8">No AI suggestions yet</p>
+                 ) : (
+                   <div className="space-y-4">
+                     {/* Pending Suggestions */}
+                     {pendingSuggestions.length > 0 && (
+                       <div>
+                         <h4 className="text-md font-medium text-gray-700 mb-3">Pending Actions</h4>
+                         <div className="grid gap-4">
+                           {pendingSuggestions.map((suggestion) => (
+                             <SuggestionCard
+                               key={suggestion.id}
+                               suggestion={suggestion}
+                               onCorrectionSaved={fetchData}
+                             />
+                           ))}
+                         </div>
+                       </div>
+                     )}
 
-                    {/* Completed/Processed Suggestions */}
-                    {suggestions.filter(s => s.user_feedback !== 'pending').length > 0 && (
-                      <div>
-                        <h4 className="text-md font-medium text-gray-700 mb-3">Processed Suggestions</h4>
-                        <div className="grid gap-4">
-                          {suggestions
-                            .filter(suggestion => suggestion.user_feedback !== 'pending')
-                            .map((suggestion) => (
-                              <SuggestionCard
-                                key={suggestion.id}
-                                suggestion={suggestion}
-                                onCorrectionSaved={fetchData}
-                              />
-                            ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                     {/* Completed/Processed Suggestions */}
+                     {processedSuggestions.length > 0 && (
+                       <div>
+                         <h4 className="text-md font-medium text-gray-700 mb-3">Processed Suggestions</h4>
+                         <div className="grid gap-4">
+                           {processedSuggestions.map((suggestion) => (
+                             <SuggestionCard
+                               key={suggestion.id}
+                               suggestion={suggestion}
+                               onCorrectionSaved={fetchData}
+                             />
+                           ))}
+                         </div>
+                       </div>
+                     )}
+                   </div>
+                 )}
+               </div>
+             )}
           </div>
         </div>
 
