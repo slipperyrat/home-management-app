@@ -98,6 +98,7 @@ export default function AIEmailDashboard() {
       const suggestionsResponse = await fetch('/api/ai/suggestions');
       if (suggestionsResponse.ok) {
         const suggestionsData = await suggestionsResponse.json();
+        console.log('🔍 Fetched suggestions:', suggestionsData.data);
         setSuggestions(suggestionsData.data || []);
       }
 
