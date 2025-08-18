@@ -459,8 +459,8 @@ Only include fields that are relevant to the item type. Be as accurate as possib
       eventDate: item.eventDate,
       eventLocation: item.eventLocation,
       eventDescription: item.eventDescription,
-      // Parse and validate delivery fields
-      deliveryDate: item.itemType === 'delivery' ? this.parseDeliveryDate(item.deliveryDate) : undefined,
+             // Parse and validate delivery fields
+       deliveryDate: item.itemType === 'delivery' ? this.parseDeliveryDate(item.deliveryDate) : null,
       deliveryProvider: item.deliveryProvider,
       deliveryTrackingNumber: item.deliveryTrackingNumber,
       deliveryStatus: item.deliveryStatus,
