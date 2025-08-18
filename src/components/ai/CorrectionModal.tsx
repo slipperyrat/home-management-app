@@ -96,7 +96,6 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
           top: '50%', 
           left: '50%', 
           transform: 'translate(-50%, -50%)',
-          border: '2px solid red',
           backgroundColor: 'white',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
         }}
@@ -106,7 +105,7 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
             <MessageSquare className="w-5 h-5" />
             AI Suggestion Correction
           </DialogTitle>
-          <DialogDescription className="text-sm text-gray-600">
+          <DialogDescription className="text-sm text-gray-800 font-medium">
             Modal for correcting AI suggestions with options to fix information, mark as done, ignore, or provide custom corrections.
           </DialogDescription>
         </DialogHeader>
@@ -181,7 +180,7 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
               </SelectContent>
             </Select>
             
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-gray-800 font-medium">
               {getCorrectionTypeDescription(correctionType)}
             </p>
           </div>
@@ -190,17 +189,17 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
           {correctionType === 'custom' && (
             <div className="space-y-2">
               <Label htmlFor="custom-data">Custom Correction Data (JSON)</Label>
-              <Textarea
-                id="custom-data"
-                placeholder='{"corrected_field": "new_value"}'
-                value={customData}
-                onChange={(e) => setCustomData(e.target.value)}
-                className="font-mono text-sm"
-                rows={3}
-              />
-              <p className="text-xs text-gray-500">
-                Enter valid JSON with the corrected information
-              </p>
+                             <Textarea
+                 id="custom-data"
+                 placeholder='{"corrected_field": "new_value"}'
+                 value={customData}
+                 onChange={(e) => setCustomData(e.target.value)}
+                 className="font-mono text-sm text-gray-900 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                 rows={3}
+               />
+                             <p className="text-xs text-gray-700 font-medium">
+                 Enter valid JSON with the corrected information
+               </p>
             </div>
           )}
 
@@ -209,17 +208,18 @@ export function CorrectionModal({ isOpen, onClose, suggestion, onSaveCorrection 
             <Label htmlFor="user-notes">
               Notes about the correction *
             </Label>
-            <Textarea
-              id="user-notes"
-              placeholder="Explain what was wrong and how it should be corrected..."
-              value={userNotes}
-              onChange={(e) => setUserNotes(e.target.value)}
-              rows={4}
-              required
-            />
-            <p className="text-xs text-gray-500">
-              Your feedback helps improve the AI system for future suggestions
-            </p>
+                         <Textarea
+               id="user-notes"
+               placeholder="Explain what was wrong and how it should be corrected..."
+               value={userNotes}
+               onChange={(e) => setUserNotes(e.target.value)}
+               className="text-gray-900 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+               rows={4}
+               required
+             />
+                         <p className="text-xs text-gray-700 font-medium">
+               Your feedback helps improve the AI system for future suggestions
+             </p>
           </div>
         </div>
 
