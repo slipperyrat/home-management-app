@@ -119,11 +119,20 @@ export async function POST(request: NextRequest) {
 
     // 🧠 AI Learning: Analyze the correction for pattern learning
     console.log('🧠 About to start AI Learning process...');
+    console.log('🧠 Correction ID:', correction.id);
+    console.log('🧠 Household ID:', suggestion.household_id);
+    console.log('🧠 Correction Type:', correctionType);
+    
+    let learningResult = null;
     
     try {
-      console.log('🧠 Creating AI Learning Service...');
+      console.log('🧠 Step 1: Importing AILearningService...');
+      const { AILearningService } = await import('@/lib/ai/services/aiLearningService');
+      console.log('🧠 Step 2: AILearningService imported successfully');
+      
+      console.log('🧠 Step 3: Creating AI Learning Service instance...');
       const learningService = new AILearningService();
-      console.log('🧠 AI Learning Service created successfully');
+      console.log('🧠 Step 4: AI Learning Service instance created successfully');
       
       const learningRequest = {
         correction_id: correction.id,
@@ -134,23 +143,31 @@ export async function POST(request: NextRequest) {
         user_notes: userNotes
       };
 
-      console.log('🧠 Learning request prepared:', learningRequest);
-      console.log('🧠 Starting AI learning analysis...');
-      const learningResult = await learningService.analyzeCorrection(learningRequest);
-      console.log('✅ AI learning analysis completed:', learningResult);
+      console.log('🧠 Step 5: Learning request prepared:', JSON.stringify(learningRequest, null, 2));
+      console.log('🧠 Step 6: Starting AI learning analysis...');
+      
+      learningResult = await learningService.analyzeCorrection(learningRequest);
+      console.log('✅ Step 7: AI learning analysis completed successfully:', JSON.stringify(learningResult, null, 2));
 
     } catch (learningError) {
-      console.error('❌ AI learning failed (non-critical):', learningError);
+      console.error('❌ AI learning failed at some step:', learningError);
+      console.error('❌ Error type:', typeof learningError);
+      console.error('❌ Error constructor:', learningError?.constructor?.name);
+      
       if (learningError instanceof Error) {
-        console.error('❌ Error details:', learningError.message, learningError.stack);
+        console.error('❌ Error message:', learningError.message);
+        console.error('❌ Error stack:', learningError.stack);
+        console.error('❌ Error name:', learningError.name);
       } else {
-        console.error('❌ Error details:', String(learningError));
+        console.error('❌ Error stringified:', String(learningError));
+        console.error('❌ Error JSON:', JSON.stringify(learningError, null, 2));
       }
       // Don't fail the main correction request if learning fails
     }
     
     console.log('🧠 AI Learning process completed (success or failure)');
 
+    // Return response with AI Learning status
     return NextResponse.json({ 
       success: true, 
       correction: {
@@ -158,6 +175,11 @@ export async function POST(request: NextRequest) {
         correction_type: correction.correction_type,
         user_notes: correction.user_notes,
         corrected_at: correction.corrected_at
+      },
+      ai_learning: {
+        attempted: true,
+        completed: learningResult ? true : false,
+        result: learningResult || null
       }
     });
 
