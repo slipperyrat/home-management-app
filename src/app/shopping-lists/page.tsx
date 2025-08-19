@@ -16,7 +16,6 @@ import {
   Target,
   Clock,
   CheckCircle,
-  AlertCircle,
   Sparkles,
   BarChart3,
   Zap
