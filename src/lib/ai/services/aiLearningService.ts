@@ -197,34 +197,51 @@ export class AILearningService {
   /**
    * Generate suggested improvements based on the pattern
    */
-  private generateSuggestedImprovements(pattern_type: AICorrectionPattern['pattern_type'], issue_category: AICorrectionPattern['issue_category']): string[] {
+  private generateSuggestedImprovements(patterns: AICorrectionPattern[]): string[] {
     const improvements: string[] = [];
+    
+    if (!patterns || patterns.length === 0) {
+      improvements.push('Start providing feedback to help the AI learn your preferences');
+      return improvements;
+    }
 
-    switch (pattern_type) {
-      case 'data_extraction':
-        if (issue_category === 'missing_data') {
-          improvements.push('Improve data extraction prompts for this email format');
-          improvements.push('Add validation for required fields');
-        } else if (issue_category === 'incorrect_data') {
-          improvements.push('Refine data parsing logic for this provider');
-          improvements.push('Add data validation rules');
-        }
-        break;
-      
-      case 'classification':
-        improvements.push('Update classification rules for this email type');
-        improvements.push('Improve confidence thresholds for this category');
-        break;
-      
-      case 'confidence_threshold':
-        improvements.push('Adjust confidence thresholds for this suggestion type');
-        improvements.push('Add more context to low-confidence suggestions');
-        break;
-      
-      case 'user_preference':
-        improvements.push('Learn user preferences for this type of suggestion');
-        improvements.push('Personalize suggestions based on household patterns');
-        break;
+    // Analyze patterns to generate relevant improvements
+    const patternTypes = patterns.map(p => p.pattern_type);
+    const issueCategories = patterns.map(p => p.issue_category);
+
+    if (patternTypes.includes('data_extraction')) {
+      if (issueCategories.includes('missing_data')) {
+        improvements.push('Improve data extraction prompts for your email formats');
+        improvements.push('Add validation for required fields');
+      }
+      if (issueCategories.includes('incorrect_data')) {
+        improvements.push('Refine data parsing logic for your providers');
+        improvements.push('Add data validation rules');
+      }
+    }
+    
+    if (patternTypes.includes('classification')) {
+      improvements.push('Update classification rules for your email types');
+      improvements.push('Improve confidence thresholds for your categories');
+    }
+    
+    if (patternTypes.includes('confidence_threshold')) {
+      improvements.push('Adjust confidence thresholds for your suggestion types');
+      improvements.push('Add more context to low-confidence suggestions');
+    }
+    
+    if (patternTypes.includes('user_preference')) {
+      improvements.push('Learn your preferences for suggestion types');
+      improvements.push('Personalize suggestions based on your household patterns');
+    }
+
+    // Add general improvements based on correction count
+    if (patterns.length < 5) {
+      improvements.push('Continue providing feedback to build better learning patterns');
+    } else if (patterns.length < 10) {
+      improvements.push('Great progress! Keep correcting to refine AI understanding');
+    } else {
+      improvements.push('Excellent learning progress! Consider reviewing advanced settings');
     }
 
     return improvements;
@@ -412,6 +429,12 @@ export class AILearningService {
         .eq('household_id', household_id)
         .single();
 
+      // Get total corrections count
+      const { count: totalCorrections } = await this.supabase
+        .from('ai_corrections')
+        .select('*', { count: 'exact', head: true })
+        .eq('household_id', household_id);
+
       // Get learning patterns
       const { data: patterns } = await this.supabase
         .from('ai_correction_patterns')
@@ -423,16 +446,19 @@ export class AILearningService {
       const total_patterns_learned = patterns?.length || 0;
       const accuracy_trend = this.calculateAccuracyTrend(profile, patterns);
       const top_learning_areas = this.getTopLearningAreas(patterns);
-      const suggested_actions = this.generateSuggestedActions(profile, patterns);
+      const suggested_improvements = this.generateSuggestedImprovements(patterns);
       const next_learning_goals = this.generateNextLearningGoals(profile, patterns);
 
       return {
         household_id,
-        total_patterns_learned,
-        accuracy_trend,
+        total_corrections: totalCorrections || 0,
+        patterns_identified: total_patterns_learned,
+        accuracy_trend: this.convertTrendToPercentage(accuracy_trend),
         top_learning_areas,
-        suggested_actions,
-        next_learning_goals
+        suggested_improvements,
+        confidence_threshold: profile?.confidence_threshold || 75,
+        learning_goals: next_learning_goals,
+        last_updated: new Date().toISOString()
       };
 
     } catch (error) {
@@ -507,6 +533,22 @@ export class AILearningService {
     }
     
     return actions;
+  }
+
+  /**
+   * Convert trend to percentage for dashboard display
+   */
+  private convertTrendToPercentage(trend: 'improving' | 'stable' | 'declining'): number {
+    switch (trend) {
+      case 'improving':
+        return 85; // High percentage for improving trend
+      case 'stable':
+        return 65; // Medium percentage for stable trend
+      case 'declining':
+        return 35; // Low percentage for declining trend
+      default:
+        return 50; // Default middle value
+    }
   }
 
   /**

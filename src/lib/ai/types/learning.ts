@@ -106,11 +106,14 @@ export interface LearningAnalysisResult {
 
 export interface HouseholdLearningInsights {
   household_id: string;
-  total_patterns_learned: number;
-  accuracy_trend: 'improving' | 'stable' | 'declining';
+  total_corrections: number;
+  patterns_identified: number;
+  accuracy_trend: number; // Percentage value for dashboard
   top_learning_areas: string[];
-  suggested_actions: string[];
-  next_learning_goals: string[];
+  suggested_improvements: string[];
+  confidence_threshold: number;
+  learning_goals: string[];
+  last_updated: string;
 }
 
 export interface PatternLearningRequest {
