@@ -172,27 +172,27 @@ function generateSmartAssignment(
     // Workload balance (30% weight)
     const workloadScore = fairnessScores[memberId] || 0;
     totalScore += workloadScore * 0.3;
-    memberReasons[memberId].push(`Workload balance: ${workloadScore.toFixed(1)}`);
+    memberReasons[memberId]?.push(`Workload balance: ${workloadScore.toFixed(1)}`);
 
     // Preference match (25% weight)
     const preferenceScore = preferenceScores[memberId] || 0;
     totalScore += preferenceScore * 0.25;
-    memberReasons[memberId].push(`Preference match: ${preferenceScore.toFixed(1)}`);
+    memberReasons[memberId]?.push(`Preference match: ${preferenceScore.toFixed(1)}`);
 
     // Skill compatibility (20% weight)
     const skillScore = skillScores[memberId] || 0;
     totalScore += skillScore * 0.2;
-    memberReasons[memberId].push(`Skill compatibility: ${skillScore.toFixed(1)}`);
+    memberReasons[memberId]?.push(`Skill compatibility: ${skillScore.toFixed(1)}`);
 
     // Energy compatibility (15% weight)
     const energyScore = energyScores[memberId] || 0;
     totalScore += energyScore * 0.15;
-    memberReasons[memberId].push(`Energy compatibility: ${energyScore.toFixed(1)}`);
+    memberReasons[memberId]?.push(`Energy compatibility: ${energyScore.toFixed(1)}`);
 
     // Random factor for variety (10% weight)
     const randomFactor = Math.random() * 20 - 10;
     totalScore += randomFactor * 0.1;
-    memberReasons[memberId].push(`Variety factor: ${randomFactor.toFixed(1)}`);
+    memberReasons[memberId]?.push(`Variety factor: ${randomFactor.toFixed(1)}`);
 
     memberScores[memberId] = Math.max(0, Math.min(100, totalScore));
   });
@@ -210,7 +210,7 @@ function generateSmartAssignment(
 
   // Generate reasoning
   const reasoning = `AI assigned this chore to ${members.find(m => m.id === bestMember)?.email} based on:
-${memberReasons[bestMember]?.map(reason => `• ${reason}`).join('\n')}
+${(memberReasons[bestMember] || []).map(reason => `• ${reason}`).join('\n')}
 
 Final score: ${bestScore.toFixed(1)}/100`;
 
