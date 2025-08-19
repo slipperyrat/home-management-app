@@ -53,15 +53,15 @@ export async function GET(_request: NextRequest) {
   }
 }
 
-async function calculateAIBillInsights(bills: any[], householdId: string) {
+async function calculateAIBillInsights(bills: any[], _householdId: string) {
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
 
   // Basic statistics
   const totalBills = bills.length;
-  const paidBills = bills.filter(bill => bill.status === 'paid');
-  const unpaidBills = bills.filter(bill => bill.status === 'unpaid' || bill.status === 'overdue');
+  const _paidBills = bills.filter(bill => bill.status === 'paid');
+  const _unpaidBills = bills.filter(bill => bill.status === 'unpaid' || bill.status === 'overdue');
   const overdueBills = bills.filter(bill => bill.status === 'overdue');
 
   // Monthly spending calculation
