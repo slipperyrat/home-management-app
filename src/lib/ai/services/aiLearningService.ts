@@ -527,28 +527,7 @@ export class AILearningService {
       .map(([area]) => area);
   }
 
-  /**
-   * Generate suggested actions based on learning data
-   */
-  private generateSuggestedActions(profile: AIHouseholdProfile, patterns: AICorrectionPattern[]): string[] {
-    const actions: string[] = [];
-    
-    if (!profile || !patterns) return actions;
-    
-    if (profile.total_corrections < 5) {
-      actions.push('Continue using the system to build learning patterns');
-    }
-    
-    if (patterns.filter(p => p.pattern_type === 'classification').length > 0) {
-      actions.push('Review and refine classification rules');
-    }
-    
-    if (patterns.filter(p => p.pattern_type === 'data_extraction').length > 0) {
-      actions.push('Improve data extraction prompts');
-    }
-    
-    return actions;
-  }
+
 
   /**
    * Convert trend to percentage for dashboard display
