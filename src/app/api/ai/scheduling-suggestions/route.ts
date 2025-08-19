@@ -76,9 +76,6 @@ function generateAISchedulingSuggestions(events: any[]): any[] {
     timeCounts[time] = (timeCounts[time] || 0) + 1;
   });
 
-  const _mostCommonType = Object.entries(typeCounts)
-    .sort(([,a], [,b]) => b - a)[0]?.[0] || 'general';
-
   const mostCommonTime = Object.entries(timeCounts)
     .sort(([,a], [,b]) => b - a)[0]?.[0] || 'morning';
 
