@@ -1,337 +1,460 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUser } from '@clerk/nextjs';
-import { useUserData } from '@/hooks/useUserData';
-import { createBrowserClient } from '@supabase/ssr';
-import { Database } from '@/types/supabase';
-import { postEventTypes } from '@/lib/postEvent';
-import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { 
+  Plus, 
+  TrendingUp, 
+  AlertTriangle, 
+  DollarSign, 
+  Calendar,
+  Brain,
+  Lightbulb,
+  BarChart3,
+  Target
+} from 'lucide-react';
 
 interface Bill {
   id: string;
-  name: string;
+  title: string;
   amount: number;
-  currency: string;
   due_date: string;
-  status: string;
   category: string;
-  description: string;
-  source: string;
+  provider: string;
+  status: 'paid' | 'unpaid' | 'overdue';
+  ai_confidence: number;
+  ai_category_suggestion?: string;
+  ai_amount_prediction?: number;
   created_at: string;
 }
 
-export default function BillsPage() {
-  const { user } = useUser();
-  const { userData } = useUserData();
-  const [bills, setBills] = useState<Bill[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newBill, setNewBill] = useState({
-    name: '',
-    amount: '',
-    due_date: '',
-    category: 'utilities',
-    description: ''
-  });
+interface AIBillInsights {
+  total_bills: number;
+  monthly_spending: number;
+  spending_trend: 'increasing' | 'decreasing' | 'stable';
+  top_categories: Array<{ category: string; amount: number; percentage: number }>;
+  upcoming_bills: number;
+  overdue_risk: number;
+  ai_recommendations: string[];
+  spending_patterns: Array<{ month: string; amount: number }>;
+}
 
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+export default function BillsPage() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [aiInsights, setAiInsights] = useState<AIBillInsights | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'ai-insights'>('overview');
 
   useEffect(() => {
-    if (userData?.household_id) {
-      fetchBills();
-    }
-  }, [userData?.household_id]);
+    if (!isLoaded || !isSignedIn) return;
+    fetchBills();
+    fetchAIBillInsights();
+  }, [isLoaded, isSignedIn]);
 
   const fetchBills = async () => {
     try {
-      setLoading(true);
-      
-      const { data, error } = await supabase
-        .from('bills')
-        .select('*')
-        .eq('household_id', userData?.household_id)
-        .order('due_date', { ascending: true });
-
-      if (error) throw error;
-      
-      setBills(data || []);
-    } catch (err) {
-      console.error('Error fetching bills:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch bills');
+      const response = await fetch('/api/bills');
+      if (response.ok) {
+        const data = await response.json();
+        setBills(data.bills || []);
+      }
+    } catch (error) {
+      console.error('Error fetching bills:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const createBill = async () => {
-    if (!userData?.household_id || !newBill.name || !newBill.amount || !newBill.due_date) {
-      setError('Please fill in all required fields');
-      return;
-    }
-
+  const fetchAIBillInsights = async () => {
     try {
-      setLoading(true);
-      setError(null);
-
-      // Create the bill
-      const { data, error } = await supabase
-        .from('bills')
-        .insert({
-          household_id: userData.household_id,
-          name: newBill.name,
-          amount: parseFloat(newBill.amount),
-          due_date: newBill.due_date,
-          category: newBill.category,
-          description: newBill.description,
-          source: 'manual',
-          created_by: user?.id || ''
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Post an event for the new bill
-      await postEventTypes.billReceived(userData.household_id, {
-        billId: data.id,
-        name: data.name,
-        amount: data.amount,
-        dueDate: data.due_date
-      });
-
-      // Reset form and refresh bills
-      setNewBill({
-        name: '',
-        amount: '',
-        due_date: '',
-        category: 'utilities',
-        description: ''
-      });
-      setShowCreateForm(false);
-      await fetchBills();
-
-    } catch (err) {
-      console.error('Error creating bill:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create bill');
-    } finally {
-      setLoading(false);
+      const response = await fetch('/api/ai/bill-insights');
+      if (response.ok) {
+        const data = await response.json();
+        setAiInsights(data.insights);
+      }
+    } catch (error) {
+      console.error('Error fetching AI insights:', error);
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'paid': return 'text-green-600 bg-green-100';
-      case 'overdue': return 'text-red-600 bg-red-100';
-      case 'pending': return 'text-yellow-600 bg-yellow-100';
-      default: return 'text-gray-600 bg-gray-100';
+      case 'paid': return 'bg-green-100 text-green-800';
+      case 'unpaid': return 'bg-yellow-100 text-yellow-800';
+      case 'overdue': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'utilities': return '⚡';
-      case 'rent': return '🏠';
-      case 'insurance': return '🛡️';
-      case 'internet': return '🌐';
-      case 'phone': return '📱';
-      default: return '📄';
-    }
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.8) return 'bg-green-100 text-green-800';
+    if (confidence >= 0.6) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-red-100 text-red-800';
   };
 
-  if (!user || !userData?.household_id) {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-AU', {
+      style: 'currency',
+      currency: 'AUD'
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-AU', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  if (!isLoaded || loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Bills</h1>
-          <p>Please sign in and complete onboarding to view bills.</p>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading Smart Bill Management...</p>
         </div>
       </div>
     );
   }
 
+  if (!isSignedIn) {
+    return null;
+  }
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Bills</h1>
-          <p className="text-gray-600">
-            Manage your household bills and track due dates
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <DollarSign className="h-8 w-8 text-green-500" />
+              <h1 className="text-3xl font-bold text-gray-900">Smart Bill Management</h1>
+            </div>
+            <Button className="bg-green-600 hover:bg-green-700">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Bill
+            </Button>
+          </div>
+          <p className="text-gray-600 text-lg">
+            AI-powered bill tracking, categorization, and spending insights
           </p>
         </div>
 
-        {/* Create Bill Button */}
-        <div className="mb-6">
-          <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-          >
-            {showCreateForm ? 'Cancel' : 'Add New Bill'}
-          </button>
-        </div>
+        {/* AI Stats Cards */}
+        {aiInsights && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Bills</CardTitle>
+                <DollarSign className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{aiInsights.total_bills}</div>
+                <p className="text-xs text-gray-500">Active bills</p>
+              </CardContent>
+            </Card>
 
-        {/* Create Bill Form */}
-        {showCreateForm && (
-          <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-lg font-medium mb-4">Add New Bill</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Bill Name *
-                </label>
-                <input
-                  type="text"
-                  value={newBill.name}
-                  onChange={(e) => setNewBill({ ...newBill, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., Electricity Bill"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Amount *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={newBill.amount}
-                  onChange={(e) => setNewBill({ ...newBill, amount: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0.00"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Due Date *
-                </label>
-                <input
-                  type="date"
-                  value={newBill.due_date}
-                  onChange={(e) => setNewBill({ ...newBill, due_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Category
-                </label>
-                <select
-                  value={newBill.category}
-                  onChange={(e) => setNewBill({ ...newBill, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="utilities">Utilities</option>
-                  <option value="rent">Rent</option>
-                  <option value="insurance">Insurance</option>
-                  <option value="internet">Internet</option>
-                  <option value="phone">Phone</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={newBill.description}
-                  onChange={(e) => setNewBill({ ...newBill, description: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Optional description or notes"
-                />
-              </div>
-            </div>
-            
-            <div className="mt-4 flex justify-end space-x-3">
-              <button
-                onClick={() => setShowCreateForm(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={createBill}
-                disabled={loading}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {loading ? 'Creating...' : 'Create Bill'}
-              </button>
-            </div>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Monthly Spending</CardTitle>
+                <TrendingUp className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(aiInsights.monthly_spending)}</div>
+                <p className="text-xs text-gray-500">This month</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Upcoming Bills</CardTitle>
+                <Calendar className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{aiInsights.upcoming_bills}</div>
+                <p className="text-xs text-gray-500">Due soon</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Overdue Risk</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{aiInsights.overdue_risk}%</div>
+                <p className="text-xs text-gray-500">Risk level</p>
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
-            <p className="text-red-800">{error}</p>
+        {/* Tab Navigation */}
+        <div className="bg-white rounded-lg shadow mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8 px-6">
+              <button
+                onClick={() => setActiveTab('overview')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'overview'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Overview
+              </button>
+              <button
+                onClick={() => setActiveTab('bills')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'bills'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                All Bills ({bills.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('ai-insights')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'ai-insights'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                🧠 AI Insights
+              </button>
+            </nav>
           </div>
-        )}
 
-        {/* Bills List */}
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">Your Bills</h2>
-          </div>
-          
-          {loading ? (
-            <div className="px-6 py-12 text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            </div>
-          ) : bills.length === 0 ? (
-            <div className="px-6 py-12 text-center">
-              <div className="text-gray-500">
-                No bills found. Create your first bill above!
+          {/* Tab Content */}
+          <div className="p-6">
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                {/* Spending Overview */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Spending Overview
+                    </CardTitle>
+                    <CardDescription>
+                      AI-powered spending analysis and trends
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {aiInsights ? (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium">Monthly Spending Trend</span>
+                          <Badge variant={
+                            aiInsights.spending_trend === 'increasing' ? 'destructive' :
+                            aiInsights.spending_trend === 'decreasing' ? 'default' : 'secondary'
+                          }>
+                            {aiInsights.spending_trend === 'increasing' ? '↗️ Increasing' :
+                             aiInsights.spending_trend === 'decreasing' ? '↘️ Decreasing' : '→ Stable'}
+                          </Badge>
+                        </div>
+                        
+                        {/* Top Spending Categories */}
+                        <div>
+                          <h4 className="text-sm font-medium mb-3">Top Spending Categories</h4>
+                          <div className="space-y-2">
+                            {aiInsights.top_categories.slice(0, 3).map((category, index) => (
+                              <div key={index} className="flex items-center justify-between">
+                                <span className="text-sm">{category.category}</span>
+                                <div className="flex items-center gap-2">
+                                  <Progress value={category.percentage} className="w-20" />
+                                  <span className="text-sm font-medium">{formatCurrency(category.amount)}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">Loading AI insights...</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Recent Bills */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recent Bills</CardTitle>
+                    <CardDescription>Latest bills with AI insights</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {bills.slice(0, 5).map((bill) => (
+                      <div key={bill.id} className="flex items-center justify-between py-3 border-b last:border-b-0">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium">{bill.title}</h4>
+                            {bill.ai_confidence > 0.8 && (
+                              <Badge variant="secondary" className="text-xs">
+                                🤖 AI Verified
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">{bill.provider}</p>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-medium">{formatCurrency(bill.amount)}</div>
+                          <div className="text-sm text-gray-500">{formatDate(bill.due_date)}</div>
+                        </div>
+                        <Badge className={getStatusColor(bill.status)}>
+                          {bill.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
               </div>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-200">
-              {bills.map((bill) => (
-                <div key={bill.id} className="px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-2xl">{getCategoryIcon(bill.category)}</span>
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-900">{bill.name}</h3>
-                        <p className="text-sm text-gray-500">
-                          {bill.category} • Due {new Date(bill.due_date).toLocaleDateString()}
-                        </p>
-                        {bill.description && (
-                          <p className="text-xs text-gray-400 mt-1">{bill.description}</p>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="text-right">
-                      <div className="text-lg font-semibold text-gray-900">
-                        ${bill.amount.toFixed(2)}
-                      </div>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(bill.status)}`}>
-                        {bill.status}
-                      </span>
-                    </div>
+            )}
+
+            {activeTab === 'bills' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-medium text-gray-900">All Bills</h3>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm">Filter</Button>
+                    <Button variant="outline" size="sm">Sort</Button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                
+                {bills.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">No bills found</p>
+                ) : (
+                  <div className="grid gap-4">
+                    {bills.map((bill) => (
+                      <Card key={bill.id}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h4 className="font-medium text-lg">{bill.title}</h4>
+                                <Badge className={getStatusColor(bill.status)}>
+                                  {bill.status}
+                                </Badge>
+                                {bill.ai_confidence && (
+                                  <Badge className={getConfidenceColor(bill.ai_confidence)}>
+                                    AI: {Math.round(bill.ai_confidence * 100)}%
+                                  </Badge>
+                                )}
+                              </div>
+                              
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="text-gray-500">Provider:</span>
+                                  <p className="font-medium">{bill.provider}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Category:</span>
+                                  <p className="font-medium">{bill.category}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Due Date:</span>
+                                  <p className="font-medium">{formatDate(bill.due_date)}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Amount:</span>
+                                  <p className="font-medium text-lg text-green-600">{formatCurrency(bill.amount)}</p>
+                                </div>
+                              </div>
 
-        {/* Automation Info */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-blue-800 mb-2">Automation Ready</h3>
-          <p className="text-sm text-blue-700">
-            This bills system is integrated with the automation engine. When you create bills manually or receive them via email, 
-            automation rules can trigger actions like notifications, reminders, and more. Check the{' '}
-            <Link href="/inbox" className="underline">Inbox</Link> to see automation events in action.
-          </p>
+                              {/* AI Suggestions */}
+                              {bill.ai_category_suggestion && bill.ai_category_suggestion !== bill.category && (
+                                <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                  <div className="flex items-center gap-2">
+                                    <Brain className="h-4 w-4 text-blue-500" />
+                                    <span className="text-sm text-blue-800">
+                                      AI suggests category: <strong>{bill.ai_category_suggestion}</strong>
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="flex flex-col gap-2 ml-4">
+                              <Button size="sm" variant="outline">Edit</Button>
+                              <Button size="sm" variant="outline">Pay</Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'ai-insights' && (
+              <div className="space-y-6">
+                {/* AI Recommendations */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Lightbulb className="h-5 w-5" />
+                      AI Recommendations
+                    </CardTitle>
+                    <CardDescription>
+                      Smart suggestions to optimize your bill management
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {aiInsights?.ai_recommendations ? (
+                      <div className="space-y-3">
+                        {aiInsights.ai_recommendations.map((recommendation, index) => (
+                          <div key={index} className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                            <Target className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                            <span className="text-sm text-green-800">{recommendation}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">No AI recommendations yet</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Spending Patterns */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5" />
+                      Spending Patterns
+                    </CardTitle>
+                    <CardDescription>
+                      AI-analyzed spending trends over time
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {aiInsights?.spending_patterns ? (
+                      <div className="space-y-3">
+                        {aiInsights.spending_patterns.map((pattern, index) => (
+                          <div key={index} className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{pattern.month}</span>
+                            <div className="flex items-center gap-3">
+                              <Progress value={(pattern.amount / Math.max(...aiInsights.spending_patterns.map(p => p.amount))) * 100} className="w-32" />
+                              <span className="text-sm font-medium">{formatCurrency(pattern.amount)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">No spending pattern data yet</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
