@@ -60,8 +60,6 @@ async function calculateAIBillInsights(bills: any[], _householdId: string) {
 
   // Basic statistics
   const totalBills = bills.length;
-  const _paidBills = bills.filter(bill => bill.status === 'paid');
-  const _unpaidBills = bills.filter(bill => bill.status === 'unpaid' || bill.status === 'overdue');
   const overdueBills = bills.filter(bill => bill.status === 'overdue');
 
   // Monthly spending calculation
