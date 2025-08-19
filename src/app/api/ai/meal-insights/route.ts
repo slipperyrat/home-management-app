@@ -139,7 +139,7 @@ function calculateAIMealInsights(mealPlans: any[], recipes: any[], household: an
   if (mealTypeCounts.breakfast < mealTypeCounts.dinner * 0.3) {
     suggestions.push('Try to plan more breakfast options for better meal variety');
   }
-  if (popularRecipes.length > 0 && popularRecipes[0].usage_count > totalWeeks * 2) {
+  if (popularRecipes.length > 0 && popularRecipes[0]?.usage_count > totalWeeks * 2) {
     suggestions.push('Consider adding more recipe variety to avoid repetition');
   }
 
