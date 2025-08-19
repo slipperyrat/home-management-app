@@ -181,12 +181,21 @@ export default function AIEmailDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => router.back()}
-            className="text-blue-600 hover:text-blue-700 mb-4 flex items-center"
-          >
-            ← Back
-          </button>
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => router.back()}
+              className="text-blue-600 hover:text-blue-700 flex items-center"
+            >
+              ← Back
+            </button>
+            
+            <a
+              href="/ai-learning-dashboard"
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-md hover:bg-purple-700 transition-colors"
+            >
+              🧠 View AI Learning Insights
+            </a>
+          </div>
           
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             🤖 AI Email Processing Dashboard
