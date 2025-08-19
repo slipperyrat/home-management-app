@@ -1,23 +1,34 @@
 'use client';
 
-import { useAuth, useUser } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { getChores, addChore, completeChore, getChoreCompletions } from '@/lib/chores';
-
-interface UserData {
-  email: string;
-  role: 'owner' | 'member';
-  plan: 'free' | 'premium';
-  xp: number;
-  coins: number;
-  household: {
-    id: string;
-    plan: string;
-    game_mode: string;
-    created_at: string;
-  };
-}
+import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/nextjs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { 
+  Plus, 
+  CheckCircle, 
+  Clock, 
+  Brain, 
+  Lightbulb, 
+  TrendingUp, 
+  Target, 
+  Users,
+  Zap,
+  Sparkles,
+  BarChart3,
+  RotateCcw,
+  Settings,
+  Calendar,
+  AlertTriangle,
+  Star
+} from 'lucide-react';
 
 interface Chore {
   id: string;
@@ -28,366 +39,477 @@ interface Chore {
   recurrence?: string;
   created_by: string;
   household_id: string;
+  category: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'skipped';
+  ai_difficulty_rating: number;
+  ai_estimated_duration: number;
+  ai_preferred_time: string;
+  ai_energy_level: 'low' | 'medium' | 'high';
+  ai_skill_requirements: string[];
+  ai_confidence: number;
+  ai_suggested: boolean;
   created_at: string;
+  updated_at: string;
 }
 
-interface ChoreCompletion {
-  id: string;
-  completed_at: string;
-  xp_earned: number;
-  completed_by: string;
-  chore: {
-    id: string;
-    title: string;
-    household_id: string;
+interface AIChoreInsights {
+  total_chores: number;
+  pending_chores: number;
+  completed_chores: number;
+  ai_suggested_chores: number;
+  average_difficulty: number;
+  average_duration: number;
+  fairness_score: number;
+  household_patterns: string[];
+  suggested_improvements: string[];
+  ai_learning_progress: number;
+  optimal_scheduling: string[];
+  skill_gaps: string[];
+  energy_distribution: {
+    low: number;
+    medium: number;
+    high: number;
   };
+  category_breakdown: Record<string, number>;
+  user_workload_distribution: Record<string, number>;
+  completion_efficiency: number;
+}
+
+interface ChoreSuggestion {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  ai_difficulty_rating: number;
+  ai_estimated_duration: number;
+  ai_energy_level: string;
+  ai_confidence: number;
+  reasoning: string;
+  suggested_frequency: string;
+  priority: string;
 }
 
 export default function ChoresPage() {
-  const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
-  const router = useRouter();
-  
-  const [userData, setUserData] = useState<UserData | null>(null);
+  const { userId } = useAuth();
   const [chores, setChores] = useState<Chore[]>([]);
-  const [completions, setCompletions] = useState<ChoreCompletion[]>([]);
+  const [aiInsights, setAiInsights] = useState<AIChoreInsights | null>(null);
+  const [suggestions, setSuggestions] = useState<ChoreSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('overview');
+  
+  // Form states
   const [newChoreTitle, setNewChoreTitle] = useState('');
   const [newChoreDescription, setNewChoreDescription] = useState('');
-  const [newChoreDueDate, setNewChoreDueDate] = useState('');
+  const [newChoreCategory, setNewChoreCategory] = useState('general');
+  const [newChorePriority, setNewChorePriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
+  const [newChoreDifficulty, setNewChoreDifficulty] = useState(50);
+  const [newChoreDuration, setNewChoreDuration] = useState(30);
+  const [newChoreEnergy, setNewChoreEnergy] = useState<'low' | 'medium' | 'high'>('medium');
   const [creatingChore, setCreatingChore] = useState(false);
-  const [completingChore, setCompletingChore] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isLoaded) return;
-
-    if (!isSignedIn) {
-      router.push('/sign-in');
-      return;
-    }
-
-    async function fetchUserData() {
-      if (!user?.id) return;
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch('/api/user-data');
-        const result = await response.json();
-
-        if (!response.ok) {
-          console.error('Error fetching user data:', result.error);
-          setError(result.error || 'Failed to load user data');
-          return;
-        }
-
-        if (result.success && result.data) {
-          setUserData({
-            email: result.data.email,
-            role: result.data.role,
-            plan: result.data.plan || 'free',
-            xp: result.data.xp || 0,
-            coins: result.data.coins || 0,
-            household: result.data.household
-          });
-        } else {
-          setError('User not found in database');
-        }
-      } catch (err) {
-        console.error('Exception fetching user data:', err);
-        setError('An unexpected error occurred');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchUserData();
-  }, [isLoaded, isSignedIn, user?.id, router]);
-
-  useEffect(() => {
-    if (userData?.household?.id) {
+    if (userId) {
       fetchChores();
-      fetchCompletions();
+      fetchAIInsights();
+      fetchSuggestions();
     }
-  }, [userData]);
+  }, [userId]);
 
-  async function fetchChores() {
-    if (!userData?.household?.id) return;
-
+  const fetchChores = async () => {
     try {
-      setLoading(true);
-      const choresData = await getChores(userData.household.id);
-      setChores(choresData);
-    } catch (err) {
-      console.error('Error fetching chores:', err);
-      setError('Failed to load chores');
+      const response = await fetch(`/api/chores?householdId=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setChores(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching chores:', error);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function fetchCompletions() {
-    if (!userData?.household?.id) return;
-
+  const fetchAIInsights = async () => {
     try {
-      const completionsData = await getChoreCompletions(userData.household.id);
-      setCompletions(completionsData);
-    } catch (err) {
-      console.error('Error fetching chore completions:', err);
+      const response = await fetch('/api/ai/chore-insights');
+      if (response.ok) {
+        const data = await response.json();
+        setAiInsights(data.insights);
+      }
+    } catch (error) {
+      console.error('Error fetching AI insights:', error);
     }
-  }
+  };
 
-  async function handleCreateChore() {
-    if (!newChoreTitle.trim() || !userData?.household?.id || !user?.id) return;
-
+  const fetchSuggestions = async () => {
     try {
-      setCreatingChore(true);
-      await addChore({
-        title: newChoreTitle.trim(),
-        ...(newChoreDescription.trim() && { description: newChoreDescription.trim() }),
-        ...(newChoreDueDate && { due_at: newChoreDueDate }),
-        created_by: user.id,
-        household_id: userData.household.id
+      const response = await fetch('/api/ai/chore-suggestions');
+      if (response.ok) {
+        const data = await response.json();
+        setSuggestions(data.suggestions || []);
+      }
+    } catch (error) {
+      console.error('Error fetching suggestions:', error);
+    }
+  };
+
+  const createChore = async () => {
+    if (!newChoreTitle.trim()) return;
+    
+    setCreatingChore(true);
+    try {
+      const response = await fetch('/api/chores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newChoreTitle,
+          description: newChoreDescription,
+          category: newChoreCategory,
+          priority: newChorePriority,
+          ai_difficulty_rating: newChoreDifficulty,
+          ai_estimated_duration: newChoreDuration,
+          ai_energy_level: newChoreEnergy,
+          created_by: userId,
+          household_id: userId
+        })
       });
-      setNewChoreTitle('');
-      setNewChoreDescription('');
-      setNewChoreDueDate('');
-      await fetchChores(); // Refresh the chores
-    } catch (err) {
-      console.error('Error creating chore:', err);
-      setError('Failed to create chore');
+
+      if (response.ok) {
+        setNewChoreTitle('');
+        setNewChoreDescription('');
+        setNewChoreCategory('general');
+        setNewChorePriority('medium');
+        setNewChoreDifficulty(50);
+        setNewChoreDuration(30);
+        setNewChoreEnergy('medium');
+        fetchChores();
+        fetchAIInsights();
+      }
+    } catch (error) {
+      console.error('Error creating chore:', error);
     } finally {
       setCreatingChore(false);
     }
-  }
+  };
 
-  async function handleCompleteChore(choreId: string) {
-    if (!user?.id) return;
-
+  const assignChore = async (choreId: string) => {
     try {
-      setCompletingChore(choreId);
-      await completeChore({
-        choreId,
-        userId: user.id,
-        xp: 10 // Default XP for completing a chore
+      const response = await fetch('/api/ai/chore-assignment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ choreId, assignmentType: 'smart' })
       });
-      await fetchChores(); // Refresh the chores
-      await fetchCompletions(); // Refresh completions
-    } catch (err) {
-      console.error('Error completing chore:', err);
-      setError('Failed to complete chore');
-    } finally {
-      setCompletingChore(null);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('AI Assignment:', data.ai_reasoning);
+        fetchChores();
+        fetchAIInsights();
+      }
+    } catch (error) {
+      console.error('Error assigning chore:', error);
     }
-  }
+  };
 
-  function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-
-  function formatDueDate(dateString: string) {
-    const dueDate = new Date(dateString);
-    const now = new Date();
-    const diffTime = dueDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) {
-      return <span className="text-red-600 font-medium">Overdue</span>;
-    } else if (diffDays === 0) {
-      return <span className="text-orange-600 font-medium">Due today</span>;
-    } else if (diffDays === 1) {
-      return <span className="text-yellow-600 font-medium">Due tomorrow</span>;
-    } else {
-      return <span className="text-gray-600">Due in {diffDays} days</span>;
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'urgent': return 'bg-red-100 text-red-800';
+      case 'high': return 'bg-orange-100 text-orange-800';
+      case 'medium': return 'bg-blue-100 text-blue-800';
+      case 'low': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
-  }
+  };
 
-  // Show loading spinner while auth is loading or data is being fetched
-  if (!isLoaded || loading) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'in_progress': return 'bg-blue-100 text-blue-800';
+      case 'assigned': return 'bg-purple-100 text-purple-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getDifficultyColor = (difficulty: number) => {
+    if (difficulty >= 80) return 'text-red-600';
+    if (difficulty >= 60) return 'text-orange-600';
+    if (difficulty >= 40) return 'text-yellow-600';
+    return 'text-green-600';
+  };
+
+  const getEnergyColor = (energy: string) => {
+    switch (energy) {
+      case 'high': return 'text-red-600';
+      case 'medium': return 'text-yellow-600';
+      case 'low': return 'text-green-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // This should not be reached if redirect is working, but just in case
-  if (!isSignedIn) {
-    return null;
-  }
-
-  // Show error state
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white shadow rounded-lg p-6 max-w-md w-full mx-4">
-          <div className="text-center">
-            <div className="text-red-500 text-6xl mb-4">⚠️</div>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Error</h1>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <button 
-              onClick={() => {
-          if (typeof window !== 'undefined') {
-            window.location.reload();
-          }
-        }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-            >
-              Try Again
-            </button>
-          </div>
+          <Target className="h-12 w-12 animate-pulse mx-auto mb-4 text-blue-500" />
+          <p className="text-lg text-gray-600">Loading Smart Chores...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Chores</h1>
-          <p className="text-gray-600">Manage your household chores and tasks</p>
+    <div className="container mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <Target className="h-8 w-8 text-blue-500" />
+          <h1 className="text-3xl font-bold text-gray-900">Smart Chore Management</h1>
+          <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+            <Brain className="h-4 w-4 mr-1" />
+            AI-Powered
+          </Badge>
         </div>
-
-        {/* Create new chore section */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Add New Chore</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <input
-              type="text"
-              value={newChoreTitle}
-              onChange={(e) => setNewChoreTitle(e.target.value)}
-              placeholder="Chore title..."
-              className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              onKeyPress={(e) => e.key === 'Enter' && handleCreateChore()}
-            />
-            <input
-              type="text"
-              value={newChoreDescription}
-              onChange={(e) => setNewChoreDescription(e.target.value)}
-              placeholder="Description (optional)..."
-              className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <input
-              type="datetime-local"
-              value={newChoreDueDate}
-              onChange={(e) => setNewChoreDueDate(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          <button
-            onClick={handleCreateChore}
-            disabled={!newChoreTitle.trim() || creatingChore}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {creatingChore ? 'Creating...' : 'Add Chore'}
-          </button>
-        </div>
-
-        {/* Chores grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {chores.map((chore) => (
-            <div
-              key={chore.id}
-              className="bg-white rounded-lg shadow hover:shadow-md transition-shadow p-6"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {chore.title}
-                </h3>
-                <button
-                  onClick={() => handleCompleteChore(chore.id)}
-                  disabled={completingChore === chore.id}
-                  className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {completingChore === chore.id ? 'Completing...' : 'Complete'}
-                </button>
-              </div>
-              
-              {chore.description ? <p className="text-gray-600 mb-4">{chore.description}</p> : null}
-
-              <div className="text-sm text-gray-500 mb-4">
-                Created {formatDate(chore.created_at)}
-              </div>
-
-              {chore.due_at ? <div className="mb-4">
-                  {formatDueDate(chore.due_at)}
-                </div> : null}
-
-              {chore.assigned_to ? <div className="text-sm text-gray-600">
-                  Assigned to: {chore.assigned_to}
-                </div> : null}
-            </div>
-          ))}
-        </div>
-
-        {/* Empty state */}
-        {chores.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <div className="text-gray-400 text-6xl mb-4">🧹</div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No chores yet</h3>
-            <p className="text-gray-600">Add your first chore to get started!</p>
-          </div>
-        )}
-
-        {/* Recent completions */}
-        {completions.length > 0 && (
-          <div className="mt-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Recent Completions</h2>
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Chore
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Completed By
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        XP Earned
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Completed At
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {completions.slice(0, 10).map((completion) => (
-                      <tr key={completion.id}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {completion.chore.title}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {completion.completed_by}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          +{completion.xp_earned} XP
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(completion.completed_at)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+        <p className="text-gray-600 text-lg">
+          Intelligent chore assignment with AI fairness optimization and smart scheduling
+        </p>
       </div>
+
+      {/* AI Insights Summary */}
+      {aiInsights && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Chores</CardTitle>
+              <Target className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{aiInsights.total_chores}</div>
+              <p className="text-xs text-gray-500">Chores created</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending</CardTitle>
+              <Clock className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{aiInsights.pending_chores}</div>
+              <p className="text-xs text-gray-500">Awaiting completion</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Fairness Score</CardTitle>
+              <Users className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{aiInsights.fairness_score}%</div>
+              <p className="text-xs text-gray-500">Workload balance</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">AI Learning</CardTitle>
+              <Brain className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{aiInsights.ai_learning_progress}%</div>
+              <p className="text-xs text-gray-500">Pattern recognition</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Main Content Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="chores">All Chores</TabsTrigger>
+          <TabsTrigger value="ai-insights">AI Insights</TabsTrigger>
+          <TabsTrigger value="suggestions">Smart Suggestions</TabsTrigger>
+          <TabsTrigger value="create">Create Chore</TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-yellow-500" />
+                Quick Actions
+              </CardTitle>
+              <CardDescription>
+                Manage your chores with AI-powered assistance
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-3">
+                <Button 
+                  onClick={() => setActiveTab('create')}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Chore
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                  onClick={() => setActiveTab('suggestions')}
+                >
+                  <Lightbulb className="h-4 w-4 mr-2" />
+                  AI Suggestions
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="border-green-200 text-green-700 hover:bg-green-50"
+                  onClick={() => setActiveTab('ai-insights')}
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  AI Insights
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="border-orange-200 text-orange-700 hover:bg-orange-50"
+                  onClick={() => setActiveTab('chores')}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Manage Chores
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recent Chores */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Recent Chores
+              </CardTitle>
+              <CardDescription>
+                Your latest chore activities and assignments
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {chores.slice(0, 5).length > 0 ? (
+                <div className="space-y-4">
+                  {chores.slice(0, 5).map((chore) => (
+                    <div key={chore.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="font-medium">{chore.title}</h4>
+                          {chore.ai_suggested && (
+                            <Badge variant="secondary" className="bg-purple-100 text-purple-800 text-xs">
+                              <Sparkles className="h-3 w-3 mr-1" />
+                              AI Suggested
+                            </Badge>
+                          )}
+                          <Badge className={getPriorityColor(chore.priority)}>
+                            {chore.priority}
+                          </Badge>
+                          <Badge variant="outline" className={getStatusColor(chore.status)}>
+                            {chore.status}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <span className={getDifficultyColor(chore.ai_difficulty_rating)}>
+                            Difficulty: {chore.ai_difficulty_rating}%
+                          </span>
+                          <span>{chore.ai_estimated_duration} min</span>
+                          <span className={getEnergyColor(chore.ai_energy_level)}>
+                            {chore.ai_energy_level} energy
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-600 mb-1">Category</div>
+                        <Badge variant="outline">{chore.category}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center py-8">
+                  No chores yet. Create your first chore to get started!
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* AI Learning Progress */}
+          {aiInsights && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-purple-500" />
+                  AI Learning Progress
+                </CardTitle>
+                <CardDescription>
+                  How well the AI understands your household patterns
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between text-sm">
+                    <span>Pattern Recognition</span>
+                    <span>{aiInsights.ai_learning_progress}%</span>
+                  </div>
+                  <Progress value={aiInsights.ai_learning_progress} />
+                  <p className="text-sm text-gray-600">
+                    The AI is learning from your chore patterns to provide better assignments and suggestions
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Placeholder for other tabs */}
+        <TabsContent value="chores" className="space-y-6">
+          <Card>
+            <CardContent className="text-center py-12">
+              <Target className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">All Chores</h3>
+              <p className="text-gray-500">Chore management interface coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ai-insights" className="space-y-6">
+          <Card>
+            <CardContent className="text-center py-12">
+              <Brain className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">AI Insights</h3>
+              <p className="text-gray-500">AI insights interface coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="suggestions" className="space-y-6">
+          <Card>
+            <CardContent className="text-center py-12">
+              <Lightbulb className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Smart Suggestions</h3>
+              <p className="text-gray-500">AI suggestions interface coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="create" className="space-y-6">
+          <Card>
+            <CardContent className="text-center py-12">
+              <Plus className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Create Chore</h3>
+              <p className="text-gray-500">Chore creation interface coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 } 

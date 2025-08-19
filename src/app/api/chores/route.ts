@@ -41,7 +41,22 @@ export async function POST(request: NextRequest) {
     
     // Sanitize input data
     const clean = sanitizeDeep(body, { description: 'rich' });
-    const { title, description, assigned_to, due_at, recurrence, created_by, household_id } = clean;
+    const { 
+      title, 
+      description, 
+      assigned_to, 
+      due_at, 
+      recurrence, 
+      created_by, 
+      household_id,
+      category = 'general',
+      priority = 'medium',
+      ai_difficulty_rating,
+      ai_estimated_duration,
+      ai_preferred_time,
+      ai_energy_level,
+      ai_skill_requirements
+    } = clean;
 
     if (!title || !created_by || !household_id) {
       return NextResponse.json({ error: 'Title, created_by, and household_id are required' }, { status: 400 });
@@ -53,6 +68,16 @@ export async function POST(request: NextRequest) {
       assigned_to: assigned_to || null,
       due_at: due_at || null,
       recurrence: recurrence || null,
+      category,
+      priority,
+      ai_difficulty_rating: ai_difficulty_rating || 50,
+      ai_estimated_duration: ai_estimated_duration || 30,
+      ai_preferred_time: ai_preferred_time || 'anytime',
+      ai_energy_level: ai_energy_level || 'medium',
+      ai_skill_requirements: ai_skill_requirements || [],
+      ai_confidence: 75,
+      ai_suggested: false,
+      status: 'pending',
       created_by,
       household_id
     };
