@@ -103,7 +103,22 @@ export class AILearningService {
     const learning_priority = this.calculateLearningPriority(pattern_type, issue_category);
 
     // Generate suggested improvements
-    const suggested_improvements = this.generateSuggestedImprovements([{ pattern_type, issue_category }]);
+    const suggested_improvements = this.generateSuggestedImprovements([{ 
+      pattern_type, 
+      issue_category,
+      id: '',
+      household_id: request.household_id,
+      correction_id: request.correction_id,
+      correction_type: request.correction_type as 'correct' | 'ignore' | 'mark_done',
+      original_ai_output: request.original_suggestion,
+      corrected_output: request.user_correction,
+      correction_reason: request.user_notes,
+      confidence_impact: 0,
+      pattern_strength: 1,
+      is_learned: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }]);
 
     return {
       pattern_type,
