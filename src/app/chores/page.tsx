@@ -75,13 +75,6 @@ export default function ChoresPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
 
-  useEffect(() => {
-    if (userId) {
-      fetchChores();
-      fetchAIInsights();
-    }
-  }, [userId, fetchChores, fetchAIInsights]);
-
   const fetchChores = async () => {
     try {
       const response = await fetch(`/api/chores?householdId=${userId}`);
@@ -107,6 +100,13 @@ export default function ChoresPage() {
       console.error('Error fetching AI insights:', error);
     }
   };
+
+  useEffect(() => {
+    if (userId) {
+      fetchChores();
+      fetchAIInsights();
+    }
+  }, [userId]);
 
   
 
