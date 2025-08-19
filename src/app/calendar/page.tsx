@@ -20,8 +20,6 @@ import {
   Zap,
   Users,
   Target,
-  CalendarDays,
-  Smartphone,
   Bell
 } from 'lucide-react';
 
@@ -62,7 +60,7 @@ export default function CalendarPage() {
   const [aiInsights, setAiInsights] = useState<AICalendarInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  const [selectedDate, setSelectedDate] = useState(new Date());
+
 
   useEffect(() => {
     if (userId) {
@@ -127,11 +125,7 @@ export default function CalendarPage() {
     return 'text-red-600';
   };
 
-  const getAIConfidenceBadge = (confidence: number) => {
-    if (confidence >= 80) return 'bg-green-100 text-green-800';
-    if (confidence >= 60) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-red-100 text-red-800';
-  };
+
 
   if (loading) {
     return (
