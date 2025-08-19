@@ -249,7 +249,7 @@ function calculatePreferenceScores(preferences: any[], chore: any, members: any[
   return scores;
 }
 
-function calculateSkillMatchScores(chore: any, members: any[]) {
+function calculateSkillMatchScores(_chore: any, members: any[]) {
   const scores: { [key: string]: number } = {};
   
   // For now, assume all members have basic skills
