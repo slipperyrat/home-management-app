@@ -7,27 +7,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 import { 
   Plus, 
-  CheckCircle, 
   Clock, 
   Brain, 
   Lightbulb, 
-  TrendingUp, 
   Target, 
   Users,
   Zap,
   Sparkles,
-  BarChart3,
-  RotateCcw,
-  Settings,
-  Calendar,
-  AlertTriangle,
-  Star
+  RotateCcw
 } from 'lucide-react';
 
 interface Chore {
@@ -94,25 +84,13 @@ export default function ChoresPage() {
   const { userId } = useAuth();
   const [chores, setChores] = useState<Chore[]>([]);
   const [aiInsights, setAiInsights] = useState<AIChoreInsights | null>(null);
-  const [suggestions, setSuggestions] = useState<ChoreSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  
-  // Form states
-  const [newChoreTitle, setNewChoreTitle] = useState('');
-  const [newChoreDescription, setNewChoreDescription] = useState('');
-  const [newChoreCategory, setNewChoreCategory] = useState('general');
-  const [newChorePriority, setNewChorePriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
-  const [newChoreDifficulty, setNewChoreDifficulty] = useState(50);
-  const [newChoreDuration, setNewChoreDuration] = useState(30);
-  const [newChoreEnergy, setNewChoreEnergy] = useState<'low' | 'medium' | 'high'>('medium');
-  const [creatingChore, setCreatingChore] = useState(false);
 
   useEffect(() => {
     if (userId) {
       fetchChores();
       fetchAIInsights();
-      fetchSuggestions();
     }
   }, [userId]);
 
@@ -142,75 +120,7 @@ export default function ChoresPage() {
     }
   };
 
-  const fetchSuggestions = async () => {
-    try {
-      const response = await fetch('/api/ai/chore-suggestions');
-      if (response.ok) {
-        const data = await response.json();
-        setSuggestions(data.suggestions || []);
-      }
-    } catch (error) {
-      console.error('Error fetching suggestions:', error);
-    }
-  };
-
-  const createChore = async () => {
-    if (!newChoreTitle.trim()) return;
-    
-    setCreatingChore(true);
-    try {
-      const response = await fetch('/api/chores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: newChoreTitle,
-          description: newChoreDescription,
-          category: newChoreCategory,
-          priority: newChorePriority,
-          ai_difficulty_rating: newChoreDifficulty,
-          ai_estimated_duration: newChoreDuration,
-          ai_energy_level: newChoreEnergy,
-          created_by: userId,
-          household_id: userId
-        })
-      });
-
-      if (response.ok) {
-        setNewChoreTitle('');
-        setNewChoreDescription('');
-        setNewChoreCategory('general');
-        setNewChorePriority('medium');
-        setNewChoreDifficulty(50);
-        setNewChoreDuration(30);
-        setNewChoreEnergy('medium');
-        fetchChores();
-        fetchAIInsights();
-      }
-    } catch (error) {
-      console.error('Error creating chore:', error);
-    } finally {
-      setCreatingChore(false);
-    }
-  };
-
-  const assignChore = async (choreId: string) => {
-    try {
-      const response = await fetch('/api/ai/chore-assignment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ choreId, assignmentType: 'smart' })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('AI Assignment:', data.ai_reasoning);
-        fetchChores();
-        fetchAIInsights();
-      }
-    } catch (error) {
-      console.error('Error assigning chore:', error);
-    }
-  };
+  
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
