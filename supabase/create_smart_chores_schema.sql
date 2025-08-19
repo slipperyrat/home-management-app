@@ -128,7 +128,7 @@ ALTER TABLE chore_rotation_schedules ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view chore assignments for their household" ON chore_assignments
   FOR SELECT USING (
     household_id IN (
-      SELECT household_id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+      SELECT household_id FROM users WHERE id = auth.jwt() ->> 'sub'
     )
   );
 
@@ -140,7 +140,7 @@ CREATE POLICY "Users can manage their own chore preferences" ON chore_preference
 CREATE POLICY "Users can view completion patterns for their household" ON chore_completion_patterns
   FOR SELECT USING (
     household_id IN (
-      SELECT household_id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+      SELECT household_id FROM users WHERE id = auth.jwt() ->> 'sub'
     )
   );
 
@@ -148,7 +148,7 @@ CREATE POLICY "Users can view completion patterns for their household" ON chore_
 CREATE POLICY "Users can view AI insights for their household" ON chore_ai_insights
   FOR SELECT USING (
     household_id IN (
-      SELECT household_id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+      SELECT household_id FROM users WHERE id = auth.jwt() ->> 'sub'
     )
   );
 
@@ -156,7 +156,7 @@ CREATE POLICY "Users can view AI insights for their household" ON chore_ai_insig
 CREATE POLICY "Users can view rotation schedules for their household" ON chore_rotation_schedules
   FOR SELECT USING (
     household_id IN (
-      SELECT household_id FROM users WHERE clerk_id = auth.jwt() ->> 'sub'
+      SELECT household_id FROM users WHERE id = auth.jwt() ->> 'sub'
     )
   );
 

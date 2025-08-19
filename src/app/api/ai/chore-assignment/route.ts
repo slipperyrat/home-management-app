@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('household_id')
-      .eq('clerk_id', userId)
+      .eq('id', userId)
       .single();
 
     if (userError || !userData?.household_id) {
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     // Get household members
     const { data: members, error: membersError } = await supabase
       .from('users')
-      .select('clerk_id, email')
+      .select('id, email')
       .eq('household_id', householdId);
 
     if (membersError) {
@@ -145,8 +145,8 @@ function generateSmartAssignment(
 
   // Initialize member scores and reasons
   members.forEach(member => {
-    memberScores[member.clerk_id] = 0;
-    memberReasons[member.clerk_id] = [];
+    memberScores[member.id] = 0;
+    memberReasons[member.id] = [];
   });
 
   // Calculate workload distribution
@@ -166,7 +166,7 @@ function generateSmartAssignment(
 
   // Combine all scores based on assignment type
   members.forEach(member => {
-    const memberId = member.clerk_id;
+    const memberId = member.id;
     
     // Base score starts at 50
     let totalScore = 50;
@@ -200,7 +200,7 @@ function generateSmartAssignment(
   });
 
   // Find the best assignment
-  let bestMember = members[0]?.clerk_id;
+  let bestMember = members[0]?.id;
   let bestScore = -1;
 
   Object.entries(memberScores).forEach(([memberId, score]) => {
@@ -211,7 +211,7 @@ function generateSmartAssignment(
   });
 
   // Generate reasoning
-  const reasoning = `AI assigned this chore to ${members.find(m => m.clerk_id === bestMember)?.email} based on:
+  const reasoning = `AI assigned this chore to ${members.find(m => m.id === bestMember)?.email} based on:
 ${memberReasons[bestMember]?.map(reason => `• ${reason}`).join('\n')}
 
 Final score: ${bestScore.toFixed(1)}/100`;
@@ -227,8 +227,8 @@ function calculateWorkloadDistribution(completions: any[], members: any[]) {
   const distribution: { [key: string]: number } = {};
   
   members.forEach(member => {
-    const memberCompletions = completions.filter(c => c.user_id === member.clerk_id);
-    distribution[member.clerk_id] = memberCompletions.length;
+    const memberCompletions = completions.filter(c => c.user_id === member.id);
+    distribution[member.id] = memberCompletions.length;
   });
 
   return distribution;
@@ -238,13 +238,13 @@ function calculatePreferenceScores(preferences: any[], chore: any, members: any[
   const scores: { [key: string]: number } = {};
   
   members.forEach(member => {
-    const memberPreferences = preferences.filter(p => p.user_id === member.clerk_id);
+    const memberPreferences = preferences.filter(p => p.user_id === member.id);
     const categoryPreference = memberPreferences.find(p => p.chore_category === chore.category);
     
     if (categoryPreference) {
-      scores[member.clerk_id] = categoryPreference.preference_score;
+      scores[member.id] = categoryPreference.preference_score;
     } else {
-      scores[member.clerk_id] = 50; // Default neutral preference
+      scores[member.id] = 50; // Default neutral preference
     }
   });
 
@@ -257,7 +257,7 @@ function calculateSkillMatchScores(chore: any, members: any[]) {
   // For now, assume all members have basic skills
   // In a real system, this would check actual skill levels
   members.forEach(member => {
-    scores[member.clerk_id] = 75; // Default skill level
+    scores[member.id] = 75; // Default skill level
   });
 
   return scores;
@@ -269,7 +269,7 @@ function calculateEnergyCompatibility(chore: any, members: any[]) {
   // For now, assume all members have medium energy
   // In a real system, this would check actual energy patterns
   members.forEach(member => {
-    scores[member.clerk_id] = 70; // Default energy compatibility
+    scores[member.id] = 70; // Default energy compatibility
   });
 
   return scores;
@@ -282,14 +282,14 @@ function calculateFairnessScores(workloadDistribution: { [key: string]: number }
   const averageWorkload = workloads.reduce((sum, w) => sum + w, 0) / workloads.length;
   
   members.forEach(member => {
-    const currentWorkload = workloadDistribution[member.clerk_id] || 0;
+    const currentWorkload = workloadDistribution[member.id] || 0;
     const difference = averageWorkload - currentWorkload;
     
     // Higher score for members with lower workload
     if (difference > 0) {
-      scores[member.clerk_id] = Math.min(100, 50 + (difference * 10));
+      scores[member.id] = Math.min(100, 50 + (difference * 10));
     } else {
-      scores[member.clerk_id] = Math.max(0, 50 + (difference * 5));
+      scores[member.id] = Math.max(0, 50 + (difference * 5));
     }
   });
 
