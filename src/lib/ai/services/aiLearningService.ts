@@ -103,7 +103,7 @@ export class AILearningService {
     const learning_priority = this.calculateLearningPriority(pattern_type, issue_category);
 
     // Generate suggested improvements
-    const suggested_improvements = this.generateSuggestedImprovements(pattern_type, issue_category);
+    const suggested_improvements = this.generateSuggestedImprovements([{ pattern_type, issue_category }]);
 
     return {
       pattern_type,
