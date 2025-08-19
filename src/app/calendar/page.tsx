@@ -1,24 +1,30 @@
-'use client'
+'use client';
 
-import { useAuth, useUser } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { getCalendarEvents, addCalendarEvent, deleteCalendarEvent } from '@/lib/calendar';
-import { canAccessFeature } from '@/lib/planFeatures';
-
-interface UserData {
-  email: string;
-  role: 'owner' | 'member';
-  plan: 'free' | 'premium';
-  xp: number;
-  coins: number;
-  household: {
-    id: string;
-    plan: string;
-    game_mode: string;
-    created_at: string;
-  };
-}
+import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/nextjs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  Plus, 
+  Calendar, 
+  Brain, 
+  Lightbulb, 
+  TrendingUp, 
+  Clock,
+  AlertTriangle,
+  CheckCircle,
+  Sparkles,
+  BarChart3,
+  Zap,
+  Users,
+  Target,
+  CalendarDays,
+  Smartphone,
+  Bell
+} from 'lucide-react';
 
 interface CalendarEvent {
   id: string;
@@ -26,348 +32,530 @@ interface CalendarEvent {
   description?: string;
   start_time: string;
   end_time: string;
-  created_by: string;
   household_id: string;
+  created_by: string;
+  event_type: string;
+  priority: 'low' | 'medium' | 'high';
+  ai_suggested: boolean;
+  ai_confidence: number;
+  conflict_resolved: boolean;
+  reminder_sent: boolean;
   created_at: string;
+  updated_at: string;
+}
+
+interface AICalendarInsights {
+  total_events: number;
+  upcoming_events: number;
+  conflicts_resolved: number;
+  ai_suggestions_count: number;
+  most_common_event_types: string[];
+  optimal_scheduling_times: string[];
+  household_patterns: string[];
+  suggested_improvements: string[];
+  ai_learning_progress: number;
+  next_optimal_scheduling: string;
 }
 
 export default function CalendarPage() {
-  const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
-  const router = useRouter();
-  
-  const [userData, setUserData] = useState<UserData | null>(null);
+  const { userId } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [aiInsights, setAiInsights] = useState<AICalendarInsights | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [addingEvent, setAddingEvent] = useState(false);
-  const [deletingEvent, setDeletingEvent] = useState<string | null>(null);
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    start_time: '',
-    end_time: ''
-  });
+  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(() => {
-    if (!isLoaded) return;
-
-    if (!isSignedIn) {
-      router.push('/sign-in');
-      return;
-    }
-
-    async function fetchUserData() {
-      if (!user?.id) return;
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch('/api/user-data');
-        const result = await response.json();
-
-        if (!response.ok) {
-          console.error('Error fetching user data:', result.error);
-          setError(result.error || 'Failed to load user data');
-          return;
-        }
-
-        if (result.success && result.data) {
-          const userDataObj = {
-            email: result.data.email,
-            role: result.data.role,
-            plan: result.data.plan || 'free',
-            xp: result.data.xp || 0,
-            coins: result.data.coins || 0,
-            household: result.data.household
-          };
-          
-          setUserData(userDataObj);
-          
-          // Check if user can access calendar feature
-          if (!canAccessFeature(userDataObj.plan, 'calendar')) {
-            router.push('/upgrade');
-            
-          }
-        } else {
-          setError('User not found in database');
-        }
-      } catch (err) {
-        console.error('Exception fetching user data:', err);
-        setError('An unexpected error occurred');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchUserData();
-  }, [isLoaded, isSignedIn, user?.id, router]);
-
-  useEffect(() => {
-    if (userData?.household?.id) {
+    if (userId) {
       fetchEvents();
+      fetchAICalendarInsights();
     }
-  }, [userData]);
+  }, [userId]);
 
-  async function fetchEvents() {
-    if (!userData?.household?.id) return;
-
+  const fetchEvents = async () => {
     try {
-      setLoading(true);
-      const data = await getCalendarEvents(userData.household.id);
-      setEvents(data);
-    } catch (err) {
-      console.error('Error fetching events:', err);
-      setError('Failed to load calendar events');
+      const response = await fetch('/api/calendar');
+      if (response.ok) {
+        const data = await response.json();
+        setEvents(data.events || []);
+      }
+    } catch (error) {
+      console.error('Error fetching events:', error);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleAddEvent(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user?.id || !userData?.household?.id) return;
-
+  const fetchAICalendarInsights = async () => {
     try {
-      setAddingEvent(true);
-      setError(null);
-
-      await addCalendarEvent({
-        title: formData.title,
-        ...(formData.description && { description: formData.description }),
-        start_time: formData.start_time,
-        end_time: formData.end_time,
-        created_by: user.id,
-        household_id: userData.household.id
-      });
-
-      // Reset form
-      setFormData({
-        title: '',
-        description: '',
-        start_time: '',
-        end_time: ''
-      });
-
-      // Refresh events
-      await fetchEvents();
-    } catch (err) {
-      console.error('Error adding event:', err);
-      setError('Failed to add calendar event');
-    } finally {
-      setAddingEvent(false);
+      const response = await fetch('/api/ai/calendar-insights');
+      if (response.ok) {
+        const data = await response.json();
+        setAiInsights(data.insights);
+      }
+    } catch (error) {
+      console.error('Error fetching AI insights:', error);
     }
-  }
+  };
 
-  async function handleDeleteEvent(eventId: string) {
-    if (!user?.id) return;
+  const getUpcomingEvents = () => {
+    const now = new Date();
+    return events.filter(event => new Date(event.start_time) > now).slice(0, 5);
+  };
 
-    try {
-      setDeletingEvent(eventId);
-      setError(null);
-
-      await deleteCalendarEvent(eventId);
-      await fetchEvents();
-    } catch (err) {
-      console.error('Error deleting event:', err);
-      setError('Failed to delete calendar event');
-    } finally {
-      setDeletingEvent(null);
-    }
-  }
-
-  function formatDateTime(dateTimeString: string) {
-    return new Date(dateTimeString).toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-
-  // Show loading spinner while auth is loading or data is being fetched
-  if (!isLoaded || loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
+  const getConflicts = () => {
+    // Simple conflict detection - events that overlap
+    const conflicts: CalendarEvent[][] = [];
+    const sortedEvents = [...events].sort((a, b) => 
+      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
     );
-  }
 
-  // This should not be reached if redirect is working, but just in case
-  if (!isSignedIn) {
-    return null;
-  }
+    for (let i = 0; i < sortedEvents.length - 1; i++) {
+      const current = sortedEvents[i];
+      const next = sortedEvents[i + 1];
+      
+      if (current && next && new Date(current.end_time) > new Date(next.start_time)) {
+        conflicts.push([current, next]);
+      }
+    }
 
-  // Show error state
-  if (error) {
+    return conflicts;
+  };
+
+  const getAIConfidenceColor = (confidence: number) => {
+    if (confidence >= 80) return 'text-green-600';
+    if (confidence >= 60) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getAIConfidenceBadge = (confidence: number) => {
+    if (confidence >= 80) return 'bg-green-100 text-green-800';
+    if (confidence >= 60) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-red-100 text-red-800';
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white shadow rounded-lg p-6 max-w-md w-full mx-4">
-          <div className="text-center">
-            <div className="text-red-500 text-6xl mb-4">⚠️</div>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Error</h1>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <button 
-              onClick={() => {
-          if (typeof window !== 'undefined') {
-            window.location.reload();
-          }
-        }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-            >
-              Try Again
-            </button>
-          </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Calendar className="h-12 w-12 animate-pulse mx-auto mb-4 text-blue-500" />
+          <p className="text-lg text-gray-600">Loading Smart Calendar...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">📅 Calendar</h1>
-          <p className="text-gray-600">Manage your household calendar events</p>
+    <div className="container mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <Calendar className="h-8 w-8 text-blue-500" />
+          <h1 className="text-3xl font-bold text-gray-900">Smart Calendar & Events</h1>
+          <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+            <Brain className="h-4 w-4 mr-1" />
+            AI-Powered
+          </Badge>
         </div>
+        <p className="text-gray-600 text-lg">
+          Intelligent scheduling with AI conflict resolution and smart reminders
+        </p>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Add Event Form */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Add New Event</h2>
-              
-              <form onSubmit={handleAddEvent} className="space-y-4">
-                <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
-                    Title *
-                  </label>
-                  <input
-                    type="text"
-                    id="title"
-                    required
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Event title"
-                  />
-                </div>
+      {/* AI Insights Summary */}
+      {aiInsights && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Events</CardTitle>
+              <Calendar className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{aiInsights.total_events}</div>
+              <p className="text-xs text-gray-500">Events scheduled</p>
+            </CardContent>
+          </Card>
 
-                <div>
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    rows={3}
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Event description (optional)"
-                  />
-                </div>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Upcoming</CardTitle>
+              <Clock className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{aiInsights.upcoming_events}</div>
+              <p className="text-xs text-gray-500">Events ahead</p>
+            </CardContent>
+          </Card>
 
-                <div>
-                  <label htmlFor="start_time" className="block text-sm font-medium text-gray-700 mb-1">
-                    Start Time *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    id="start_time"
-                    required
-                    value={formData.start_time}
-                    onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">AI Learning</CardTitle>
+              <Brain className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{aiInsights.ai_learning_progress}%</div>
+              <p className="text-xs text-gray-500">Pattern recognition</p>
+            </CardContent>
+          </Card>
 
-                <div>
-                  <label htmlFor="end_time" className="block text-sm font-medium text-gray-700 mb-1">
-                    End Time *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    id="end_time"
-                    required
-                    value={formData.end_time}
-                    onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Conflicts Resolved</CardTitle>
+              <CheckCircle className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{aiInsights.conflicts_resolved}</div>
+              <p className="text-xs text-gray-500">AI resolved</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-                <button
-                  type="submit"
-                  disabled={addingEvent}
-                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {addingEvent ? 'Adding...' : 'Add Event'}
-                </button>
-              </form>
-            </div>
-          </div>
+      {/* Main Content Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="calendar">Calendar</TabsTrigger>
+          <TabsTrigger value="ai-insights">AI Insights</TabsTrigger>
+          <TabsTrigger value="conflicts">Conflicts</TabsTrigger>
+          <TabsTrigger value="suggestions">Smart Suggestions</TabsTrigger>
+        </TabsList>
 
-          {/* Events List */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Upcoming Events</h2>
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-6">
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-yellow-500" />
+                Quick Actions
+              </CardTitle>
+              <CardDescription>
+                Create new events or get AI-powered scheduling suggestions
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-3">
+                <Button className="bg-blue-600 hover:bg-blue-700">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Schedule Event
+                </Button>
+                <Button variant="outline" className="border-purple-200 text-purple-700 hover:bg-purple-50">
+                  <Brain className="h-4 w-4 mr-2" />
+                  AI Suggestions
+                </Button>
+                <Button variant="outline" className="border-green-200 text-green-700 hover:bg-green-50">
+                  <Target className="h-4 w-4 mr-2" />
+                  Smart Templates
+                </Button>
+                <Button variant="outline" className="border-orange-200 text-orange-700 hover:bg-orange-50">
+                  <Bell className="h-4 w-4 mr-2" />
+                  Reminder Settings
+                </Button>
               </div>
-              
-              {events.length === 0 ? (
-                <div className="p-6 text-center">
-                  <div className="text-gray-400 text-6xl mb-4">📅</div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No events scheduled</h3>
-                  <p className="text-gray-600">Add your first calendar event to get started!</p>
+            </CardContent>
+          </Card>
+
+          {/* Upcoming Events */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Upcoming Events
+              </CardTitle>
+              <CardDescription>
+                Your next scheduled events with AI insights
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {getUpcomingEvents().length > 0 ? (
+                <div className="space-y-4">
+                  {getUpcomingEvents().map((event) => (
+                    <div key={event.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="font-medium">{event.title}</h4>
+                          {event.ai_suggested && (
+                            <Badge variant="secondary" className="bg-purple-100 text-purple-800 text-xs">
+                              <Sparkles className="h-3 w-3 mr-1" />
+                              AI Suggested
+                            </Badge>
+                          )}
+                          <Badge variant={event.priority === 'high' ? 'destructive' : event.priority === 'medium' ? 'default' : 'secondary'}>
+                            {event.priority}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <span>{new Date(event.start_time).toLocaleDateString()}</span>
+                          <span>{new Date(event.start_time).toLocaleTimeString()} - {new Date(event.end_time).toLocaleTimeString()}</span>
+                          <span className={getAIConfidenceColor(event.ai_confidence)}>
+                            AI Confidence: {event.ai_confidence}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-gray-600 mb-1">Type</div>
+                        <Badge variant="outline">{event.event_type}</Badge>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <ul className="divide-y divide-gray-200">
-                  {events.map((event) => (
-                    <li key={event.id} className="px-6 py-4 hover:bg-gray-50">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-gray-900">{event.title}</h3>
-                            {event.created_by === user?.id && (
-                              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                                You
-                              </span>
-                            )}
-                          </div>
-                          
-                          {event.description ? <p className="text-gray-600 mb-2">{event.description}</p> : null}
-                          
-                          <div className="text-sm text-gray-500">
-                            <div>📅 {formatDateTime(event.start_time)} - {formatDateTime(event.end_time)}</div>
-                            <div>👤 Created by: {event.created_by.replace('user_', '').slice(0, 6)}...</div>
+                <p className="text-gray-500 text-center py-8">
+                  No upcoming events. Schedule your first event to get started!
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* AI Learning Progress */}
+          {aiInsights && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-purple-500" />
+                  AI Learning Progress
+                </CardTitle>
+                <CardDescription>
+                  How well the AI understands your scheduling patterns
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between text-sm">
+                    <span>Pattern Recognition</span>
+                    <span>{aiInsights.ai_learning_progress}%</span>
+                  </div>
+                  <Progress value={aiInsights.ai_learning_progress} />
+                  <p className="text-sm text-gray-600">
+                    The AI is learning from your scheduling habits to provide better suggestions and conflict resolution
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Calendar Tab */}
+        <TabsContent value="calendar" className="space-y-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">Calendar View</h2>
+            <Button className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="h-4 w-4 mr-2" />
+              New Event
+            </Button>
+          </div>
+
+          {/* Calendar Grid Placeholder */}
+          <Card>
+            <CardContent className="text-center py-12">
+              <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Calendar View</h3>
+              <p className="text-gray-500 mb-4">
+                Interactive calendar view with AI-powered scheduling insights
+              </p>
+              <p className="text-sm text-gray-400">
+                Calendar grid implementation coming in next iteration
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* AI Insights Tab */}
+        <TabsContent value="ai-insights" className="space-y-6">
+          {aiInsights ? (
+            <>
+              {/* Scheduling Patterns */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-blue-500" />
+                    Scheduling Patterns
+                  </CardTitle>
+                  <CardDescription>
+                    AI analysis of your scheduling behavior and preferences
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="font-medium mb-3">Most Common Event Types</h4>
+                      {aiInsights.most_common_event_types.length > 0 ? (
+                        <div className="space-y-2">
+                          {aiInsights.most_common_event_types.map((type, index) => (
+                            <div key={index} className="flex items-center gap-3">
+                              <Badge variant="secondary" className="w-16 justify-center">
+                                #{index + 1}
+                              </Badge>
+                              <span className="text-sm">{type}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-sm">
+                          Event types will appear as you schedule more events
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-3">Optimal Scheduling Times</h4>
+                      {aiInsights.optimal_scheduling_times.length > 0 ? (
+                        <div className="space-y-2">
+                          {aiInsights.optimal_scheduling_times.map((time, index) => (
+                            <div key={index} className="flex items-center gap-3">
+                              <Badge variant="outline" className="w-20 justify-center">
+                                {time}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 text-sm">
+                          AI will learn optimal times as you schedule events
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Household Patterns */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-green-500" />
+                    Household Patterns
+                  </CardTitle>
+                  <CardDescription>
+                    AI insights about your household's scheduling preferences
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {aiInsights.household_patterns.length > 0 ? (
+                    <div className="space-y-3">
+                      {aiInsights.household_patterns.map((pattern, index) => (
+                        <div key={index} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="flex items-start gap-3">
+                            <Lightbulb className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                            <p className="text-sm text-blue-800">{pattern}</p>
                           </div>
                         </div>
-                        
-                        {event.created_by === user?.id && (
-                          <button
-                            onClick={() => handleDeleteEvent(event.id)}
-                            disabled={deletingEvent === event.id}
-                            className="ml-4 text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {deletingEvent === event.id ? 'Deleting...' : '🗑️'}
-                          </button>
-                        )}
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">
+                      Household patterns will emerge as the AI learns your scheduling habits
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="text-center py-12">
+                <Brain className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">AI Insights Loading</h3>
+                <p className="text-gray-500">
+                  Schedule your first events to generate AI insights
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Conflicts Tab */}
+        <TabsContent value="conflicts" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-orange-500" />
+                Schedule Conflicts
+              </CardTitle>
+              <CardDescription>
+                AI-detected and resolved scheduling conflicts
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {getConflicts().length > 0 ? (
+                <div className="space-y-4">
+                  {getConflicts().map((conflict, index) => (
+                    <div key={index} className="p-4 bg-orange-50 rounded-lg border border-orange-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <AlertTriangle className="h-5 w-5 text-orange-500" />
+                        <h4 className="font-medium text-orange-800">Conflict Detected</h4>
                       </div>
-                    </li>
+                      <div className="space-y-2">
+                        {conflict.map((event) => (
+                          <div key={event.id} className="flex items-center justify-between p-2 bg-white rounded border">
+                            <div>
+                              <span className="font-medium">{event.title}</span>
+                              <span className="text-sm text-gray-600 ml-2">
+                                {new Date(event.start_time).toLocaleTimeString()} - {new Date(event.end_time).toLocaleTimeString()}
+                              </span>
+                            </div>
+                            <Badge variant="outline">{event.event_type}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-orange-200">
+                        <Button size="sm" variant="outline" className="text-orange-700 border-orange-300">
+                          <Brain className="h-4 w-4 mr-2" />
+                          AI Resolve Conflict
+                        </Button>
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <CheckCircle className="h-16 w-16 text-green-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Conflicts Found</h3>
+                  <p className="text-gray-500">
+                    Great! Your schedule is conflict-free. The AI will continue monitoring for potential issues.
+                  </p>
+                </div>
               )}
-            </div>
-          </div>
-        </div>
-      </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Smart Suggestions Tab */}
+        <TabsContent value="suggestions" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lightbulb className="h-5 w-5 text-yellow-500" />
+                Smart Suggestions
+              </CardTitle>
+              <CardDescription>
+                AI-powered recommendations to improve your scheduling experience
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {aiInsights?.suggested_improvements && aiInsights.suggested_improvements.length > 0 ? (
+                <div className="space-y-4">
+                  {aiInsights.suggested_improvements.map((suggestion, index) => (
+                    <div key={index} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-start gap-3">
+                        <Lightbulb className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-blue-800">{suggestion}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Lightbulb className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No suggestions yet</h3>
+                  <p className="text-gray-500">
+                    Schedule more events to get personalized AI recommendations
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 } 
