@@ -18,6 +18,7 @@ export default function NavBarNavigation() {
     { href: "/calendar", label: "Calendar" },
     { href: "/inbox", label: "Inbox" },
     { href: "/ai-email-dashboard", label: "🤖 AI Email" },
+    { href: "/ai-learning-dashboard", label: "🧠 AI Learning" },
     { href: "/test-automation", label: "Test Automation" },
     { href: "/notifications", label: "Notifications" },
     { href: "/reminders", label: "Reminders" },
