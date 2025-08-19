@@ -261,7 +261,7 @@ function calculateSkillMatchScores(_chore: any, members: any[]) {
   return scores;
 }
 
-function calculateEnergyCompatibility(chore: any, members: any[]) {
+function calculateEnergyCompatibility(_chore: any, members: any[]) {
   const scores: { [key: string]: number } = {};
   
   // For now, assume all members have medium energy
