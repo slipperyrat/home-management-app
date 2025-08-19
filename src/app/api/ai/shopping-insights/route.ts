@@ -225,7 +225,7 @@ function predictNextShopping(shoppingLists: any[]): string {
   return 'In the next few weeks';
 }
 
-function generateSuggestedImprovements(shoppingLists: any[], stats: any): string[] {
+function generateSuggestedImprovements(_shoppingLists: any[], stats: any): string[] {
   const suggestions: string[] = [];
 
   if (stats.totalLists < 3) {
