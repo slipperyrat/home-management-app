@@ -80,13 +80,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate smart assignment
-    const assignment = generateSmartAssignment(
-      chore,
-      members || [],
-      preferences || [],
-      completions || [],
-      assignmentType
-    );
+      const assignment = generateSmartAssignment(
+    chore,
+    members || [],
+    preferences || [],
+    completions || []
+  );
 
     // Create assignment record
     const { data: assignmentData, error: assignmentError } = await supabase
@@ -137,8 +136,7 @@ function generateSmartAssignment(
   chore: any,
   members: any[],
   preferences: any[],
-  completions: any[],
-  assignmentType: string
+  completions: any[]
 ) {
   const memberScores: { [key: string]: number } = {};
   const memberReasons: { [key: string]: string[] } = {};
