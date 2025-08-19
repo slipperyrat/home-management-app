@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { choreId, assignmentType = 'smart' } = body;
+    const { choreId } = body;
 
     if (!choreId) {
       return NextResponse.json({ error: 'Chore ID is required' }, { status: 400 });
