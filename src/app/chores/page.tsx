@@ -66,19 +66,7 @@ interface AIChoreInsights {
   completion_efficiency: number;
 }
 
-interface ChoreSuggestion {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  ai_difficulty_rating: number;
-  ai_estimated_duration: number;
-  ai_energy_level: string;
-  ai_confidence: number;
-  reasoning: string;
-  suggested_frequency: string;
-  priority: string;
-}
+
 
 export default function ChoresPage() {
   const { userId } = useAuth();
@@ -92,7 +80,7 @@ export default function ChoresPage() {
       fetchChores();
       fetchAIInsights();
     }
-  }, [userId]);
+  }, [userId, fetchChores, fetchAIInsights]);
 
   const fetchChores = async () => {
     try {
