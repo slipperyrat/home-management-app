@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { canAccessFeature } from "@/lib/planFeatures";
+
 
 import TestSyncButton from '@/components/TestSyncButton';
 import { FeatureCard } from '@/components/ui/FeatureCard';
