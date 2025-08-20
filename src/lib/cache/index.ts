@@ -49,7 +49,7 @@ export class CacheManager {
         // Store in memory cache for faster access
         this.setInMemory(key, supabaseResult.value, supabaseResult.ttl, supabaseResult.tags || []);
         this.log('info', `Cache hit in Supabase: ${key}`);
-        return supabaseResult.value;
+        return supabaseResult.value as T;
       }
 
       this.log('info', `Cache miss: ${key}`);
