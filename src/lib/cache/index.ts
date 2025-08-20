@@ -47,7 +47,7 @@ export class CacheManager {
       const supabaseResult = await this.supabaseCache.get(key);
       if (supabaseResult && !this.isExpired(supabaseResult)) {
         // Store in memory cache for faster access
-        this.setInMemory(key, supabaseResult.value, supabaseResult.ttl, supabaseResult.tags);
+        this.setInMemory(key, supabaseResult.value, supabaseResult.ttl, supabaseResult.tags || []);
         this.log('info', `Cache hit in Supabase: ${key}`);
         return supabaseResult.value;
       }
