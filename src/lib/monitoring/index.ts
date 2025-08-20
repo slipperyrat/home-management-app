@@ -23,7 +23,7 @@ export interface AIMetric {
   processingTime: number;
   model: string;
   timestamp: number;
-  context?: Record<string, any>;
+  context: Record<string, any> | undefined;
 }
 
 export interface ErrorEvent {
