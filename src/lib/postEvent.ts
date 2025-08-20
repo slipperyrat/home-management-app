@@ -73,25 +73,36 @@ export async function postEvent(params: PostEventParams): Promise<any> {
   }
 }
 
-// Convenience function for common event types
+// Convenience functions for common event types
 export const postEventTypes = {
-  heartbeat: (householdId: string) => postEvent({ householdId, type: 'heartbeat' }),
-  choreCompleted: (householdId: string, choreId: string, userId: string) => 
-    postEvent({ 
-      householdId, 
-      type: 'chore.completed', 
-      payload: { choreId, userId } 
-    }),
-  billReceived: (householdId: string, billData: any) => 
-    postEvent({ 
-      householdId, 
-      type: 'bill.email.received', 
-      payload: billData 
-    }),
-  shoppingListUpdated: (householdId: string, listId: string, action: string) => 
-    postEvent({ 
-      householdId, 
-      type: 'shopping_list.updated', 
-      payload: { listId, action } 
-    })
+  heartbeat: (payload?: Record<string, any>) => postEvent({ 
+    householdId: '', // Will be set by the hook
+    type: 'heartbeat', 
+    payload 
+  }),
+  choreCompleted: (payload: Record<string, any>) => postEvent({ 
+    householdId: '', // Will be set by the hook
+    type: 'chore.completed', 
+    payload 
+  }),
+  billEmailReceived: (payload: Record<string, any>) => postEvent({ 
+    householdId: '', // Will be set by the hook
+    type: 'bill.email.received', 
+    payload 
+  }),
+  billCreated: (payload: Record<string, any>) => postEvent({ 
+    householdId: '', // Will be set by the hook
+    type: 'bill.created', 
+    payload 
+  }),
+  billPaid: (payload: Record<string, any>) => postEvent({ 
+    householdId: '', // Will be set by the hook
+    type: 'bill.paid', 
+    payload 
+  }),
+  shoppingListUpdated: (payload: Record<string, any>) => postEvent({ 
+    householdId: '', // Will be set by the hook
+    type: 'shopping_list.updated', 
+    payload 
+  })
 };

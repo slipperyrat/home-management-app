@@ -1,37 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const supabase = createServerComponentClient({ cookies });
+    
+    // Get the authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user's household
-    const { data: userHousehold, error: householdError } = await supabase
-      .from('household_members')
+    // Get user's household ID
+    const { data: userData, error: userError } = await supabase
+      .from('users')
       .select('household_id')
-      .eq('user_id', userId)
+      .eq('id', user.id)
       .single();
 
-    if (householdError || !userHousehold) {
-      return NextResponse.json({ error: 'No household found' }, { status: 400 });
+    if (userError || !userData?.household_id) {
+      return NextResponse.json({ error: 'User not found or no household' }, { status: 404 });
     }
-
-    const householdId = userHousehold.household_id;
 
     // Fetch bills for the household
     const { data: bills, error: billsError } = await supabase
       .from('bills')
       .select('*')
-      .eq('household_id', householdId)
+      .eq('household_id', userData.household_id)
       .order('due_date', { ascending: true });
 
     if (billsError) {
@@ -39,84 +36,86 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch bills' }, { status: 500 });
     }
 
-    // Transform bills to match the frontend interface
-    const transformedBills = (bills || []).map(bill => ({
-      id: bill.id,
-      title: bill.name || bill.title || 'Untitled Bill',
-      amount: bill.amount || 0,
-      due_date: bill.due_date,
-      category: bill.category || 'other',
-      provider: bill.source || bill.provider || 'Unknown',
-      status: bill.status || 'unpaid',
-      ai_confidence: bill.ai_confidence || 0.8, // Default confidence for existing bills
-      ai_category_suggestion: bill.ai_category_suggestion,
-      ai_amount_prediction: bill.ai_amount_prediction,
-      created_at: bill.created_at
-    }));
-
-    return NextResponse.json({
-      success: true,
-      bills: transformedBills
+    return NextResponse.json({ 
+      success: true, 
+      bills: bills || [] 
     });
 
   } catch (error) {
-    console.error('Error in bills API:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Exception in GET /api/bills:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
+    const supabase = createServerComponentClient({ cookies });
+    
+    // Get the authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
-    const { title, amount, due_date, category, provider } = body;
-
-    // Get user's household
-    const { data: userHousehold, error: householdError } = await supabase
-      .from('household_members')
+    // Get user's household ID
+    const { data: userData, error: userError } = await supabase
+      .from('users')
       .select('household_id')
-      .eq('user_id', userId)
+      .eq('id', user.id)
       .single();
 
-    if (householdError || !userHousehold) {
-      return NextResponse.json({ error: 'No household found' }, { status: 400 });
+    if (userError || !userData?.household_id) {
+      return NextResponse.json({ error: 'User not found or no household' }, { status: 404 });
     }
 
-    const householdId = userHousehold.household_id;
+    // Parse request body
+    const body = await request.json();
+    const { title, description, amount, due_date, category, priority } = body;
 
-    // Create new bill
-    const { data: newBill, error: createError } = await supabase
+    // Validate required fields
+    if (!title || !amount || !due_date) {
+      return NextResponse.json({ 
+        error: 'Missing required fields: title, amount, due_date' 
+      }, { status: 400 });
+    }
+
+    // Create the bill
+    const { data: bill, error: createError } = await supabase
       .from('bills')
       .insert({
-        household_id: householdId,
-        name: title,
+        household_id: userData.household_id,
+        title,
+        description,
         amount: parseFloat(amount),
-        due_date: due_date,
-        category: category || 'other',
-        source: provider,
-        status: 'unpaid',
-        created_by: userId,
-        ai_confidence: 1.0 // User-created bills have 100% confidence
+        due_date,
+        category: category || 'General',
+        priority: priority || 'medium',
+        source: 'manual',
+        created_by: user.id
       })
       .select()
       .single();
 
     if (createError) {
       console.error('Error creating bill:', createError);
-      return NextResponse.json({ error: 'Failed to create bill' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Failed to create bill' 
+      }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      bill: newBill
+    return NextResponse.json({ 
+      success: true, 
+      bill,
+      message: 'Bill created successfully' 
     });
 
   } catch (error) {
-    console.error('Error in bills POST API:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('Exception in POST /api/bills:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 });
   }
 }

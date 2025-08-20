@@ -1,130 +1,197 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@clerk/nextjs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { 
-  Plus, 
-  TrendingUp, 
-  AlertTriangle, 
-  DollarSign, 
-  Calendar,
-  Brain,
-  Lightbulb,
-  BarChart3,
-  Target
-} from 'lucide-react';
+import { useUser } from '@clerk/nextjs';
+import { toast } from 'sonner';
+import { postEventTypes } from '@/lib/postEvent';
 
 interface Bill {
   id: string;
   title: string;
+  description?: string;
   amount: number;
+  currency: string;
   due_date: string;
-  category: string;
-  provider: string;
-  status: 'paid' | 'unpaid' | 'overdue';
-  ai_confidence: number;
-  ai_category_suggestion?: string;
-  ai_amount_prediction?: number;
+  issued_date: string;
+  paid_date?: string;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  category?: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  source: string;
   created_at: string;
 }
 
-interface AIBillInsights {
-  total_bills: number;
-  monthly_spending: number;
-  spending_trend: 'increasing' | 'decreasing' | 'stable';
-  top_categories: Array<{ category: string; amount: number; percentage: number }>;
-  upcoming_bills: number;
-  overdue_risk: number;
-  ai_recommendations: string[];
-  spending_patterns: Array<{ month: string; amount: number }>;
-}
-
 export default function BillsPage() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { user } = useUser();
   const [bills, setBills] = useState<Bill[]>([]);
-  const [aiInsights, setAiInsights] = useState<AIBillInsights | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'bills' | 'ai-insights'>('overview');
+  const [creatingBill, setCreatingBill] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    amount: '',
+    due_date: '',
+    category: 'General',
+    priority: 'medium' as const
+  });
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    fetchBills();
-    fetchAIBillInsights();
-  }, [isLoaded, isSignedIn]);
+    if (user) {
+      fetchBills();
+    }
+  }, [user]);
 
   const fetchBills = async () => {
     try {
+      setLoading(true);
       const response = await fetch('/api/bills');
+      
       if (response.ok) {
         const data = await response.json();
         setBills(data.bills || []);
+      } else {
+        console.error('Failed to fetch bills');
+        toast.error('Failed to load bills');
       }
     } catch (error) {
       console.error('Error fetching bills:', error);
+      toast.error('Error loading bills');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchAIBillInsights = async () => {
+  const handleCreateBill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.title || !formData.amount || !formData.due_date) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
     try {
-      const response = await fetch('/api/ai/bill-insights');
+      setCreatingBill(true);
+      
+      const response = await fetch('/api/bills', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
       if (response.ok) {
-        const data = await response.json();
-        setAiInsights(data.insights);
+        const result = await response.json();
+        toast.success('Bill created successfully!');
+        
+        // Reset form and refresh bills
+        setFormData({
+          title: '',
+          description: '',
+          amount: '',
+          due_date: '',
+          category: 'General',
+          priority: 'medium'
+        });
+        setShowCreateForm(false);
+        fetchBills();
+        
+        // Trigger automation event
+        try {
+          await postEventTypes.billCreated({
+            title: formData.title,
+            amount: parseFloat(formData.amount),
+            due_date: formData.due_date,
+            category: formData.category
+          });
+        } catch (error) {
+          console.error('Failed to trigger automation event:', error);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to create bill');
       }
     } catch (error) {
-      console.error('Error fetching AI insights:', error);
+      console.error('Error creating bill:', error);
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setCreatingBill(false);
+    }
+  };
+
+  const handleMarkAsPaid = async (billId: string) => {
+    try {
+      const response = await fetch(`/api/bills/${billId}/mark-paid`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        toast.success('Bill marked as paid!');
+        fetchBills();
+        
+        // Trigger automation event
+        try {
+          await postEventTypes.billPaid({ bill_id: billId });
+        } catch (error) {
+          console.error('Failed to trigger automation event:', error);
+        }
+      } else {
+        toast.error('Failed to mark bill as paid');
+      }
+    } catch (error) {
+      console.error('Error marking bill as paid:', error);
+      toast.error('Something went wrong');
+    }
+  };
+
+  const handleTestAutomation = async () => {
+    try {
+      // Trigger a test bill event
+      await postEventTypes.billEmailReceived({
+        subject: 'Test Electricity Bill',
+        amount: 89.50,
+        due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        vendor: 'Origin Energy'
+      });
+      
+      toast.success('Test automation event triggered! Check the Inbox for details.');
+    } catch (error) {
+      console.error('Error triggering test automation:', error);
+      toast.error('Failed to trigger test automation');
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'paid': return 'bg-green-100 text-green-800';
-      case 'unpaid': return 'bg-yellow-100 text-yellow-800';
-      case 'overdue': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'paid': return 'text-green-600 bg-green-100';
+      case 'overdue': return 'text-red-600 bg-red-100';
+      case 'pending': return 'text-yellow-600 bg-yellow-100';
+      default: return 'text-gray-600 bg-gray-100';
     }
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.8) return 'bg-green-100 text-green-800';
-    if (confidence >= 0.6) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-red-100 text-red-800';
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'urgent': return 'text-red-600 bg-red-100';
+      case 'high': return 'text-orange-600 bg-orange-100';
+      case 'medium': return 'text-yellow-600 bg-yellow-100';
+      case 'low': return 'text-green-600 bg-green-100';
+      default: return 'text-gray-600 bg-gray-100';
+    }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-AU', {
-      style: 'currency',
-      currency: 'AUD'
-    }).format(amount);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-AU', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  if (!isLoaded || loading) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading Smart Bill Management...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading bills...</p>
         </div>
       </div>
     );
-  }
-
-  if (!isSignedIn) {
-    return null;
   }
 
   return (
@@ -132,328 +199,240 @@ export default function BillsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <DollarSign className="h-8 w-8 text-green-500" />
-              <h1 className="text-3xl font-bold text-gray-900">Smart Bill Management</h1>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">💰 Bills</h1>
+              <p className="text-gray-600">Manage your household bills and automate bill tracking</p>
             </div>
-            <Button className="bg-green-600 hover:bg-green-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Bill
-            </Button>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleTestAutomation}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+              >
+                🧪 Test Automation
+              </button>
+              <button
+                onClick={() => setShowCreateForm(!showCreateForm)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                {showCreateForm ? 'Cancel' : '+ Add Bill'}
+              </button>
+            </div>
           </div>
-          <p className="text-gray-600 text-lg">
-            AI-powered bill tracking, categorization, and spending insights
-          </p>
         </div>
 
-        {/* AI Stats Cards */}
-        {aiInsights && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Bills</CardTitle>
-                <DollarSign className="h-4 w-4 text-green-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{aiInsights.total_bills}</div>
-                <p className="text-xs text-gray-500">Active bills</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Monthly Spending</CardTitle>
-                <TrendingUp className="h-4 w-4 text-blue-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(aiInsights.monthly_spending)}</div>
-                <p className="text-xs text-gray-500">This month</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Upcoming Bills</CardTitle>
-                <Calendar className="h-4 w-4 text-orange-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{aiInsights.upcoming_bills}</div>
-                <p className="text-xs text-gray-500">Due soon</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Overdue Risk</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{aiInsights.overdue_risk}%</div>
-                <p className="text-xs text-gray-500">Risk level</p>
-              </CardContent>
-            </Card>
+        {/* Create Bill Form */}
+        {showCreateForm && (
+          <div className="bg-white rounded-lg shadow p-6 mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Create New Bill</h2>
+            <form onSubmit={handleCreateBill} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+                    Bill Title *
+                  </label>
+                  <input
+                    type="text"
+                    id="title"
+                    required
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="e.g., Electricity Bill - January 2024"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="amount" className="block text-sm font-medium text-gray-700 mb-1">
+                    Amount (AUD) *
+                  </label>
+                  <input
+                    type="number"
+                    id="amount"
+                    required
+                    step="0.01"
+                    min="0"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="89.50"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="due_date" className="block text-sm font-medium text-gray-700 mb-1">
+                    Due Date *
+                  </label>
+                  <input
+                    type="date"
+                    id="due_date"
+                    required
+                    value={formData.due_date}
+                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
+                    Category
+                  </label>
+                  <select
+                    id="category"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="General">General</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Insurance">Insurance</option>
+                    <option value="Rent/Mortgage">Rent/Mortgage</option>
+                    <option value="Subscriptions">Subscriptions</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label htmlFor="priority" className="block text-sm font-medium text-gray-700 mb-1">
+                    Priority
+                  </label>
+                  <select
+                    id="priority"
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+                
+                <div className="md:col-span-2">
+                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    id="description"
+                    rows={3}
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Optional description or notes about this bill"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingBill}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {creatingBill ? 'Creating...' : 'Create Bill'}
+                </button>
+              </div>
+            </form>
           </div>
         )}
 
-        {/* Tab Navigation */}
-        <div className="bg-white rounded-lg shadow mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8 px-6">
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'overview'
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Overview
-              </button>
-              <button
-                onClick={() => setActiveTab('bills')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'bills'
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                All Bills ({bills.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('ai-insights')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'ai-insights'
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                🧠 AI Insights
-              </button>
-            </nav>
+        {/* Bills List */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Your Bills</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {bills.length} bill{bills.length !== 1 ? 's' : ''} • 
+              {bills.filter(b => b.status === 'pending').length} pending • 
+              {bills.filter(b => b.status === 'overdue').length} overdue
+            </p>
           </div>
-
-          {/* Tab Content */}
-          <div className="p-6">
-            {activeTab === 'overview' && (
-              <div className="space-y-6">
-                {/* Spending Overview */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5" />
-                      Spending Overview
-                    </CardTitle>
-                    <CardDescription>
-                      AI-powered spending analysis and trends
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {aiInsights ? (
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium">Monthly Spending Trend</span>
-                          <Badge variant={
-                            aiInsights.spending_trend === 'increasing' ? 'destructive' :
-                            aiInsights.spending_trend === 'decreasing' ? 'default' : 'secondary'
-                          }>
-                            {aiInsights.spending_trend === 'increasing' ? '↗️ Increasing' :
-                             aiInsights.spending_trend === 'decreasing' ? '↘️ Decreasing' : '→ Stable'}
-                          </Badge>
-                        </div>
-                        
-                        {/* Top Spending Categories */}
-                        <div>
-                          <h4 className="text-sm font-medium mb-3">Top Spending Categories</h4>
-                          <div className="space-y-2">
-                            {aiInsights.top_categories.slice(0, 3).map((category, index) => (
-                              <div key={index} className="flex items-center justify-between">
-                                <span className="text-sm">{category.category}</span>
-                                <div className="flex items-center gap-2">
-                                  <Progress value={category.percentage} className="w-20" />
-                                  <span className="text-sm font-medium">{formatCurrency(category.amount)}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-center py-4">Loading AI insights...</p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Recent Bills */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Recent Bills</CardTitle>
-                    <CardDescription>Latest bills with AI insights</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {bills.slice(0, 5).map((bill) => (
-                      <div key={bill.id} className="flex items-center justify-between py-3 border-b last:border-b-0">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium">{bill.title}</h4>
-                            {bill.ai_confidence > 0.8 && (
-                              <Badge variant="secondary" className="text-xs">
-                                🤖 AI Verified
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-600">{bill.provider}</p>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-medium">{formatCurrency(bill.amount)}</div>
-                          <div className="text-sm text-gray-500">{formatDate(bill.due_date)}</div>
-                        </div>
-                        <Badge className={getStatusColor(bill.status)}>
+          
+          {bills.length === 0 ? (
+            <div className="px-6 py-12 text-center">
+              <div className="text-gray-400 text-6xl mb-4">💰</div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No bills yet</h3>
+              <p className="text-gray-600 mb-4">
+                Create your first bill to get started with automated bill management.
+              </p>
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Create Your First Bill
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {bills.map((bill) => (
+                <div key={bill.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <h3 className="text-lg font-medium text-gray-900">{bill.title}</h3>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(bill.status)}`}>
                           {bill.status}
-                        </Badge>
+                        </span>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getPriorityColor(bill.priority)}`}>
+                          {bill.priority}
+                        </span>
                       </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {activeTab === 'bills' && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium text-gray-900">All Bills</h3>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">Filter</Button>
-                    <Button variant="outline" size="sm">Sort</Button>
+                      
+                      {bill.description && (
+                        <p className="text-gray-600 text-sm mb-2">{bill.description}</p>
+                      )}
+                      
+                      <div className="flex items-center space-x-6 text-sm text-gray-500">
+                        <span>Amount: <span className="font-medium text-gray-900">${bill.amount}</span></span>
+                        <span>Due: <span className="font-medium text-gray-900">{new Date(bill.due_date).toLocaleDateString()}</span></span>
+                        {bill.category && <span>Category: <span className="font-medium text-gray-900">{bill.category}</span></span>}
+                        <span>Source: <span className="font-medium text-gray-900">{bill.source}</span></span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      {bill.status === 'pending' && (
+                        <button
+                          onClick={() => handleMarkAsPaid(bill.id)}
+                          className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+                        >
+                          Mark Paid
+                        </button>
+                      )}
+                      <button className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50 transition-colors">
+                        Edit
+                      </button>
+                    </div>
                   </div>
                 </div>
-                
-                {bills.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">No bills found</p>
-                ) : (
-                  <div className="grid gap-4">
-                    {bills.map((bill) => (
-                      <Card key={bill.id}>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <h4 className="font-medium text-lg">{bill.title}</h4>
-                                <Badge className={getStatusColor(bill.status)}>
-                                  {bill.status}
-                                </Badge>
-                                {bill.ai_confidence && (
-                                  <Badge className={getConfidenceColor(bill.ai_confidence)}>
-                                    AI: {Math.round(bill.ai_confidence * 100)}%
-                                  </Badge>
-                                )}
-                              </div>
-                              
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                <div>
-                                  <span className="text-gray-500">Provider:</span>
-                                  <p className="font-medium">{bill.provider}</p>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Category:</span>
-                                  <p className="font-medium">{bill.category}</p>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Due Date:</span>
-                                  <p className="font-medium">{formatDate(bill.due_date)}</p>
-                                </div>
-                                <div>
-                                  <span className="text-gray-500">Amount:</span>
-                                  <p className="font-medium text-lg text-green-600">{formatCurrency(bill.amount)}</p>
-                                </div>
-                              </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-                              {/* AI Suggestions */}
-                              {bill.ai_category_suggestion && bill.ai_category_suggestion !== bill.category && (
-                                <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                  <div className="flex items-center gap-2">
-                                    <Brain className="h-4 w-4 text-blue-500" />
-                                    <span className="text-sm text-blue-800">
-                                      AI suggests category: <strong>{bill.ai_category_suggestion}</strong>
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            
-                            <div className="flex flex-col gap-2 ml-4">
-                              <Button size="sm" variant="outline">Edit</Button>
-                              <Button size="sm" variant="outline">Pay</Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'ai-insights' && (
-              <div className="space-y-6">
-                {/* AI Recommendations */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Lightbulb className="h-5 w-5" />
-                      AI Recommendations
-                    </CardTitle>
-                    <CardDescription>
-                      Smart suggestions to optimize your bill management
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {aiInsights?.ai_recommendations ? (
-                      <div className="space-y-3">
-                        {aiInsights.ai_recommendations.map((recommendation, index) => (
-                          <div key={index} className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                            <Target className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                            <span className="text-sm text-green-800">{recommendation}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-center py-4">No AI recommendations yet</p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Spending Patterns */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5" />
-                      Spending Patterns
-                    </CardTitle>
-                    <CardDescription>
-                      AI-analyzed spending trends over time
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {aiInsights?.spending_patterns ? (
-                      <div className="space-y-3">
-                        {aiInsights.spending_patterns.map((pattern, index) => (
-                          <div key={index} className="flex items-center justify-between">
-                            <span className="text-sm font-medium">{pattern.month}</span>
-                            <div className="flex items-center gap-3">
-                              <Progress value={(pattern.amount / Math.max(...aiInsights.spending_patterns.map(p => p.amount))) * 100} className="w-32" />
-                              <span className="text-sm font-medium">{formatCurrency(pattern.amount)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-gray-500 text-center py-4">No spending pattern data yet</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+        {/* Automation Info */}
+        <div className="mt-8 bg-blue-50 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-blue-900 mb-3">🤖 Automation Features</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-blue-800">
+            <div>
+              <h4 className="font-medium mb-1">📧 Email Integration</h4>
+              <p>Automatically create bills from email receipts</p>
+            </div>
+            <div>
+              <h4 className="font-medium mb-1">⏰ Smart Reminders</h4>
+              <p>Get notified before bills are due</p>
+            </div>
+            <div>
+              <h4 className="font-medium mb-1">📊 Status Tracking</h4>
+              <p>Automatically mark bills as overdue</p>
+            </div>
           </div>
         </div>
       </div>
