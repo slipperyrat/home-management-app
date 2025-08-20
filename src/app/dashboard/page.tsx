@@ -6,7 +6,7 @@ import { canAccessFeature } from "@/lib/planFeatures";
 
 import TestSyncButton from '@/components/TestSyncButton';
 import { FeatureCard } from '@/components/ui/FeatureCard';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { DashboardSkeleton } from '@/components/ui/DashboardSkeleton';
 import { useUserData } from '@/hooks/useUserData';
@@ -14,7 +14,7 @@ import { performanceMonitor } from '@/lib/performance';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { userData, powerUps, isLoading, isError, error, refetch, isLoaded, isSignedIn, user } = useUserData();
+  const { userData, isLoading, isError, error, refetch, isLoaded, isSignedIn, user } = useUserData();
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
 
   useEffect(() => {
