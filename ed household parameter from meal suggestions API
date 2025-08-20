@@ -1,0 +1,24 @@
+[1mdiff --git a/public/fallback-build-1755163322301.js b/public/fallback-build-1755680646009.js[m
+[1msimilarity index 100%[m
+[1mrename from public/fallback-build-1755163322301.js[m
+[1mrename to public/fallback-build-1755680646009.js[m
+[1mdiff --git a/src/app/api/ai/meal-suggestions/route.ts b/src/app/api/ai/meal-suggestions/route.ts[m
+[1mindex d98e1df..bb1cf6b 100644[m
+[1m--- a/src/app/api/ai/meal-suggestions/route.ts[m
+[1m+++ b/src/app/api/ai/meal-suggestions/route.ts[m
+[36m@@ -55,7 +55,6 @@[m [mexport async function GET(request: NextRequest) {[m
+     const suggestions = generateAIMealSuggestions([m
+       recipes,[m
+       mealPlans,[m
+[31m-      household,[m
+       mealType,[m
+       dietaryRestrictions,[m
+       maxPrepTime,[m
+[36m@@ -76,7 +75,6 @@[m [mexport async function GET(request: NextRequest) {[m
+ function generateAIMealSuggestions([m
+   recipes: any[],[m
+   mealPlans: any[],[m
+[31m-  household: any,[m
+   mealType: string,[m
+   dietaryRestrictions: string[],[m
+   maxPrepTime: number,[m

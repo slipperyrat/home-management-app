@@ -11,8 +11,8 @@ export async function GET(request: NextRequest) {
     const maxPrepTime = searchParams.get('maxPrepTime') ? parseInt(searchParams.get('maxPrepTime')!) : 60;
     const servings = searchParams.get('servings') ? parseInt(searchParams.get('servings')!) : 4;
 
-    // Fetch household preferences and recipe data
-    const [recipesResponse, mealPlansResponse, householdResponse] = await Promise.all([
+    // Fetch recipe and meal plan data
+    const [recipesResponse, mealPlansResponse] = await Promise.all([
       sb()
         .from('recipes')
         .select('*')
@@ -23,13 +23,7 @@ export async function GET(request: NextRequest) {
         .select('*')
         .eq('household_id', householdId)
         .order('week_start_date', { ascending: false })
-        .limit(8), // Last 8 weeks for pattern analysis
-      
-      sb()
-        .from('households')
-        .select('*')
-        .eq('id', householdId)
-        .single()
+        .limit(8) // Last 8 weeks for pattern analysis
     ]);
 
     if (recipesResponse.error) {
@@ -42,14 +36,8 @@ export async function GET(request: NextRequest) {
       throw new ServerError('Failed to fetch meal plans', 500);
     }
 
-    if (householdResponse.error) {
-      console.error('Error fetching household:', householdResponse.error);
-      throw new ServerError('Failed to fetch household', 500);
-    }
-
     const recipes = recipesResponse.data || [];
     const mealPlans = mealPlansResponse.data || [];
-    const household = householdResponse.data;
 
     // Generate AI-powered meal suggestions
     const suggestions = generateAIMealSuggestions(
