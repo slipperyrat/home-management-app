@@ -257,8 +257,8 @@ export default function DashboardPage() {
              />
           </div>
 
-          {/* Pro Features Promotion */}
-          {userData?.plan !== 'pro' && (
+                     {/* Pro Features Promotion */}
+           {userData?.plan !== 'premium' && (
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
               <div className="text-center">
                 <h3 className="text-lg font-semibold text-purple-900 mb-2">
