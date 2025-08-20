@@ -55,7 +55,6 @@ export async function GET(request: NextRequest) {
     const suggestions = generateAIMealSuggestions(
       recipes,
       mealPlans,
-      household,
       mealType,
       dietaryRestrictions,
       maxPrepTime,
@@ -76,7 +75,6 @@ export async function GET(request: NextRequest) {
 function generateAIMealSuggestions(
   recipes: any[],
   mealPlans: any[],
-  household: any,
   mealType: string,
   dietaryRestrictions: string[],
   maxPrepTime: number,
