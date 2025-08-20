@@ -10,7 +10,7 @@ export interface PerformanceMetric {
 export interface UserBehaviorEvent {
   action: string;
   userId: string;
-  householdId?: string;
+  householdId: string | undefined;
   context: Record<string, any>;
   timestamp: number;
   sessionId: string;
