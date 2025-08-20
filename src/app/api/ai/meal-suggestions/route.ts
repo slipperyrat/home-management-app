@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sb, getUserAndHousehold, createErrorResponse, ServerError } from '@/lib/server/supabaseAdmin';
+import { getUserAndHousehold, createErrorResponse, ServerError } from '@/lib/server/supabaseAdmin';
 import { MealService, MealSuggestionParams } from '@/lib/services/meal/MealService';
 
 export async function GET(request: NextRequest) {
