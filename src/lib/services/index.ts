@@ -1,3 +1,6 @@
+// Import only implemented services
+import { MealService } from './meal/MealService';
+
 // Service container for organizing business logic
 export class ServiceContainer {
   private static instance: ServiceContainer;
@@ -52,5 +55,5 @@ export abstract class BaseService {
   }
 }
 
-// Import only implemented services
-export { MealService } from './meal/MealService';
+// Export all services
+export { MealService };
