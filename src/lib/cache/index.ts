@@ -165,7 +165,6 @@ export class CacheManager {
    * Clean up expired entries and enforce size limits
    */
   private cleanup(): void {
-    const now = Date.now();
     const expiredKeys: string[] = [];
 
     // Find expired entries
