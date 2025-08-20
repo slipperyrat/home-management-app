@@ -93,7 +93,7 @@ export class MonitoringService {
       value: duration,
       unit: 'ms',
       timestamp: Date.now(),
-      context
+      context: context || {}
     });
   }
 
