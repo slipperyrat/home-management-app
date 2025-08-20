@@ -28,8 +28,8 @@ export interface AIMetric {
 
 export interface ErrorEvent {
   error: string;
-  stack?: string;
-  userId?: string;
+  stack: string | undefined;
+  userId: string | undefined;
   context: Record<string, any>;
   timestamp: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
