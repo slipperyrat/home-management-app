@@ -8,6 +8,7 @@ import TestSyncButton from '@/components/TestSyncButton';
 import { FeatureCard } from '@/components/ui/FeatureCard';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
+import { DashboardSkeleton } from '@/components/ui/DashboardSkeleton';
 import { useUserData } from '@/hooks/useUserData';
 import { performanceMonitor } from '@/lib/performance';
 
@@ -38,13 +39,9 @@ export default function DashboardPage() {
     performanceMonitor.end('dashboard-render');
   }, [isLoaded, isSignedIn, userData, router]);
 
-  // Show loading spinner while auth is loading or data is being fetched
+  // Show skeleton loading while auth is loading or data is being fetched
   if (!isLoaded || isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   // This should not be reached if redirect is working, but just in case
@@ -98,276 +95,209 @@ export default function DashboardPage() {
                       </h3>
                       <p className="mt-1 text-sm text-green-700">
                         Your home management system is all set up and ready to use. 
-                        Explore your meal planner, organize tasks, and manage your household effortlessly.
+                        Start exploring the features below!
                       </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          onClick={() => router.push('/meal-planner')}
-                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                        >
-                          📋 View Meal Planner
-                        </button>
-                        <button
-                          onClick={() => router.push('/planner')}
-                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                        >
-                          📝 View Planner
-                        </button>
-                      </div>
                     </div>
-                    <div className="flex-shrink-0">
-                      <button
-                        onClick={() => setShowWelcomeBanner(false)}
-                        className="inline-flex text-green-400 hover:text-green-600 focus:outline-none focus:text-green-600"
-                        aria-label="Dismiss banner"
-                      >
-                        <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setShowWelcomeBanner(false)}
+                      className="text-green-600 hover:text-green-800"
+                    >
+                      ✕
+                    </button>
                   </div>
                 </div>
               </div>
             </div> : null}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">User Information</h2>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Email</label>
-                  <p className="mt-1 text-sm text-gray-900 truncate">{userData?.email}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Role</label>
-                  <div className="mt-1 flex items-center">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      userData?.role === 'owner' 
-                        ? 'bg-purple-100 text-purple-800' 
-                        : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {userData?.role === 'owner' ? '👑 Owner' : '👤 Member'}
-                    </span>
+          {/* Quick Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100">
+                    <span className="text-blue-600 text-lg">📊</span>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Plan</label>
-                  <div className="mt-1 flex items-center">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      userData?.plan === 'premium' 
-                        ? 'bg-yellow-100 text-yellow-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {userData?.plan === 'premium' ? '⭐ Premium' : '🆓 Free'}
-                    </span>
-                  </div>
-                </div>
-                
-                {/* XP and Coins in a row on mobile */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">XP</label>
-                    <div className="mt-1 flex flex-col space-y-1">
-                      <span className="text-sm text-gray-900">{userData?.xp || 0}</span>
-                      {powerUps.some(p => p.type === 'xp_boost') && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200 w-fit">
-                          🔥 +50% XP
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Coins</label>
-                    <div className="mt-1 flex flex-col space-y-1">
-                      <span className="text-sm text-gray-900">🪙 {userData?.coins || 0}</span>
-                      {powerUps.some(p => p.type === 'double_coin') && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800 border border-green-200 w-fit">
-                          🪙 2x Coins
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-blue-600">XP Points</p>
+                  <p className="text-lg font-semibold text-blue-900">{userData?.xp || 0}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-4 sm:p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-              <div className="space-y-3">
-                {userData?.role === 'owner' ? (
-                  <>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
-                      🛠️ Manage Users
-                    </button>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
-                      ⚙️ System Settings
-                    </button>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
-                      📊 View Analytics
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
-                      📝 Create Content
-                    </button>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
-                      📋 View Tasks
-                    </button>
-                    <button className="w-full text-left p-3 bg-white rounded-md border hover:bg-gray-50 active:bg-gray-100 touch-manipulation transition-colors">
-                      👥 Team Directory
-                    </button>
-                  </>
-                )}
-                
-                {/* Debug section */}
-                <div className="mt-6 pt-4 border-t border-gray-200">
-                  <h3 className="text-sm font-medium text-gray-700 mb-3">Debug Tools</h3>
-                  <TestSyncButton />
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-4 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-green-100">
+                    <span className="text-green-600 text-lg">🪙</span>
+                  </div>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-green-600">Coins</p>
+                  <p className="text-lg font-semibold text-green-900">{userData?.coins || 0}</p>
                 </div>
               </div>
             </div>
 
-            {/* Power-Ups Section */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 lg:col-span-2">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">⚡ Active Power-Ups</h2>
-              
-              {powerUps.length > 0 ? (
-                <div className="space-y-3">
-                  {powerUps.some(p => p.type === 'xp_boost') && (
-                    <div className="bg-yellow-100 border border-yellow-200 rounded-md px-3 py-2 flex items-center space-x-2">
-                      <span className="text-yellow-800 text-lg">🔥</span>
-                      <div>
-                        <span className="text-yellow-800 font-medium">XP Boost Active</span>
-                        <span className="text-yellow-700 text-sm block">+50% XP</span>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {powerUps.some(p => p.type === 'double_coin') && (
-                    <div className="bg-green-100 border border-green-200 rounded-md px-3 py-2 flex items-center space-x-2">
-                      <span className="text-green-800 text-lg">🪙</span>
-                      <div>
-                        <span className="text-green-800 font-medium">Double Coins Active</span>
-                        <span className="text-green-700 text-sm block">2x Coin Rewards</span>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Show other power-ups as generic badges */}
-                  {powerUps
-                    .filter(powerUp => !['xp_boost', 'double_coin'].includes(powerUp.type))
-                    .map((powerUp) => (
-                    <div key={powerUp.id} className="bg-blue-100 border border-blue-200 rounded-md px-3 py-2 flex items-center space-x-2">
-                      <span className="text-blue-800 text-lg">⚡</span>
-                      <div>
-                        <span className="text-blue-800 font-medium">
-                          {powerUp.type.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())} Active
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-4 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
+                    <span className="text-purple-600 text-lg">🏆</span>
+                  </div>
                 </div>
-              ) : (
-                <div className="text-center py-6">
-                  <div className="text-gray-400 text-3xl mb-2">⚡</div>
-                  <p className="text-gray-600 text-sm">
-                    No active power-ups. Complete tasks to earn boosts!
-                  </p>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-purple-600">Level</p>
+                  <p className="text-lg font-semibold text-purple-900">{userData?.level || 1}</p>
                 </div>
-              )}
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-4 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-orange-100">
+                    <span className="text-orange-600 text-lg">⭐</span>
+                  </div>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-orange-600">Streak</p>
+                  <p className="text-lg font-semibold text-orange-900">{userData?.streak || 0} days</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-white shadow rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <button
+                onClick={() => router.push('/chores')}
+                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+              >
+                <span className="text-2xl mb-2">✅</span>
+                <span className="text-sm font-medium text-gray-700">Add Chore</span>
+              </button>
+
+              <button
+                onClick={() => router.push('/meal-planner')}
+                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-green-300 hover:bg-green-50 transition-colors"
+              >
+                <span className="text-2xl mb-2">🍽️</span>
+                <span className="text-sm font-medium text-gray-700">Plan Meal</span>
+              </button>
+
+              <button
+                onClick={() => router.push('/shopping-lists')}
+                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-colors"
+              >
+                <span className="text-2xl mb-2">🛒</span>
+                <span className="text-sm font-medium text-gray-700">Shopping</span>
+              </button>
+
+              <button
+                onClick={() => router.push('/calendar')}
+                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors"
+              >
+                <span className="text-2xl mb-2">📅</span>
+                <span className="text-sm font-medium text-gray-700">Calendar</span>
+              </button>
             </div>
           </div>
 
           {/* Feature Cards */}
-          <div className="mt-6 sm:mt-8">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">Available Features</h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-              {/* Meal Planner Card */}
-              {userData && canAccessFeature(userData.plan, "meal_planner") ? <FeatureCard
-                  title="Meal Planner"
-                  description="Plan weekly meals and sync with grocery lists"
-                  icon="🍽️"
-                  href="/meal-planner"
-                  gradient="bg-gradient-to-br from-orange-500 to-red-500"
-                /> : null}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+            <FeatureCard
+              title="AI-Powered Insights"
+              description="Get intelligent suggestions for meals, chores, and household management"
+              icon="🤖"
+              href="/ai-email-dashboard"
+              canAccess={canAccessFeature('ai_insights', userData?.plan)}
+            />
 
-              {/* Collaborative Planner Card */}
-              {userData && canAccessFeature(userData.plan, "collaborative_planner") ? <FeatureCard
-                  title="Collaborative Planner"
-                  description="Plan trips, renovations, dreams, and goals"
-                  icon="📋"
-                  href="/planner"
-                  gradient="bg-gradient-to-br from-purple-500 to-indigo-500"
-                /> : null}
+            <FeatureCard
+              title="Smart Automation"
+              description="Set up rules to automatically manage recurring tasks and notifications"
+              icon="⚡"
+              href="/test-automation"
+              canAccess={canAccessFeature('automation', userData?.plan)}
+            />
 
-              {/* Shopping List Card */}
-              {userData && canAccessFeature(userData.plan, "shopping_list") ? <FeatureCard
-                  title="Shopping List"
-                  description="Manage your shopping lists"
-                  icon="🛒"
-                  href="/shopping-lists"
-                  gradient="bg-gradient-to-br from-blue-500 to-indigo-500"
-                /> : null}
+            <FeatureCard
+              title="Advanced Analytics"
+              description="Track your household's progress with detailed statistics and insights"
+              icon="📈"
+              href="/leaderboard"
+              canAccess={canAccessFeature('analytics', userData?.plan)}
+            />
 
-              {/* Chores Card */}
-              {userData && canAccessFeature(userData.plan, "chores") ? <FeatureCard
-                  title="Chores"
-                  description="Manage household chores and tasks"
-                  icon="🧹"
-                  href="/chores"
-                  gradient="bg-gradient-to-br from-green-500 to-emerald-500"
-                /> : null}
+            <FeatureCard
+              title="Power-ups"
+              description="Unlock special abilities and bonuses to enhance your experience"
+              icon="🚀"
+              href="/power-ups"
+              canAccess={true}
+            />
 
-              {/* Rewards Card */}
-              {userData && canAccessFeature(userData.plan, "xp_rewards") ? <FeatureCard
-                  title="Rewards"
-                  description="Redeem XP for rewards"
-                  icon="🏆"
-                  href="/rewards"
-                  gradient="bg-gradient-to-br from-purple-500 to-pink-500"
-                /> : null}
+            <FeatureCard
+              title="Rewards Center"
+              description="Redeem your hard-earned XP and coins for exclusive rewards"
+              icon="🎁"
+              href="/rewards"
+              canAccess={true}
+            />
 
-              {/* Leaderboard Card */}
-              {userData && canAccessFeature(userData.plan, "leaderboard") ? <FeatureCard
-                  title="Leaderboard"
-                  description="View XP rankings"
-                  icon="📊"
-                  href="/leaderboard"
-                  gradient="bg-gradient-to-br from-indigo-500 to-purple-500"
-                /> : null}
+            <FeatureCard
+              title="Settings & Preferences"
+              description="Customize your experience and manage your account settings"
+              icon="⚙️"
+              href="/settings"
+              canAccess={true}
+            />
+          </div>
 
-              {/* Calendar Card */}
-              {userData && canAccessFeature(userData.plan, "calendar") ? <FeatureCard
-                  title="Calendar"
-                  description="Manage events"
-                  icon="📅"
-                  href="/calendar"
-                  gradient="bg-gradient-to-br from-green-500 to-teal-500"
-                  badge={<ProBadge size="sm" />}
-                /> : null}
-
-              {/* Reminders Card */}
-              {userData && canAccessFeature(userData.plan, "reminders") ? <FeatureCard
-                  title="Reminders"
-                  description="Set notifications"
-                  icon="⏰"
-                  href="/reminders"
-                  gradient="bg-gradient-to-br from-orange-500 to-red-500"
-                /> : null}
+          {/* Pro Features Promotion */}
+          {userData?.plan !== 'pro' && (
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-purple-900 mb-2">
+                  Unlock Premium Features
+                </h3>
+                <p className="text-sm text-purple-700 mb-4">
+                  Upgrade to Pro for advanced AI insights, unlimited automation rules, and priority support
+                </p>
+                <button
+                  onClick={() => router.push('/upgrade')}
+                  className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  Upgrade Now
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="mt-8 text-center">
-            <p className="text-gray-600">
-              {userData?.role === 'owner' 
-                ? "As an owner, you have full control over this workspace and can manage all users and settings."
-                : "As a member, you can access workspace features and collaborate with your team."
-              }
-            </p>
-          </div>
+          {/* Debug Section - Only show in development */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Debug Tools</h3>
+              <div className="space-y-3">
+                <TestSyncButton />
+                <button
+                  onClick={() => router.push('/debug')}
+                  className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors"
+                >
+                  Debug Dashboard
+                </button>
+                <button
+                  onClick={() => router.push('/debug/set-role')}
+                  className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors ml-2"
+                >
+                  Set Role
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
