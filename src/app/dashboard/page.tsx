@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { canAccessFeature } from "@/lib/planFeatures";
-import { ProBadge } from '@/components/ProBadge';
+
 import TestSyncButton from '@/components/TestSyncButton';
 import { FeatureCard } from '@/components/ui/FeatureCard';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
