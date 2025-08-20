@@ -246,7 +246,6 @@ export class CacheManager {
 
   private log(level: 'info' | 'warn' | 'error', message: string, data?: any): void {
     const timestamp = new Date().toISOString();
-    const logData = { timestamp, level, message, ...(data && { data }) };
     
     switch (level) {
       case 'info':
