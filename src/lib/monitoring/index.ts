@@ -406,8 +406,9 @@ export class MonitoringService {
   private groupAIMetricsByModel(metrics: AIMetric[]): Record<string, AIMetric[]> {
     const groups: Record<string, AIMetric[]> = {};
     metrics.forEach(metric => {
-      if (!groups[metric.model]) groups[metric.model] = [];
-      groups[metric.model].push(metric);
+      const model = metric.model || 'unknown';
+      if (!groups[model]) groups[model] = [];
+      groups[model].push(metric);
     });
     return groups;
   }
