@@ -4,7 +4,7 @@ export interface PerformanceMetric {
   value: number;
   unit: string;
   timestamp: number;
-  context?: Record<string, any>;
+  context: Record<string, any> | undefined;
 }
 
 export interface UserBehaviorEvent {
