@@ -61,8 +61,8 @@ export async function GET(request: NextRequest) {
 }
 
 function generateAIMealSuggestions(
-  recipes: any[],
-  mealPlans: any[],
+  recipes: Array<{ id: string; title?: string; description?: string; prep_time?: number; cook_time?: number; servings?: number; tags?: string[]; image_url?: string }>,
+  mealPlans: Array<{ meals?: Record<string, Record<string, string>> }>,
   mealType: string,
   dietaryRestrictions: string[],
   maxPrepTime: number,
@@ -85,7 +85,7 @@ function generateAIMealSuggestions(
   });
 
   // Filter recipes based on criteria
-  let filteredRecipes = recipes.filter(recipe => {
+  const filteredRecipes = recipes.filter(recipe => {
     // Check meal type appropriateness
     if (mealType === 'breakfast' && !isBreakfastRecipe(recipe)) return false;
     if (mealType === 'lunch' && !isLunchRecipe(recipe)) return false;
@@ -173,7 +173,7 @@ function generateAIMealSuggestions(
   };
 }
 
-function isBreakfastRecipe(recipe: any): boolean {
+function isBreakfastRecipe(recipe: { title?: string; tags?: string[] }): boolean {
   const breakfastKeywords = ['breakfast', 'pancake', 'waffle', 'cereal', 'oatmeal', 'eggs', 'bacon', 'toast'];
   const title = recipe.title?.toLowerCase() || '';
   const tags = recipe.tags?.map((tag: string) => tag.toLowerCase()) || [];
@@ -183,7 +183,7 @@ function isBreakfastRecipe(recipe: any): boolean {
   );
 }
 
-function isLunchRecipe(recipe: any): boolean {
+function isLunchRecipe(recipe: { title?: string; tags?: string[] }): boolean {
   const lunchKeywords = ['lunch', 'sandwich', 'salad', 'soup', 'wrap', 'pasta', 'rice'];
   const title = recipe.title?.toLowerCase() || '';
   const tags = recipe.tags?.map((tag: string) => tag.toLowerCase()) || [];
@@ -193,7 +193,7 @@ function isLunchRecipe(recipe: any): boolean {
   );
 }
 
-function isDinnerRecipe(recipe: any): boolean {
+function isDinnerRecipe(recipe: { title?: string; tags?: string[] }): boolean {
   const dinnerKeywords = ['dinner', 'roast', 'grill', 'casserole', 'stew', 'curry', 'stir-fry'];
   const title = recipe.title?.toLowerCase() || '';
   const tags = recipe.tags?.map((tag: string) => tag.toLowerCase()) || [];
@@ -203,7 +203,7 @@ function isDinnerRecipe(recipe: any): boolean {
   );
 }
 
-function calculateSeasonalScore(recipe: any): number {
+function calculateSeasonalScore(recipe: { title?: string; description?: string; tags?: string[] }): number {
   const currentMonth = new Date().getMonth();
   const seasonalIngredients = {
     winter: ['root vegetables', 'winter squash', 'citrus', 'dark greens'],
@@ -237,29 +237,29 @@ function calculateSeasonalScore(recipe: any): number {
   return seasonalMatches * 2; // 2 points per seasonal ingredient
 }
 
-function calculateNutritionalScore(recipe: any): number {
+function calculateNutritionalScore(recipe: { tags?: string[] }): number {
   let score = 0;
   const tags = recipe.tags?.map((tag: string) => tag.toLowerCase()) || [];
   
   // Protein sources
-  if (tags.some(tag => tag.includes('protein') || tag.includes('meat') || tag.includes('fish'))) {
+  if (tags.some((tag: string) => tag.includes('protein') || tag.includes('meat') || tag.includes('fish'))) {
     score += 2;
   }
   
   // Vegetables
-  if (tags.some(tag => tag.includes('vegetable') || tag.includes('salad') || tag.includes('green'))) {
+  if (tags.some((tag: string) => tag.includes('vegetable') || tag.includes('salad') || tag.includes('green'))) {
     score += 2;
   }
   
   // Whole grains
-  if (tags.some(tag => tag.includes('whole grain') || tag.includes('quinoa') || tag.includes('brown rice'))) {
+  if (tags.some((tag: string) => tag.includes('whole grain') || tag.includes('quinoa') || tag.includes('brown rice'))) {
     score += 1;
   }
   
   return score;
 }
 
-function generateAIReasoning(recipe: any, usageCount: number): string {
+function generateAIReasoning(recipe: { prep_time?: number; tags?: string[] }, usageCount: number): string {
   const reasons = [];
   
   if (usageCount === 0) {
