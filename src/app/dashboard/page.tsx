@@ -208,53 +208,53 @@ export default function DashboardPage() {
 
           {/* Feature Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-            <FeatureCard
-              title="AI-Powered Insights"
-              description="Get intelligent suggestions for meals, chores, and household management"
-              icon="🤖"
-              href="/ai-email-dashboard"
-              canAccess={canAccessFeature('ai_insights', userData?.plan)}
-            />
+                         <FeatureCard
+               title="AI-Powered Insights"
+               description="Get intelligent suggestions for meals, chores, and household management"
+               icon="🤖"
+               href="/ai-email-dashboard"
+               gradient="bg-gradient-to-br from-blue-500 to-purple-600"
+             />
 
-            <FeatureCard
-              title="Smart Automation"
-              description="Set up rules to automatically manage recurring tasks and notifications"
-              icon="⚡"
-              href="/test-automation"
-              canAccess={canAccessFeature('automation', userData?.plan)}
-            />
+             <FeatureCard
+               title="Smart Automation"
+               description="Set up rules to automatically manage recurring tasks and notifications"
+               icon="⚡"
+               href="/test-automation"
+               gradient="bg-gradient-to-br from-green-500 to-teal-600"
+             />
 
-            <FeatureCard
-              title="Advanced Analytics"
-              description="Track your household's progress with detailed statistics and insights"
-              icon="📈"
-              href="/leaderboard"
-              canAccess={canAccessFeature('analytics', userData?.plan)}
-            />
+             <FeatureCard
+               title="Advanced Analytics"
+               description="Track your household's progress with detailed statistics and insights"
+               icon="📈"
+               href="/leaderboard"
+               gradient="bg-gradient-to-br from-orange-500 to-red-600"
+             />
 
-            <FeatureCard
-              title="Power-ups"
-              description="Unlock special abilities and bonuses to enhance your experience"
-              icon="🚀"
-              href="/power-ups"
-              canAccess={true}
-            />
+             <FeatureCard
+               title="Power-ups"
+               description="Unlock special abilities and bonuses to enhance your experience"
+               icon="🚀"
+               href="/power-ups"
+               gradient="bg-gradient-to-br from-purple-500 to-pink-600"
+             />
 
-            <FeatureCard
-              title="Rewards Center"
-              description="Redeem your hard-earned XP and coins for exclusive rewards"
-              icon="🎁"
-              href="/rewards"
-              canAccess={true}
-            />
+             <FeatureCard
+               title="Rewards Center"
+               description="Redeem your hard-earned XP and coins for exclusive rewards"
+               icon="🎁"
+               href="/rewards"
+               gradient="bg-gradient-to-br from-yellow-500 to-orange-600"
+             />
 
-            <FeatureCard
-              title="Settings & Preferences"
-              description="Customize your experience and manage your account settings"
-              icon="⚙️"
-              href="/settings"
-              canAccess={true}
-            />
+             <FeatureCard
+               title="Settings & Preferences"
+               description="Customize your experience and manage your account settings"
+               icon="⚙️"
+               href="/settings"
+               gradient="bg-gradient-to-br from-gray-500 to-gray-700"
+             />
           </div>
 
           {/* Pro Features Promotion */}
