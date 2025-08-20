@@ -2,17 +2,8 @@
 export class ServiceContainer {
   private static instance: ServiceContainer;
   
-  // Core services
+  // Core services - only include implemented ones
   public readonly mealService = new MealService();
-  public readonly aiService = new AIService();
-  public readonly notificationService = new NotificationService();
-  public readonly userService = new UserService();
-  public readonly householdService = new HouseholdService();
-  
-  // AI-specific services
-  public readonly emailProcessingService = new EmailProcessingService();
-  public readonly learningService = new LearningService();
-  public readonly suggestionService = new SuggestionService();
   
   private constructor() {}
   
@@ -61,12 +52,5 @@ export abstract class BaseService {
   }
 }
 
-// Import all services
+// Import only implemented services
 export { MealService } from './meal/MealService';
-export { AIService } from './ai/AIService';
-export { NotificationService } from './notification/NotificationService';
-export { UserService } from './user/UserService';
-export { HouseholdService } from './household/HouseholdService';
-export { EmailProcessingService } from './ai/EmailProcessingService';
-export { LearningService } from './ai/LearningService';
-export { SuggestionService } from './ai/SuggestionService';
