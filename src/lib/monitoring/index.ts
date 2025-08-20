@@ -437,7 +437,8 @@ export class MonitoringService {
     const dailyGroups: Record<string, AIMetric[]> = {};
     
     metrics.forEach(metric => {
-      const date = new Date(metric.timestamp).toISOString().split('T')[0];
+      const dateParts = new Date(metric.timestamp).toISOString().split('T');
+      const date = dateParts[0] || 'unknown';
       if (!dailyGroups[date]) dailyGroups[date] = [];
       dailyGroups[date].push(metric);
     });
