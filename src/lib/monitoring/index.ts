@@ -254,7 +254,9 @@ export class MonitoringService {
     const featureUsage = new Map<string, number>();
     featureEvents.forEach(event => {
       const feature = event.action.split('.')[1];
-      featureUsage.set(feature, (featureUsage.get(feature) || 0) + 1);
+      if (feature) {
+        featureUsage.set(feature, (featureUsage.get(feature) || 0) + 1);
+      }
     });
 
     const mostUsedFeatures = Array.from(featureUsage.entries())
