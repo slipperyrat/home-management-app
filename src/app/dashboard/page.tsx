@@ -139,33 +139,33 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-4 sm:p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
-                    <span className="text-purple-600 text-lg">🏆</span>
-                  </div>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-purple-600">Level</p>
-                  <p className="text-lg font-semibold text-purple-900">{userData?.level || 1}</p>
-                </div>
-              </div>
-            </div>
+                         <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-4 sm:p-6">
+               <div className="flex items-center">
+                 <div className="flex-shrink-0">
+                   <div className="flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
+                     <span className="text-purple-600 text-lg">🏆</span>
+                   </div>
+                 </div>
+                 <div className="ml-3">
+                   <p className="text-sm font-medium text-purple-600">Plan</p>
+                   <p className="text-lg font-semibold text-purple-900">{userData?.plan || 'free'}</p>
+                 </div>
+               </div>
+             </div>
 
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-4 sm:p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="flex items-center justify-center h-8 w-8 rounded-full bg-orange-100">
-                    <span className="text-orange-600 text-lg">⭐</span>
-                  </div>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-orange-600">Streak</p>
-                  <p className="text-lg font-semibold text-orange-900">{userData?.streak || 0} days</p>
-                </div>
-              </div>
-            </div>
+                         <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-4 sm:p-6">
+               <div className="flex items-center">
+                 <div className="flex-shrink-0">
+                   <div className="flex items-center justify-center h-8 w-8 rounded-full bg-orange-100">
+                     <span className="text-orange-600 text-lg">⭐</span>
+                   </div>
+                 </div>
+                 <div className="ml-3">
+                   <p className="text-sm font-medium text-orange-600">Role</p>
+                   <p className="text-lg font-semibold text-orange-900">{userData?.role || 'member'}</p>
+                 </div>
+               </div>
+             </div>
           </div>
 
           {/* Quick Actions */}
