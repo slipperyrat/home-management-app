@@ -10,6 +10,7 @@ const supabase = createClient(
 );
 
 export async function GET(_request: NextRequest) {
+  console.log('🚀 GET: Function called - before try block');
   try {
     console.log('🔄 GET: Starting shopping lists fetch...');
     const { userId } = await auth();
@@ -177,9 +178,18 @@ export async function GET(_request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error fetching shopping lists:', error);
+    console.error('💥 GET: Unexpected error in shopping lists fetch:', error);
+    console.error('💥 GET: Error details:', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack,
+      cause: error?.cause
+    });
     return NextResponse.json(
-      { error: 'Failed to fetch shopping lists' },
+      { 
+        error: 'Failed to fetch shopping lists',
+        details: error?.message || 'Unknown error'
+      },
       { status: 500 }
     );
   }
