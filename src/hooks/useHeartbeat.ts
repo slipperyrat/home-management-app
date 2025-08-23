@@ -13,12 +13,12 @@ export function useHeartbeat() {
     if (!user || !userData?.household_id) return;
 
     // Post initial heartbeat
-    postEventTypes.heartbeat(userData.household_id);
+    postEventTypes.heartbeat({ household_id: userData.household_id });
 
     // Set up interval for periodic heartbeats
     intervalRef.current = setInterval(() => {
       if (userData?.household_id) {
-        postEventTypes.heartbeat(userData.household_id);
+        postEventTypes.heartbeat({ household_id: userData.household_id });
       }
     }, 15 * 60 * 1000); // 15 minutes
 
@@ -38,7 +38,7 @@ export function useHeartbeat() {
       if (!document.hidden) {
         // Post heartbeat when tab becomes visible
         if (userData?.household_id) {
-          postEventTypes.heartbeat(userData.household_id);
+          postEventTypes.heartbeat({ household_id: userData.household_id });
         }
       }
     };
@@ -62,7 +62,7 @@ export function useHeartbeat() {
   // Return function to manually trigger heartbeat
   const triggerHeartbeat = () => {
     if (userData?.household_id) {
-      postEventTypes.heartbeat(userData.household_id);
+      postEventTypes.heartbeat({ household_id: userData.household_id });
     }
   };
 
