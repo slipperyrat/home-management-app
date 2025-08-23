@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('xp, coins')
-        .eq('clerk_id', userId);
+        .eq('id', userId);
 
       console.log(`👤 User data query result:`, { userData, userError });
 
@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
       }
 
       if (!userData || userData.length === 0) {
-        console.error(`❌ No user data found for clerk_id: ${userId}`);
-        return NextResponse.json({ error: `User not found with clerk_id: ${userId}` }, { status: 404 });
+        console.error(`❌ No user data found for id: ${userId}`);
+        return NextResponse.json({ error: `User not found with id: ${userId}` }, { status: 404 });
       }
 
       const user = userData[0];
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
           xp: newXp,
           coins: newCoins
         })
-        .eq('clerk_id', userId);
+        .eq('id', userId);
 
       if (updateError) {
         console.error(`❌ Error updating user rewards:`, updateError);
