@@ -15,7 +15,7 @@ import {
 
 export default function MealPlannerPageRefactored() {
   // User data
-  const { userData, isLoading: userDataLoading } = useUserData();
+  const { userData, isLoading: userDataLoading, user } = useUserData();
   
   // React Query hooks for meal plans
   const { 
@@ -54,14 +54,14 @@ export default function MealPlannerPageRefactored() {
     start_date: string;
     end_date: string;
   }) => {
-    if (!userData?.household?.id) return;
+    if (!userData?.household?.id || !user?.id) return;
     
     try {
       // Add optimistic update
       addOptimisticMealPlan({
         ...data,
         household_id: userData.household.id,
-        created_by: userData.id,
+        created_by: user.id,
         is_active: true,
         total_meals: 0,
         planned_meals: 0,
@@ -92,14 +92,14 @@ export default function MealPlannerPageRefactored() {
     ingredients: Array<{ name: string; amount: number; unit: string; notes?: string }>;
     instructions: Array<{ step_number: number; instruction: string; time_minutes?: number }>;
   }) => {
-    if (!userData?.household?.id) return;
+    if (!userData?.household?.id || !user?.id) return;
     
     try {
       // Add optimistic update
       addOptimisticRecipe({
         ...data,
         household_id: userData.household.id,
-        created_by: userData.id,
+        created_by: user.id,
         is_favorite: false,
       });
       
