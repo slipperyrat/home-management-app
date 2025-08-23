@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         household_id
       `)
-      .eq('clerk_id', userId)  // Use clerk_id to match database schema
+      .eq('id', userId)  // Use 'id' field which stores the Clerk user ID
       .maybeSingle();
 
     console.log('🔍 Database query result:', { data, error });
