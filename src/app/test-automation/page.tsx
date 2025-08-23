@@ -179,7 +179,7 @@ export default function TestAutomationPage() {
     setMessage('');
 
     try {
-      await postEventTypes.heartbeat(userData.household_id);
+      await postEventTypes.heartbeat({ household_id: userData.household_id });
       setMessage('Heartbeat event triggered! Check the Inbox to see if automation rules fired.');
     } catch (error) {
       console.error('Error triggering heartbeat:', error);
@@ -199,7 +199,11 @@ export default function TestAutomationPage() {
     setMessage('');
 
     try {
-      await postEventTypes.choreCompleted(userData.household_id, 'test-chore-id', user?.id || '');
+      await postEventTypes.choreCompleted({ 
+        household_id: userData.household_id, 
+        chore_id: 'test-chore-id', 
+        user_id: user?.id || '' 
+      });
       setMessage('Chore completed event triggered! Check the Inbox to see if automation rules fired.');
     } catch (error) {
       console.error('Error triggering chore completed:', error);
@@ -227,7 +231,10 @@ export default function TestAutomationPage() {
         source: 'email'
       };
       
-      await postEventTypes.billReceived(userData.household_id, billData);
+      await postEventTypes.billReceived({ 
+        household_id: userData.household_id, 
+        ...billData 
+      });
       setMessage('Bill received event triggered! Check the Inbox to see if automation rules fired.');
     } catch (error) {
       console.error('Error triggering bill received:', error);
@@ -247,7 +254,11 @@ export default function TestAutomationPage() {
     setMessage('');
 
     try {
-      await postEventTypes.shoppingListUpdated(userData.household_id, 'test-list-id', 'items_added');
+      await postEventTypes.shoppingListUpdated({ 
+        household_id: userData.household_id, 
+        list_id: 'test-list-id', 
+        action: 'items_added' 
+      });
       setMessage('Shopping list updated event triggered! Check the Inbox to see if automation rules fired.');
     } catch (error) {
       console.error('Error triggering shopping list updated:', error);
