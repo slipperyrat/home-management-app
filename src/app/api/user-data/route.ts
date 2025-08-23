@@ -14,12 +14,18 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔍 User data API called');
+    
     const { userId } = await getAuth(request);
+    console.log('🔍 Auth result:', { userId });
 
     if (!userId) {
+      console.log('❌ No user ID from auth');
       return apiResponse.unauthorized('User not authenticated');
     }
 
+    console.log('🔍 Querying users table for clerk_id:', userId);
+    
     // Query users table directly since it has household_id
     const { data, error } = await supabase
       .from('users')
@@ -35,13 +41,16 @@ export async function GET(request: NextRequest) {
       .eq('clerk_id', userId)  // Use clerk_id to match database schema
       .maybeSingle();
 
+    console.log('🔍 Database query result:', { data, error });
+
     if (error) {
-      console.error('Database error:', error);
-      return apiResponse.internalError('Failed to fetch user data');
+      console.error('❌ Database error:', error);
+      return apiResponse.internalError(`Failed to fetch user data: ${error.message}`);
     }
 
     // If user doesn't exist yet, return a default response
     if (!data) {
+      console.log('🔍 No user data found, returning default');
       const defaultUser = {
         email: '',
         role: 'member',
@@ -58,14 +67,16 @@ export async function GET(request: NextRequest) {
       return setCacheHeaders(response, 300, 60);
     }
 
+    console.log('🔍 User data found:', data);
+
     // Extract data from the direct query
     const householdId = data.household_id;
     
     // For now, use default values since we're not querying household details
     // TODO: Add separate query for household details if needed
-    let plan = 'free';
-    let createdAt = null;
-    let gameMode = 'default';
+    const plan = 'free';
+    const createdAt = null;
+    const gameMode = 'default';
 
     // Auto-upgrade logic for free plans after 7 days
     if (plan === "free" && createdAt) {
@@ -84,7 +95,6 @@ export async function GET(request: NextRequest) {
         if (updateError) {
           console.error('Error updating plan:', updateError);
         } else {
-          plan = "premium"; // Update the plan variable
           console.log(`Successfully auto-upgraded household ${householdId} to premium`);
         }
       }
@@ -108,12 +118,14 @@ export async function GET(request: NextRequest) {
       }
     };
     
+    console.log('🔍 Returning user data:', userData);
+    
     const response = apiResponse.success(userData, 'User data fetched successfully');
     
     // Smart caching: Cache for 5 minutes, allow stale for 1 minute
     return setCacheHeaders(response, 300, 60);
   } catch (error) {
-    console.error('Unexpected error in user-data API:', error);
-    return apiResponse.internalError('An unexpected error occurred');
+    console.error('❌ Unexpected error in user-data API:', error);
+    return apiResponse.internalError(`An unexpected error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 } 
