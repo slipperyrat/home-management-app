@@ -10,6 +10,7 @@ const supabase = createClient(
 );
 
 export async function GET(_request: NextRequest) {
+  // Force new deployment - debugging enabled
   console.log('🚀 GET: Function called - before try block');
   try {
     console.log('🔄 GET: Starting shopping lists fetch...');
