@@ -1,14 +1,10 @@
 'use client';
 
-import { useAuth } from '@clerk/nextjs';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
 import { 
   useMealPlans, 
   useCreateMealPlan, 
-  useAddRecipeToMealPlan,
   useOptimisticMealPlans 
 } from '@/hooks/useMealPlans';
 import { 
@@ -18,9 +14,6 @@ import {
 } from '@/hooks/useRecipes';
 
 export default function MealPlannerPageRefactored() {
-  const { isSignedIn, isLoaded } = useAuth();
-  const router = useRouter();
-  
   // User data
   const { userData, isLoading: userDataLoading } = useUserData();
   
@@ -40,18 +33,11 @@ export default function MealPlannerPageRefactored() {
   
   // Mutations
   const createMealPlan = useCreateMealPlan();
-  const addRecipeToMealPlan = useAddRecipeToMealPlan();
   const createRecipe = useCreateRecipe();
   
   // Optimistic updates
   const { addOptimisticMealPlan, removeOptimisticMealPlan } = useOptimisticMealPlans();
   const { addOptimisticRecipe, removeOptimisticRecipe } = useOptimisticRecipes();
-  
-  // Local state
-  const [currentWeek, setCurrentWeek] = useState<Date>(new Date());
-  const [showCreateMealPlanModal, setShowCreateMealPlanModal] = useState(false);
-  const [showCreateRecipeModal, setShowCreateRecipeModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('planner');
   
   // Extract data from React Query
   const mealPlans = mealPlansData?.mealPlans || [];
@@ -72,7 +58,7 @@ export default function MealPlannerPageRefactored() {
     
     try {
       // Add optimistic update
-      const tempId = addOptimisticMealPlan({
+      addOptimisticMealPlan({
         ...data,
         household_id: userData.household.id,
         created_by: userData.id,
@@ -87,30 +73,9 @@ export default function MealPlannerPageRefactored() {
         household_id: userData.household.id,
       });
       
-      // Clear form and close modal
-      setShowCreateMealPlanModal(false);
       toast.success('Meal plan created successfully!');
     } catch (error) {
-      // Remove optimistic update on error
-      removeOptimisticMealPlan(`temp-${Date.now()}`);
       toast.error('Failed to create meal plan. Please try again.');
-    }
-  };
-  
-  // Handle adding a recipe to a meal plan
-  const handleAddRecipeToMealPlan = async (data: {
-    meal_plan_id: string;
-    recipe_id: string;
-    meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
-    day_of_week: number;
-    servings: number;
-    notes?: string;
-  }) => {
-    try {
-      await addRecipeToMealPlan.mutateAsync(data);
-      toast.success('Recipe added to meal plan!');
-    } catch (error) {
-      toast.error('Failed to add recipe to meal plan. Please try again.');
     }
   };
   
@@ -131,7 +96,7 @@ export default function MealPlannerPageRefactored() {
     
     try {
       // Add optimistic update
-      const tempId = addOptimisticRecipe({
+      addOptimisticRecipe({
         ...data,
         household_id: userData.household.id,
         created_by: userData.id,
@@ -144,12 +109,8 @@ export default function MealPlannerPageRefactored() {
         household_id: userData.household.id,
       });
       
-      // Clear form and close modal
-      setShowCreateRecipeModal(false);
       toast.success('Recipe created successfully!');
     } catch (error) {
-      // Remove optimistic update on error
-      removeOptimisticRecipe(`temp-${Date.now()}`);
       toast.error('Failed to create recipe. Please try again.');
     }
   };
@@ -200,7 +161,11 @@ export default function MealPlannerPageRefactored() {
       {/* Quick Actions */}
       <div className="flex gap-4 mb-8">
         <button
-          onClick={() => setShowCreateMealPlanModal(true)}
+          onClick={() => handleCreateMealPlan({
+            name: 'New Meal Plan',
+            start_date: new Date().toISOString().split('T')[0],
+            end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+          })}
           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
           disabled={createMealPlan.isPending}
         >
@@ -208,7 +173,16 @@ export default function MealPlannerPageRefactored() {
         </button>
         
         <button
-          onClick={() => setShowCreateRecipeModal(true)}
+          onClick={() => handleCreateRecipe({
+            name: 'New Recipe',
+            prep_time: 15,
+            cook_time: 30,
+            difficulty: 'medium',
+            servings: 4,
+            tags: [],
+            ingredients: [],
+            instructions: []
+          })}
           className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg"
           disabled={createRecipe.isPending}
         >
