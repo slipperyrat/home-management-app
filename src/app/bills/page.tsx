@@ -84,7 +84,7 @@ export default function BillsPage() {
       });
 
       if (response.ok) {
-        const result = await response.json();
+        await response.json();
         toast.success('Bill created successfully!');
         
         // Reset form and refresh bills
