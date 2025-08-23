@@ -133,7 +133,7 @@ export function useAddShoppingItem() {
   
   return useMutation({
     mutationFn: addShoppingItem,
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       // Invalidate the specific list's items
       queryClient.invalidateQueries({ 
         queryKey: queryKeys.shoppingLists.items(variables.shopping_list_id) 
@@ -153,24 +153,8 @@ export function useToggleShoppingItem() {
   
   return useMutation({
     mutationFn: toggleShoppingItem,
-    onSuccess: (data, variables) => {
-      // Optimistically update the item in the cache
-      queryClient.setQueryData(
-        queryKeys.shoppingLists.items(variables.shopping_list_id), 
-        (oldData: any) => {
-          if (!oldData) return oldData;
-          return {
-            ...oldData,
-            items: oldData.items.map((item: ShoppingItem) =>
-              item.id === variables.itemId 
-                ? { ...item, completed: !item.completed }
-                : item
-            ),
-          };
-        }
-      );
-      
-      // Invalidate to ensure consistency
+    onSuccess: (_, _itemId) => {
+      // Invalidate all shopping list queries to ensure consistency
       queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists.all });
     },
     onError: (error) => {
@@ -184,7 +168,7 @@ export function useDeleteShoppingList() {
   
   return useMutation({
     mutationFn: deleteShoppingList,
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       // Optimistically remove from cache
       queryClient.setQueryData(queryKeys.shoppingLists.all, (oldData: any) => {
         if (!oldData) return oldData;

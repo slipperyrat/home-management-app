@@ -211,7 +211,7 @@ export function useUpdateRecipe() {
       queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
       
       // Invalidate tag-based queries that might include this recipe
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipes.byTag });
+      queryClient.invalidateQueries({ queryKey: ['recipes', 'tag'] });
     },
     onError: (error) => {
       console.error('Failed to update recipe:', error);
@@ -232,7 +232,7 @@ export function useDeleteRecipe() {
       queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
       
       // Invalidate tag-based queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.recipes.byTag });
+      queryClient.invalidateQueries({ queryKey: ['recipes', 'tag'] });
       
       // Invalidate favorites if it was a favorite
       queryClient.invalidateQueries({ queryKey: queryKeys.recipes.favorites });

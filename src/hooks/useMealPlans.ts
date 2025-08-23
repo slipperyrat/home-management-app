@@ -239,7 +239,7 @@ export function useRemoveRecipeFromMealPlan() {
   
   return useMutation({
     mutationFn: removeRecipeFromMealPlan,
-    onSuccess: (_, mealPlanRecipeId) => {
+    onSuccess: (_, _mealPlanRecipeId) => {
       // Find and remove the recipe from all meal plans in cache
       queryClient.setQueriesData(
         { queryKey: queryKeys.mealPlans.all },
