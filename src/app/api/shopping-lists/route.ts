@@ -143,18 +143,16 @@ export async function GET(_request: NextRequest) {
       const totalItems = list.shopping_items?.length || 0;
       const completedItems = list.shopping_items?.filter((item: any) => item.completed).length || 0;
       
-      return {
-        id: list.id,
-        name: list.title || list.name,
-        description: list.description,
-        created_at: list.created_at,
-        updated_at: list.updated_at || list.created_at,
-        is_completed: completedItems === totalItems && totalItems > 0,
-        total_items: totalItems,
-        completed_items: completedItems,
-        ai_suggestions_count: list.ai_suggestions_count || 0,
-        ai_confidence: list.ai_confidence || 75
-      };
+               return {
+           id: list.id,
+           name: list.title || list.name,
+           description: list.description,
+           created_at: list.created_at,
+           updated_at: list.updated_at || list.created_at,
+           is_completed: completedItems === totalItems && totalItems > 0,
+           total_items: totalItems,
+           completed_items: completedItems
+         };
     }) || [];
 
     return NextResponse.json({
@@ -262,9 +260,7 @@ export async function POST(request: NextRequest) {
       title: validatedData.name,
       description: validatedData.description,
       household_id: householdId,
-      created_by: userId,
-      ai_suggestions_count: 0,
-      ai_confidence: 75
+      created_by: userId
     };
     
     console.log('Attempting to insert shopping list with data:', insertData);
