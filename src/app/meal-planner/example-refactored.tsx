@@ -36,8 +36,8 @@ export default function MealPlannerPageRefactored() {
   const createRecipe = useCreateRecipe();
   
   // Optimistic updates
-  const { addOptimisticMealPlan, removeOptimisticMealPlan } = useOptimisticMealPlans();
-  const { addOptimisticRecipe, removeOptimisticRecipe } = useOptimisticRecipes();
+  const { addOptimisticMealPlan } = useOptimisticMealPlans();
+  const { addOptimisticRecipe } = useOptimisticRecipes();
   
   // Extract data from React Query
   const mealPlans = mealPlansData?.mealPlans || [];
@@ -74,7 +74,7 @@ export default function MealPlannerPageRefactored() {
       });
       
       toast.success('Meal plan created successfully!');
-    } catch (error) {
+    } catch {
       toast.error('Failed to create meal plan. Please try again.');
     }
   };
@@ -110,7 +110,7 @@ export default function MealPlannerPageRefactored() {
       });
       
       toast.success('Recipe created successfully!');
-    } catch (error) {
+    } catch {
       toast.error('Failed to create recipe. Please try again.');
     }
   };
