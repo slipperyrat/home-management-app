@@ -11,14 +11,17 @@ const supabase = createClient(
 
 export async function GET(_request: NextRequest) {
   try {
+    console.log('🔄 GET: Starting shopping lists fetch...');
     const { userId } = await auth();
     if (!userId) {
+      console.log('❌ GET: No userId from auth');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('Fetching user data for userId:', userId);
+    console.log('✅ GET: Got userId:', userId);
 
     // Get user's household and plan
+    console.log('🔍 GET: Querying user data from database...');
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select(`
@@ -30,8 +33,10 @@ export async function GET(_request: NextRequest) {
       .eq('id', userId)
       .single();
 
+    console.log('📊 GET: User data query result:', { userData, userError });
+
     if (userError) {
-      console.error('Error fetching user data:', userError);
+      console.error('❌ GET: Error fetching user data:', userError);
       
       // Check if it's a "not found" error vs other database errors
       if (userError.code === 'PGRST116') {
@@ -66,10 +71,16 @@ export async function GET(_request: NextRequest) {
 
     const householdId = userData.household_id;
     const userPlan = userData.households?.[0]?.plan || 'free';
+    
+    console.log('🏠 GET: Household ID:', householdId);
+    console.log('💳 GET: User plan:', userPlan);
+    console.log('🔐 GET: Checking feature access for meal_planner...');
 
     // Check feature access for advanced features
     if (!canAccessFeature(userPlan, 'meal_planner')) {
+      console.log('⚠️ GET: User does not have access to meal_planner, returning basic lists');
       // If user doesn't have access, return basic lists without AI features
+      console.log('📋 GET: Querying basic shopping lists for household:', householdId);
       const { data: shoppingLists, error: listsError } = await supabase
         .from('shopping_lists')
         .select(`
@@ -86,8 +97,10 @@ export async function GET(_request: NextRequest) {
         .eq('household_id', householdId)
         .order('created_at', { ascending: false });
 
+      console.log('📊 GET: Basic lists query result:', { shoppingLists, listsError });
+
       if (listsError) {
-        console.error('Error fetching shopping lists:', listsError);
+        console.error('❌ GET: Error fetching shopping lists:', listsError);
         return NextResponse.json({ error: 'Failed to fetch shopping lists' }, { status: 500 });
       }
 
