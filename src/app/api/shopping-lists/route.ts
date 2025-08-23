@@ -65,7 +65,7 @@ export async function GET(_request: NextRequest) {
     }
 
     const householdId = userData.household_id;
-    const userPlan = userData.households?.plan || 'free';
+    const userPlan = userData.households?.[0]?.plan || 'free';
 
     // Check feature access for advanced features
     try {
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
     }
 
     const householdId = userData.household_id;
-    const userPlan = userData.households?.plan || 'free';
+    const userPlan = userData.households?.[0]?.plan || 'free';
 
     // Check feature access for premium features
     try {
