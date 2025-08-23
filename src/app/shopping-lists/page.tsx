@@ -72,24 +72,29 @@ export default function ShoppingListsPage() {
 
   const fetchShoppingLists = async () => {
     try {
-      console.log('Fetching shopping lists...');
+      console.log('🔄 Fetching shopping lists...');
       const response = await fetch('/api/shopping-lists');
-      console.log('Response status:', response.status);
+      console.log('📡 Response status:', response.status);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('Shopping lists data:', data);
+        console.log('📦 Shopping lists data:', data);
+        console.log('📋 Shopping lists array:', data.shoppingLists);
+        console.log('🔢 Number of lists:', data.shoppingLists?.length || 0);
+        
         setShoppingLists(data.shoppingLists || []);
         setNeedsOnboarding(false);
+        
+        console.log('✅ State updated with shopping lists');
       } else {
         const errorData = await response.json();
-        console.error('Error response:', errorData);
+        console.error('❌ Error response:', errorData);
         if (errorData.needsOnboarding) {
           setNeedsOnboarding(true);
         }
       }
     } catch (error) {
-      console.error('Error fetching shopping lists:', error);
+      console.error('💥 Error fetching shopping lists:', error);
     } finally {
       setLoading(false);
     }
@@ -125,9 +130,11 @@ export default function ShoppingListsPage() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Created shopping list:', data);
+        console.log('🎉 Created shopping list:', data);
+        console.log('📝 New list data:', data.shoppingList);
         
         // Refresh the lists instead of manually updating state
+        console.log('🔄 Refreshing shopping lists...');
         await fetchShoppingLists();
         
         setShowCreateModal(false);
