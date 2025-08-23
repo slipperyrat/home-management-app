@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         household_id
       `)
-      .eq('id', userId)  // Changed from clerk_id to id
+      .eq('clerk_id', userId)  // Use clerk_id to match database schema
       .maybeSingle();
 
     if (error) {
@@ -48,6 +48,9 @@ export async function GET(request: NextRequest) {
         plan: 'free',
         xp: 0,
         coins: 0,
+        has_onboarded: false,
+        updated_at: null,
+        household_id: null,
         household: null
       };
 
