@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
-import { requireFeatureAccess } from '@/lib/server/canAccessFeature';
+import { canAccessFeature } from '@/lib/server/canAccessFeature';
 import { z } from 'zod';
 
 const supabase = createClient(
@@ -68,9 +68,7 @@ export async function GET(_request: NextRequest) {
     const userPlan = userData.households?.[0]?.plan || 'free';
 
     // Check feature access for advanced features
-    try {
-      requireFeatureAccess(userPlan, 'meal_planner');
-    } catch (error) {
+    if (!canAccessFeature(userPlan, 'meal_planner')) {
       // If user doesn't have access, return basic lists without AI features
       const { data: shoppingLists, error: listsError } = await supabase
         .from('shopping_lists')
@@ -250,9 +248,7 @@ export async function POST(request: NextRequest) {
     const userPlan = userData.households?.[0]?.plan || 'free';
 
     // Check feature access for premium features
-    try {
-      requireFeatureAccess(userPlan, 'meal_planner');
-    } catch (error) {
+    if (!canAccessFeature(userPlan, 'meal_planner')) {
       return NextResponse.json({ 
         error: 'Feature not available on your plan',
         requiredPlan: 'premium'
