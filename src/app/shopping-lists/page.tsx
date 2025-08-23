@@ -34,9 +34,9 @@ import {
 interface ShoppingList {
   id: string;
   name: string;
-  description?: string;
+  household_id: string;
+  created_by: string;
   created_at: string;
-  updated_at: string;
   is_completed: boolean;
   total_items: number;
   completed_items: number;
@@ -58,7 +58,7 @@ interface AIShoppingInsights {
 export default function ShoppingListsPage() {
   const { userId } = useAuth();
   const router = useRouter();
-  const [aiInsights, setAiInsights] = useState<AIShoppingInsights | null>(null);
+  const [aiInsights] = useState<AIShoppingInsights | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListName, setNewListName] = useState('');
@@ -354,11 +354,7 @@ export default function ShoppingListsPage() {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg mb-2">{list.name}</CardTitle>
-                        {list.description && (
-                          <CardDescription className="text-sm mb-3">
-                            {list.description}
-                          </CardDescription>
-                        )}
+
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         {list.ai_suggestions_count > 0 && (
@@ -383,7 +379,7 @@ export default function ShoppingListsPage() {
                       
                       <div className="flex justify-between text-sm text-gray-600">
                         <span>{list.completed_items} of {list.total_items} items</span>
-                        <span>{new Date(list.updated_at).toLocaleDateString()}</span>
+                        <span>{new Date(list.created_at).toLocaleDateString()}</span>
                       </div>
                       
                       <div className="flex gap-2 pt-2">
@@ -616,7 +612,7 @@ export default function ShoppingListsPage() {
               <div className="flex gap-3 pt-2">
                 <Button
                   onClick={handleCreateList}
-                  disabled={!newListName.trim() || creating}
+                  disabled={!newListName.trim() || createShoppingList.isPending}
                   className="flex-1"
                 >
                   {createShoppingList.isPending ? 'Creating...' : 'Create List'}
@@ -624,7 +620,7 @@ export default function ShoppingListsPage() {
                 <Button
                   variant="outline"
                   onClick={() => setShowCreateModal(false)}
-                  disabled={creating}
+                  disabled={createShoppingList.isPending}
                 >
                   Cancel
                 </Button>
