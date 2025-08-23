@@ -78,7 +78,7 @@ export const postEventTypes = {
   heartbeat: (payload?: Record<string, any>) => postEvent({ 
     householdId: '', // Will be set by the hook
     type: 'heartbeat', 
-    payload 
+    payload: payload || {}
   }),
   choreCompleted: (payload: Record<string, any>) => postEvent({ 
     householdId: '', // Will be set by the hook
