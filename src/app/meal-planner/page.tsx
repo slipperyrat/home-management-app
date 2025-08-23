@@ -186,7 +186,7 @@ export default function MealPlannerPage() {
     
     // If meal is a string (recipe ID), we need to find the recipe object
     if (typeof meal === 'string') {
-      return recipes?.find(r => r.id === meal);
+      return recipes?.recipes?.find(r => r.id === meal);
     }
     
     return meal as Recipe | undefined;
@@ -545,7 +545,7 @@ export default function MealPlannerPage() {
                             mealType="breakfast"
                             recipe={breakfastRecipe || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
-                            recipes={recipes || []}
+                            recipes={recipes?.recipes || []}
                           />
                         );
                       })()}
@@ -562,7 +562,7 @@ export default function MealPlannerPage() {
                             mealType="lunch"
                             recipe={lunchRecipe || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
-                            recipes={recipes || []}
+                            recipes={recipes?.recipes || []}
                           />
                         );
                       })()}
@@ -579,7 +579,7 @@ export default function MealPlannerPage() {
                             mealType="dinner"
                             recipe={dinnerRecipe || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
-                            recipes={recipes || []}
+                            recipes={recipes?.recipes || []}
                           />
                         );
                       })()}
@@ -613,7 +613,7 @@ export default function MealPlannerPage() {
                           mealType="breakfast"
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
-                          recipes={recipes || []}
+                          recipes={recipes?.recipes || []}
                           isMobile={true}
                         />
                       </div>
@@ -626,7 +626,7 @@ export default function MealPlannerPage() {
                           mealType="lunch"
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
-                          recipes={recipes || []}
+                          recipes={recipes?.recipes || []}
                           isMobile={true}
                         />
                       </div>
@@ -639,7 +639,7 @@ export default function MealPlannerPage() {
                           mealType="dinner"
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
-                          recipes={recipes || []}
+                          recipes={recipes?.recipes || []}
                           isMobile={true}
                         />
                       </div>
@@ -943,7 +943,7 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
               Select Recipe
             </div>
             <div className="max-h-48 overflow-y-auto space-y-1">
-              {recipes.length === 0 ? (
+              {recipes?.recipes?.length === 0 ? (
                 <div className={`p-3 text-gray-500 text-center ${isMobile ? 'text-sm' : 'text-xs'}`}>
                   <div>No recipes yet!</div>
                   <button
@@ -954,7 +954,7 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
                   </button>
                 </div>
               ) : (
-                recipes.map((recipe) => (
+                recipes?.recipes?.map((recipe) => (
                   <button
                     key={recipe.id}
                     onClick={() => {
