@@ -258,22 +258,35 @@ export async function POST(request: NextRequest) {
     }
 
     // Create new shopping list
+    const insertData = {
+      title: validatedData.name,
+      description: validatedData.description,
+      household_id: householdId,
+      created_by: userId,
+      ai_suggestions_count: 0,
+      ai_confidence: 75
+    };
+    
+    console.log('Attempting to insert shopping list with data:', insertData);
+    
     const { data: newList, error: createError } = await supabase
       .from('shopping_lists')
-      .insert({
-        title: validatedData.name,
-        description: validatedData.description,
-        household_id: householdId,
-        created_by: userId,
-        ai_suggestions_count: 0,
-        ai_confidence: 75
-      })
+      .insert(insertData)
       .select()
       .single();
 
     if (createError) {
       console.error('Error creating shopping list:', createError);
-      return NextResponse.json({ error: 'Failed to create shopping list' }, { status: 500 });
+      console.error('Create error details:', {
+        code: createError.code,
+        message: createError.message,
+        details: createError.details,
+        hint: createError.hint
+      });
+      return NextResponse.json({ 
+        error: 'Failed to create shopping list',
+        details: createError.message 
+      }, { status: 500 });
     }
 
     // Add audit log entry
