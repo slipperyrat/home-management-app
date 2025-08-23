@@ -16,6 +16,8 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    console.log('Fetching user data for userId:', userId);
+
     // Get user's household
     const { data: userData, error: userError } = await supabase
       .from('users')
@@ -25,12 +27,33 @@ export async function GET(_request: NextRequest) {
 
     if (userError) {
       console.error('Error fetching user data:', userError);
-      return NextResponse.json({ error: 'Failed to fetch user data' }, { status: 500 });
+      
+      // Check if it's a "not found" error vs other database errors
+      if (userError.code === 'PGRST116') {
+        return NextResponse.json({ 
+          error: 'User not found. Please complete onboarding first.',
+          needsOnboarding: true,
+          redirectTo: '/onboarding'
+        }, { status: 404 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to fetch user data', 
+        details: userError.message 
+      }, { status: 500 });
     }
 
-    if (!userData?.household_id) {
+    if (!userData) {
       return NextResponse.json({ 
-        error: 'Household not found. Please complete onboarding first.',
+        error: 'User not found in database. Please complete onboarding first.',
+        needsOnboarding: true,
+        redirectTo: '/onboarding'
+      }, { status: 404 });
+    }
+
+    if (!userData.household_id) {
+      return NextResponse.json({ 
+        error: 'Household not set up. Please complete onboarding first.',
         needsOnboarding: true,
         redirectTo: '/onboarding'
       }, { status: 404 });
@@ -168,6 +191,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    console.log('POST: Fetching user data for userId:', userId);
+
     // Get user's household
     const { data: userData, error: userError } = await supabase
       .from('users')
@@ -176,13 +201,34 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (userError) {
-      console.error('Error fetching user data:', userError);
-      return NextResponse.json({ error: 'Failed to fetch user data' }, { status: 500 });
+      console.error('POST: Error fetching user data:', userError);
+      
+      // Check if it's a "not found" error vs other database errors
+      if (userError.code === 'PGRST116') {
+        return NextResponse.json({ 
+          error: 'User not found. Please complete onboarding first.',
+          needsOnboarding: true,
+          redirectTo: '/onboarding'
+        }, { status: 404 });
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to fetch user data', 
+        details: userError.message 
+      }, { status: 500 });
     }
 
-    if (!userData?.household_id) {
+    if (!userData) {
       return NextResponse.json({ 
-        error: 'Household not found. Please complete onboarding first.',
+        error: 'User not found in database. Please complete onboarding first.',
+        needsOnboarding: true,
+        redirectTo: '/onboarding'
+      }, { status: 404 });
+    }
+
+    if (!userData.household_id) {
+      return NextResponse.json({ 
+        error: 'Household not set up. Please complete onboarding first.',
         needsOnboarding: true,
         redirectTo: '/onboarding'
       }, { status: 404 });
