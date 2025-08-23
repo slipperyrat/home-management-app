@@ -18,10 +18,15 @@ export async function GET(_request: NextRequest) {
 
     console.log('Fetching user data for userId:', userId);
 
-    // Get user's household
+    // Get user's household and plan
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('household_id, plan')
+      .select(`
+        household_id,
+        households!inner(
+          plan
+        )
+      `)
       .eq('id', userId)
       .single();
 
@@ -60,7 +65,7 @@ export async function GET(_request: NextRequest) {
     }
 
     const householdId = userData.household_id;
-    const userPlan = userData.plan || 'free';
+    const userPlan = userData.households?.plan || 'free';
 
     // Check feature access for advanced features
     try {
@@ -193,10 +198,15 @@ export async function POST(request: NextRequest) {
 
     console.log('POST: Fetching user data for userId:', userId);
 
-    // Get user's household
+    // Get user's household and plan
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('household_id, plan')
+      .select(`
+        household_id,
+        households!inner(
+          plan
+        )
+      `)
       .eq('id', userId)
       .single();
 
@@ -235,7 +245,7 @@ export async function POST(request: NextRequest) {
     }
 
     const householdId = userData.household_id;
-    const userPlan = userData.plan || 'free';
+    const userPlan = userData.households?.plan || 'free';
 
     // Check feature access for premium features
     try {
