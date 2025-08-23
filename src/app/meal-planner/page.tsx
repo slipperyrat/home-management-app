@@ -490,7 +490,9 @@ export default function MealPlannerPage() {
                   <button
                     onClick={() => {
                       console.log('🔍 New Recipe button clicked');
+                      console.log('🔍 Current modal state:', showCreateRecipeModal);
                       setShowCreateRecipeModal(true);
+                      console.log('🔍 Modal state after setState:', true);
                     }}
                     className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 text-sm font-medium"
                   >
@@ -928,7 +930,8 @@ export default function MealPlannerPage() {
             /> : null}
 
           {/* Create Recipe Modal */}
-          {showCreateRecipeModal ? <CreateRecipeModal
+          {showCreateRecipeModal ? (
+            <CreateRecipeModal
               onClose={() => {
                 console.log('🔍 Closing create recipe modal');
                 setShowCreateRecipeModal(false);
@@ -938,7 +941,8 @@ export default function MealPlannerPage() {
                 // React Query will automatically refetch recipes due to our mutation
                 setShowCreateRecipeModal(false);
               }}
-            /> : null}
+            />
+          ) : null}
         </div>
       </div>
     </div>
