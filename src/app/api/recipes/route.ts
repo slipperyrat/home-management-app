@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     // Add search filter if query provided
     if (query && query.trim()) {
-      supabaseQuery = supabaseQuery.or(`title.ilike.%${query.trim()}%,description.ilike.%${query.trim()}%`);
+      supabaseQuery = supabaseQuery.or(`name.ilike.%${query.trim()}%,description.ilike.%${query.trim()}%`);
     }
 
     const { data: recipes, error } = await supabaseQuery;
@@ -87,12 +87,18 @@ export async function POST(request: NextRequest) {
 
     const validatedData = validation.data;
 
-    // Prepare recipe data
+    // Prepare recipe data - map to database schema
     const recipeData = {
-      ...validatedData,
+      name: validatedData.title, // Map title to name
       description: validatedData.description || '',
-      image_url: validatedData.image_url || null,
-      tags: validatedData.tags || [],
+      ingredients: validatedData.ingredients, // Keep as JSONB
+      instructions: validatedData.instructions.map((instruction: any) => 
+        typeof instruction === 'string' ? instruction : instruction.instruction
+      ), // Convert to string array
+      prep_time: validatedData.prep_time,
+      cook_time: validatedData.cook_time,
+      servings: validatedData.servings,
+      difficulty: 'medium', // Default value
       household_id: householdId,
       created_by: userId
     };
