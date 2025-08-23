@@ -51,9 +51,15 @@ export async function POST(request: NextRequest) {
 
     // Check if item was previously incomplete (to award rewards only once)
     const wasIncomplete = !currentItem.completed;
-    const householdId = currentItem.shopping_lists.household_id;
+    // Fix: Access household_id correctly from the joined shopping_lists
+    const householdId = (currentItem.shopping_lists as any)?.household_id;
 
-    console.log(`🔄 Item was incomplete: ${wasIncomplete}`);
+    if (!householdId) {
+      console.error('❌ No household_id found for shopping item');
+      return NextResponse.json({ error: 'Shopping item not associated with a household' }, { status: 400 });
+    }
+
+    console.log(`🔄 Item was incomplete: ${wasIncomplete}, household: ${householdId}`);
 
     if (is_complete && wasIncomplete) {
       // Complete the item and award rewards
