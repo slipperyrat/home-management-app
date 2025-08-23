@@ -50,6 +50,8 @@ export const queryKeys = {
     byHousehold: (householdId: string) => ['recipes', 'household', householdId] as const,
     byId: (id: string) => ['recipes', id] as const,
     search: (query: string) => ['recipes', 'search', query] as const,
+    byTag: (tag: string) => ['recipes', 'tag', tag] as const,
+    favorites: ['recipes', 'favorites'] as const,
   },
   
   // Meal plans
@@ -58,6 +60,7 @@ export const queryKeys = {
     byHousehold: (householdId: string) => ['meal-plans', 'household', householdId] as const,
     byId: (id: string) => ['meal-plans', id] as const,
     byWeek: (weekStart: string) => ['meal-plans', 'week', weekStart] as const,
+    recipes: (mealPlanId: string) => ['meal-plans', mealPlanId, 'recipes'] as const,
   },
   
   // User data
