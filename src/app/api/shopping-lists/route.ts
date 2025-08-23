@@ -22,7 +22,7 @@ export async function GET(_request: NextRequest) {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('household_id, plan')
-      .eq('clerk_id', userId)
+      .eq('id', userId)
       .single();
 
     if (userError) {
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('household_id, plan')
-      .eq('clerk_id', userId)
+      .eq('id', userId)
       .single();
 
     if (userError) {
