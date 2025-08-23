@@ -28,7 +28,6 @@ import {
 import { 
   useShoppingLists, 
   useCreateShoppingList, 
-  useDeleteShoppingList,
   useOptimisticShoppingLists 
 } from '@/hooks/useShoppingLists';
 
@@ -73,7 +72,6 @@ export default function ShoppingListsPage() {
   } = useShoppingLists();
   
   const createShoppingList = useCreateShoppingList();
-  const deleteShoppingList = useDeleteShoppingList();
   const { addOptimisticList, removeOptimisticList } = useOptimisticShoppingLists();
 
   // Extract data from React Query
