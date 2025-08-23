@@ -33,6 +33,9 @@ export default function MealPlannerPage() {
   const loading = userDataLoading || recipesLoading || mealPlanLoading;
   const error = userDataError || recipesError || mealPlanError;
   
+  // Check if user has completed onboarding
+  const hasCompletedOnboarding = userData?.has_onboarded && userData?.household_id;
+  
   const [selectedRecipe] = useState<Recipe | null>(null);
   const [showRecipeModal, setShowRecipeModal] = useState(false);
   const [showCreateRecipeModal, setShowCreateRecipeModal] = useState(false);
@@ -118,9 +121,15 @@ export default function MealPlannerPage() {
 
     if (!isSignedIn) {
       router.push('/sign-in');
-      
+      return;
     }
-  }, [isLoaded, isSignedIn, router]);
+    
+    // Check if user needs to complete onboarding
+    if (isSignedIn && !loading && !hasCompletedOnboarding) {
+      router.push('/onboarding');
+      return;
+    }
+  }, [isLoaded, isSignedIn, loading, hasCompletedOnboarding, router]);
 
   function getWeekStart(date: Date): Date {
     const d = new Date(date);
@@ -174,6 +183,14 @@ export default function MealPlannerPage() {
   }
 
   function assignRecipe(date: string, mealType: 'breakfast' | 'lunch' | 'dinner', recipe: Recipe) {
+    console.log('🔍 Assigning recipe:', { date, mealType, recipe, userData });
+    
+    if (!userData?.household_id) {
+      console.error('❌ No household_id available:', userData);
+      toast.error('Please complete onboarding first');
+      return;
+    }
+    
     assignRecipeMutation.mutate({ date, mealType, recipe });
   }
 
@@ -377,7 +394,49 @@ export default function MealPlannerPage() {
     );
   }
 
+  // Check if user has completed onboarding
+  if (!hasCompletedOnboarding) {
+    console.log('🔍 Onboarding check failed:', { 
+      hasOnboarded: userData?.has_onboarded, 
+      householdId: userData?.household_id,
+      userData 
+    });
+    
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white shadow rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="text-center">
+            <div className="text-blue-500 text-6xl mb-4">🏠</div>
+            <h1 className="text-xl font-semibold text-gray-900 mb-2">Complete Onboarding First</h1>
+            <p className="text-gray-600 mb-4">
+              You need to complete the onboarding process to access the meal planner.
+            </p>
+            <button 
+              onClick={() => router.push('/onboarding')}
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Go to Onboarding
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const weekDays = getWeekDays();
+
+  // Final safety check - ensure user data is loaded
+  if (!userData || !userData.household_id) {
+    console.log('🔍 Final safety check failed:', { userData });
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading user data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
