@@ -59,6 +59,7 @@ export default function ShoppingListsPage() {
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
   const [creating, setCreating] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   useEffect(() => {
     if (userId) {
@@ -73,6 +74,12 @@ export default function ShoppingListsPage() {
       if (response.ok) {
         const data = await response.json();
         setShoppingLists(data.shoppingLists || []);
+        setNeedsOnboarding(false);
+      } else {
+        const errorData = await response.json();
+        if (errorData.needsOnboarding) {
+          setNeedsOnboarding(true);
+        }
       }
     } catch (error) {
       console.error('Error fetching shopping lists:', error);
@@ -118,6 +125,15 @@ export default function ShoppingListsPage() {
       } else {
         const errorData = await response.json();
         console.error('Failed to create shopping list:', errorData);
+        
+        // Check if user needs to complete onboarding
+        if (errorData.needsOnboarding && errorData.redirectTo) {
+          if (confirm('You need to complete onboarding first. Would you like to go to the onboarding page?')) {
+            window.location.href = errorData.redirectTo;
+            return;
+          }
+        }
+        
         alert(`Failed to create shopping list: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
@@ -151,6 +167,28 @@ export default function ShoppingListsPage() {
         <div className="text-center">
           <ShoppingCart className="h-12 w-12 animate-pulse mx-auto mb-4 text-blue-500" />
           <p className="text-lg text-gray-600">Loading Smart Shopping Lists...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show onboarding message if needed
+  if (needsOnboarding) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md mx-auto">
+          <ShoppingCart className="h-16 w-16 mx-auto mb-6 text-blue-500" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Complete Onboarding First</h2>
+          <p className="text-gray-600 mb-6">
+            You need to set up your household before you can create shopping lists. 
+            This helps us personalize your experience and organize your data.
+          </p>
+          <Button 
+            onClick={() => window.location.href = '/onboarding'}
+            className="bg-blue-500 hover:bg-blue-600"
+          >
+            Go to Onboarding
+          </Button>
         </div>
       </div>
     );

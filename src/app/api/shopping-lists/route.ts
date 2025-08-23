@@ -23,8 +23,17 @@ export async function GET(_request: NextRequest) {
       .eq('clerk_id', userId)
       .single();
 
-    if (userError || !userData?.household_id) {
-      return NextResponse.json({ error: 'Household not found' }, { status: 404 });
+    if (userError) {
+      console.error('Error fetching user data:', userError);
+      return NextResponse.json({ error: 'Failed to fetch user data' }, { status: 500 });
+    }
+
+    if (!userData?.household_id) {
+      return NextResponse.json({ 
+        error: 'Household not found. Please complete onboarding first.',
+        needsOnboarding: true,
+        redirectTo: '/onboarding'
+      }, { status: 404 });
     }
 
     const householdId = userData.household_id;
@@ -166,8 +175,17 @@ export async function POST(request: NextRequest) {
       .eq('clerk_id', userId)
       .single();
 
-    if (userError || !userData?.household_id) {
-      return NextResponse.json({ error: 'Household not found' }, { status: 404 });
+    if (userError) {
+      console.error('Error fetching user data:', userError);
+      return NextResponse.json({ error: 'Failed to fetch user data' }, { status: 500 });
+    }
+
+    if (!userData?.household_id) {
+      return NextResponse.json({ 
+        error: 'Household not found. Please complete onboarding first.',
+        needsOnboarding: true,
+        redirectTo: '/onboarding'
+      }, { status: 404 });
     }
 
     const householdId = userData.household_id;
