@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useUserData } from '@/hooks/useUserData';
 import { 
   Brain, 
   TrendingUp, 
@@ -29,21 +30,31 @@ interface LearningInsights {
 }
 
 export default function AILearningDashboard() {
+  const { userData, isLoading: userDataLoading } = useUserData();
   const [insights, setInsights] = useState<LearningInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchLearningInsights();
-  }, []);
+    if (userData?.household_id) {
+      fetchLearningInsights();
+    }
+  }, [userData?.household_id]);
 
   const fetchLearningInsights = async () => {
+    if (!userData?.household_id) {
+      setError('No household ID found. Please complete onboarding first.');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await fetch('/api/ai/learning-insights');
+      const response = await fetch(`/api/ai/learning-insights?household_id=${userData.household_id}`);
       
       if (!response.ok) {
-        throw new Error('Failed to fetch learning insights');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch learning insights');
       }
       
       const data = await response.json();
@@ -55,12 +66,31 @@ export default function AILearningDashboard() {
     }
   };
 
-  if (loading) {
+  if (userDataLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <Brain className="h-12 w-12 animate-pulse mx-auto mb-4 text-blue-500" />
-          <p className="text-lg text-gray-600">Loading AI Learning Insights...</p>
+          <p className="text-lg text-gray-600">
+            {userDataLoading ? 'Loading user data...' : 'Loading AI Learning Insights...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!userData?.household_id) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+          <p className="text-lg text-yellow-600 mb-4">Household Setup Required</p>
+          <p className="text-gray-600 mb-4">
+            You need to complete onboarding and join a household to view AI Learning Insights.
+          </p>
+          <Button onClick={() => window.location.href = '/onboarding'} variant="outline">
+            Go to Onboarding
+          </Button>
         </div>
       </div>
     );
