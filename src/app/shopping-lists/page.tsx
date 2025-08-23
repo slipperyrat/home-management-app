@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +25,12 @@ import {
   Zap,
   X
 } from 'lucide-react';
+import { 
+  useShoppingLists, 
+  useCreateShoppingList, 
+  useDeleteShoppingList,
+  useOptimisticShoppingLists 
+} from '@/hooks/useShoppingLists';
 
 interface ShoppingList {
   id: string;
@@ -53,52 +59,29 @@ interface AIShoppingInsights {
 export default function ShoppingListsPage() {
   const { userId } = useAuth();
   const router = useRouter();
-  const [shoppingLists, setShoppingLists] = useState<ShoppingList[]>([]);
   const [aiInsights, setAiInsights] = useState<AIShoppingInsights | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  useEffect(() => {
-    if (userId) {
-      fetchShoppingLists();
-      fetchAIShoppingInsights();
-    }
-  }, [userId]);
+  // React Query hooks
+  const { 
+    data: shoppingListsData, 
+    isLoading: loading, 
+    error: shoppingListsError 
+  } = useShoppingLists();
+  
+  const createShoppingList = useCreateShoppingList();
+  const deleteShoppingList = useDeleteShoppingList();
+  const { addOptimisticList, removeOptimisticList } = useOptimisticShoppingLists();
 
-  const fetchShoppingLists = async () => {
-    try {
-      console.log('🔄 Fetching shopping lists...');
-      const response = await fetch('/api/shopping-lists');
-      console.log('📡 Response status:', response.status);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📦 Shopping lists data:', data);
-        console.log('📋 Shopping lists array:', data.shoppingLists);
-        console.log('🔢 Number of lists:', data.shoppingLists?.length || 0);
-        
-        setShoppingLists(data.shoppingLists || []);
-        setNeedsOnboarding(false);
-        
-        console.log('✅ State updated with shopping lists');
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Error response:', errorData);
-        if (errorData.needsOnboarding) {
-          setNeedsOnboarding(true);
-        }
-      }
-    } catch (error) {
-      console.error('💥 Error fetching shopping lists:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Extract data from React Query
+  const shoppingLists = shoppingListsData?.shoppingLists || [];
+  const needsOnboarding = shoppingListsData?.needsOnboarding || false;
+
+
+
 
   const fetchAIShoppingInsights = async () => {
     try {
@@ -115,50 +98,37 @@ export default function ShoppingListsPage() {
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
     
-    setCreating(true);
     try {
-      const response = await fetch('/api/shopping-lists', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: newListName.trim(),
-          description: newListDescription.trim() || undefined,
-        }),
+      // Add optimistic update
+      const tempId = addOptimisticList({
+        name: newListName.trim(),
+        household_id: '', // Will be filled by the API
+        created_by: userId || '',
+        is_completed: false,
+        total_items: 0,
+        completed_items: 0,
+        ai_suggestions_count: 0,
+        ai_confidence: 0,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('🎉 Created shopping list:', data);
-        console.log('📝 New list data:', data.shoppingList);
-        
-        // Refresh the lists instead of manually updating state
-        console.log('🔄 Refreshing shopping lists...');
-        await fetchShoppingLists();
-        
-        setShowCreateModal(false);
-        setNewListName('');
-        setNewListDescription('');
-      } else {
-        const errorData = await response.json();
-        console.error('Failed to create shopping list:', errorData);
-        
-        // Check if user needs to complete onboarding
-        if (errorData.needsOnboarding && errorData.redirectTo) {
-          if (confirm('You need to complete onboarding first. Would you like to go to the onboarding page?')) {
-            window.location.href = errorData.redirectTo;
-            return;
-          }
-        }
-        
-        alert(`Failed to create shopping list: ${errorData.error || 'Unknown error'}`);
-      }
+      // Create the shopping list
+      await createShoppingList.mutateAsync({
+        name: newListName.trim(),
+        household_id: '', // Will be filled by the API
+      });
+
+      // Clear form and close modal
+      setShowCreateModal(false);
+      setNewListName('');
+      setNewListDescription('');
     } catch (error) {
+      // Remove optimistic update on error
+      if (error) {
+        removeOptimisticList(`temp-${Date.now()}`);
+      }
+      
       console.error('Error creating shopping list:', error);
       alert('Failed to create shopping list. Please try again.');
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -185,6 +155,24 @@ export default function ShoppingListsPage() {
         <div className="text-center">
           <ShoppingCart className="h-12 w-12 animate-pulse mx-auto mb-4 text-blue-500" />
           <p className="text-lg text-gray-600">Loading Smart Shopping Lists...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle errors
+  if (shoppingListsError) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <ShoppingCart className="h-16 w-16 mx-auto mb-6 text-red-500" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Lists</h2>
+          <p className="text-gray-600 mb-6">
+            {shoppingListsError.message || 'Failed to load shopping lists'}
+          </p>
+          <Button onClick={() => window.location.reload()}>
+            Try Again
+          </Button>
         </div>
       </div>
     );
@@ -664,7 +652,7 @@ export default function ShoppingListsPage() {
                   disabled={!newListName.trim() || creating}
                   className="flex-1"
                 >
-                  {creating ? 'Creating...' : 'Create List'}
+                  {createShoppingList.isPending ? 'Creating...' : 'Create List'}
                 </Button>
                 <Button
                   variant="outline"

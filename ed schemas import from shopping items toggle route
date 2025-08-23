@@ -1,0 +1,5 @@
+[33m860207d[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Fix shopping item toggle endpoint - handle actual frontend data format (itemId instead of id)
+[33m17d2811[m Simplify shopping lists GET endpoint for debugging - remove complex joins and feature checks
+[33mf386c8f[m Force new deployment - add debugging comment
+[33m8eab412[m Fix TypeScript error in error logging - use type assertion for error properties
+[33m2757533[m Add more detailed error logging to shopping lists GET endpoint
