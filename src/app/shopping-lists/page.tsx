@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +52,7 @@ interface AIShoppingInsights {
 
 export default function ShoppingListsPage() {
   const { userId } = useAuth();
+  const router = useRouter();
   const [shoppingLists, setShoppingLists] = useState<ShoppingList[]>([]);
   const [aiInsights, setAiInsights] = useState<AIShoppingInsights | null>(null);
   const [loading, setLoading] = useState(true);
@@ -372,7 +374,11 @@ export default function ShoppingListsPage() {
           {shoppingLists.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {shoppingLists.map((list) => (
-                <Card key={list.id} className="hover:shadow-lg transition-shadow">
+                <Card 
+                  key={list.id} 
+                  className="hover:shadow-lg transition-shadow cursor-pointer"
+                  onClick={() => router.push(`/shopping-lists/${list.id}`)}
+                >
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -407,6 +413,32 @@ export default function ShoppingListsPage() {
                       <div className="flex justify-between text-sm text-gray-600">
                         <span>{list.completed_items} of {list.total_items} items</span>
                         <span>{new Date(list.updated_at).toLocaleDateString()}</span>
+                      </div>
+                      
+                      <div className="flex gap-2 pt-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="flex-1 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/shopping-lists/${list.id}`);
+                          }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Items
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/shopping-lists/${list.id}`);
+                          }}
+                        >
+                          View
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
