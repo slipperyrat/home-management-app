@@ -170,17 +170,17 @@ export default function MealPlannerPageRefactored() {
       
       {/* Quick Actions */}
       <div className="flex gap-4 mb-8">
-        <button
-          onClick={() => handleCreateMealPlan({
-            name: 'New Meal Plan',
-            start_date: new Date().toISOString().split('T')[0],
-            end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-          })}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-          disabled={createMealPlan.isPending}
-        >
-          {createMealPlan.isPending ? 'Creating...' : 'Create Meal Plan'}
-        </button>
+                 <button
+           onClick={() => handleCreateMealPlan({
+             name: 'New Meal Plan',
+             start_date: new Date().toISOString().split('T')[0] || new Date().toISOString().slice(0, 10),
+             end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+           })}
+           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+           disabled={createMealPlan.isPending}
+         >
+           {createMealPlan.isPending ? 'Creating...' : 'Create Meal Plan'}
+         </button>
         
         <button
           onClick={() => handleCreateRecipe({
