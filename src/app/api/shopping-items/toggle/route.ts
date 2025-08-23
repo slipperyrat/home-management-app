@@ -16,19 +16,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Validate input using Zod
-    let validatedData;
+    // Parse and validate input
+    let body;
     try {
-      const body = await request.json();
-      validatedData = schemas.toggleShoppingItem.parse(body);
-    } catch (validationError: any) {
+      body = await request.json();
+      console.log('📥 Received request body:', body);
+    } catch (parseError) {
       return NextResponse.json({ 
-        error: 'Invalid input', 
-        details: validationError.errors 
+        error: 'Invalid JSON in request body', 
+        details: 'Failed to parse request body' 
       }, { status: 400 });
     }
 
-    const { id: itemId, is_complete } = validatedData;
+    // Check for required fields
+    if (!body.itemId) {
+      return NextResponse.json({ 
+        error: 'Missing required field: itemId', 
+        details: 'Request must include itemId' 
+      }, { status: 400 });
+    }
+
+    const itemId = body.itemId;
+    // For now, assume we're toggling to complete (true)
+    // In the future, we can add logic to determine the target state
+    const is_complete = true;
 
     console.log(`🔄 API: Toggling shopping item ${itemId} for user ${userId} to ${is_complete}`);
 
