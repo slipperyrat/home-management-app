@@ -142,14 +142,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Validate input using Zod
+    // Validate input using Zod (without household_id since it comes from user context)
     let validatedData;
     try {
       const body = await request.json();
-      validatedData = schemas.createShoppingList.parse({
-        ...body,
-        household_id: 'placeholder' // Will be set from user context
+      // Create a temporary schema for validation that doesn't require household_id
+      const tempSchema = z.object({
+        name: z.string().min(1).max(100),
+        description: z.string().max(500).optional(),
       });
+      validatedData = tempSchema.parse(body);
     } catch (validationError: any) {
       return NextResponse.json({ 
         error: 'Invalid input', 

@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Plus, 
   ShoppingCart, 
@@ -18,7 +21,8 @@ import {
   CheckCircle,
   Sparkles,
   BarChart3,
-  Zap
+  Zap,
+  X
 } from 'lucide-react';
 
 interface ShoppingList {
@@ -51,6 +55,10 @@ export default function ShoppingListsPage() {
   const [aiInsights, setAiInsights] = useState<AIShoppingInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  const [newListDescription, setNewListDescription] = useState('');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (userId) {
@@ -82,6 +90,41 @@ export default function ShoppingListsPage() {
       }
     } catch (error) {
       console.error('Error fetching AI insights:', error);
+    }
+  };
+
+  const handleCreateList = async () => {
+    if (!newListName.trim()) return;
+    
+    setCreating(true);
+    try {
+      const response = await fetch('/api/shopping-lists', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newListName.trim(),
+          description: newListDescription.trim() || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setShoppingLists(prev => [data.shoppingList, ...prev]);
+        setShowCreateModal(false);
+        setNewListName('');
+        setNewListDescription('');
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to create shopping list:', errorData);
+        alert(`Failed to create shopping list: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error creating shopping list:', error);
+      alert('Failed to create shopping list. Please try again.');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -203,7 +246,10 @@ export default function ShoppingListsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-3">
-                <Button className="bg-blue-600 hover:bg-blue-700">
+                <Button 
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => setShowCreateModal(true)}
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Create New List
                 </Button>
@@ -276,7 +322,10 @@ export default function ShoppingListsPage() {
         <TabsContent value="all-lists" className="space-y-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">All Shopping Lists</h2>
-            <Button className="bg-blue-600 hover:bg-blue-700">
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => setShowCreateModal(true)}
+            >
               <Plus className="h-4 w-4 mr-2" />
               New List
             </Button>
@@ -482,6 +531,67 @@ export default function ShoppingListsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Create Shopping List Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Create New Shopping List</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCreateModal(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="list-name">List Name *</Label>
+                <Input
+                  id="list-name"
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                  placeholder="e.g., Groceries for this week"
+                  className="mt-1"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="list-description">Description (optional)</Label>
+                <Textarea
+                  id="list-description"
+                  value={newListDescription}
+                  onChange={(e) => setNewListDescription(e.target.value)}
+                  placeholder="e.g., Weekly grocery shopping for family of 4"
+                  className="mt-1"
+                  rows={3}
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-2">
+                <Button
+                  onClick={handleCreateList}
+                  disabled={!newListName.trim() || creating}
+                  className="flex-1"
+                >
+                  {creating ? 'Creating...' : 'Create List'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCreateModal(false)}
+                  disabled={creating}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
