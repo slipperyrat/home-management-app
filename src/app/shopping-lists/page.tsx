@@ -76,29 +76,18 @@ export default function ShoppingListsPage() {
 
   // Extract data from React Query
   const shoppingLists = shoppingListsData?.shoppingLists || [];
-  const needsOnboarding = shoppingListsData?.needsOnboarding || false;
 
 
 
 
-  const fetchAIShoppingInsights = async () => {
-    try {
-      const response = await fetch('/api/ai/shopping-insights');
-      if (response.ok) {
-        const data = await response.json();
-        setAiInsights(data.insights);
-      }
-    } catch (error) {
-      console.error('Error fetching AI insights:', error);
-    }
-  };
+
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
     
     try {
       // Add optimistic update
-      const tempId = addOptimisticList({
+      addOptimisticList({
         name: newListName.trim(),
         household_id: '', // Will be filled by the API
         created_by: userId || '',
@@ -176,27 +165,7 @@ export default function ShoppingListsPage() {
     );
   }
 
-  // Show onboarding message if needed
-  if (needsOnboarding) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center max-w-md mx-auto">
-          <ShoppingCart className="h-16 w-16 mx-auto mb-6 text-blue-500" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Complete Onboarding First</h2>
-          <p className="text-gray-600 mb-6">
-            You need to set up your household before you can create shopping lists. 
-            This helps us personalize your experience and organize your data.
-          </p>
-          <Button 
-            onClick={() => window.location.href = '/onboarding'}
-            className="bg-blue-500 hover:bg-blue-600"
-          >
-            Go to Onboarding
-          </Button>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="container mx-auto px-4 py-8">
