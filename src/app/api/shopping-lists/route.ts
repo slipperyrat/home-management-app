@@ -180,15 +180,15 @@ export async function GET(_request: NextRequest) {
   } catch (error) {
     console.error('💥 GET: Unexpected error in shopping lists fetch:', error);
     console.error('💥 GET: Error details:', {
-      name: error?.name,
-      message: error?.message,
-      stack: error?.stack,
-      cause: error?.cause
+      name: (error as any)?.name,
+      message: (error as any)?.message,
+      stack: (error as any)?.stack,
+      cause: (error as any)?.cause
     });
     return NextResponse.json(
       { 
         error: 'Failed to fetch shopping lists',
-        details: error?.message || 'Unknown error'
+        details: (error as any)?.message || 'Unknown error'
       },
       { status: 500 }
     );
