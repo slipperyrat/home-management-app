@@ -5,30 +5,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
-import { useRecipes } from '@/hooks/useRecipes';
+import { useRecipes, Recipe, RecipeIngredient, RecipeInstruction } from '@/hooks/useRecipes';
 import { useMealPlan } from '@/hooks/useMealPlan';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 // import { FeatureErrorBoundary } from '@/components/ErrorBoundary'; // This component was removed
-
-interface Recipe {
-  id: string;
-  title: string;
-  description: string;
-  ingredients: Ingredient[];
-  instructions: string[];
-  prep_time: number;
-  cook_time: number;
-  servings: number;
-  image_url?: string;
-  tags: string[];
-}
-
-interface Ingredient {
-  name: string;
-  amount: number;
-  unit: string;
-  category: string;
-}
 
 
 
@@ -41,6 +21,7 @@ export default function MealPlannerPage() {
   // Use React Query hooks for data fetching
   const { userData, isLoading: userDataLoading, error: userDataError } = useUserData();
   const { data: recipes, isLoading: recipesLoading, error: recipesError } = useRecipes();
+  const recipesData = recipes as { success: boolean; recipes: Recipe[] } | undefined;
   
   const [currentWeek, setCurrentWeek] = useState<Date>(new Date());
   const weekStartDate = getWeekStart(currentWeek);
@@ -186,7 +167,7 @@ export default function MealPlannerPage() {
     
     // If meal is a string (recipe ID), we need to find the recipe object
     if (typeof meal === 'string') {
-      return recipes?.recipes?.find(r => r.id === meal);
+      return recipesData?.recipes?.find(r => r.id === meal);
     }
     
     return meal as Recipe | undefined;
@@ -545,7 +526,7 @@ export default function MealPlannerPage() {
                             mealType="breakfast"
                             recipe={breakfastRecipe || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
-                            recipes={recipes?.recipes || []}
+                            recipes={recipesData?.recipes || []}
                           />
                         );
                       })()}
@@ -562,7 +543,7 @@ export default function MealPlannerPage() {
                             mealType="lunch"
                             recipe={lunchRecipe || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
-                            recipes={recipes?.recipes || []}
+                            recipes={recipesData?.recipes || []}
                           />
                         );
                       })()}
@@ -579,7 +560,7 @@ export default function MealPlannerPage() {
                             mealType="dinner"
                             recipe={dinnerRecipe || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
-                            recipes={recipes?.recipes || []}
+                            recipes={recipesData?.recipes || []}
                           />
                         );
                       })()}
@@ -613,7 +594,7 @@ export default function MealPlannerPage() {
                           mealType="breakfast"
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
-                          recipes={recipes?.recipes || []}
+                          recipes={recipesData?.recipes || []}
                           isMobile={true}
                         />
                       </div>
@@ -626,7 +607,7 @@ export default function MealPlannerPage() {
                           mealType="lunch"
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
-                          recipes={recipes?.recipes || []}
+                          recipes={recipesData?.recipes || []}
                           isMobile={true}
                         />
                       </div>
@@ -639,7 +620,7 @@ export default function MealPlannerPage() {
                           mealType="dinner"
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
-                          recipes={recipes?.recipes || []}
+                          recipes={recipesData?.recipes || []}
                           isMobile={true}
                         />
                       </div>
@@ -698,7 +679,7 @@ export default function MealPlannerPage() {
                         {aiInsights.popular_recipes.map((recipe: any, index: number) => (
                           <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                             <div>
-                              <h4 className="font-medium text-gray-900">{recipe.title}</h4>
+                              <h4 className="font-medium text-gray-900">{recipe.name}</h4>
                               <p className="text-sm text-gray-500">Used {recipe.usage_count} times</p>
                             </div>
                             <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
@@ -802,7 +783,7 @@ export default function MealPlannerPage() {
                     {aiSuggestions.suggestions?.map((recipe: any, index: number) => (
                       <div key={index} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex items-start justify-between mb-3">
-                          <h3 className="text-lg font-semibold text-gray-900">{recipe.title}</h3>
+                          <h3 className="text-lg font-semibold text-gray-900">{recipe.name}</h3>
                           <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
                             Score: {recipe.ai_score}
                           </span>
@@ -922,7 +903,7 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
       {recipe ? (
         <div className={`bg-green-50 border border-green-200 rounded-md cursor-pointer hover:bg-green-100 ${isMobile ? 'p-3' : 'p-2'}`}>
           <div className={`font-medium text-green-800 truncate ${isMobile ? 'text-sm' : 'text-xs'}`}>
-            {recipe.title}
+                                {recipe.name}
           </div>
           <div className={`text-green-600 ${isMobile ? 'text-xs' : 'text-xs'}`}>
             {recipe.prep_time + recipe.cook_time}min
@@ -943,7 +924,7 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
               Select Recipe
             </div>
             <div className="max-h-48 overflow-y-auto space-y-1">
-              {recipes?.recipes?.length === 0 ? (
+              {recipes.length === 0 ? (
                 <div className={`p-3 text-gray-500 text-center ${isMobile ? 'text-sm' : 'text-xs'}`}>
                   <div>No recipes yet!</div>
                   <button
@@ -954,11 +935,11 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
                   </button>
                 </div>
               ) : (
-                recipes?.recipes?.map((recipe) => (
+                recipes.map((recipe) => (
                   <button
                     key={recipe.id}
                     onClick={() => {
-                      console.log('🔍 Recipe clicked:', recipe.title, recipe.id);
+                      console.log('🔍 Recipe clicked:', recipe.name, recipe.id);
                       console.log('🔍 About to call onAssign with:', recipe);
                       onAssign(recipe);
                       console.log('🔍 onAssign called, closing dropdown');
@@ -967,7 +948,7 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
                     className={`w-full text-left hover:bg-gray-50 rounded ${isMobile ? 'p-3' : 'p-2'}`}
                   >
                     <div className={`font-medium text-gray-900 ${isMobile ? 'text-sm' : 'text-xs'}`}>
-                      {recipe.title}
+                      {recipe.name}
                     </div>
                     <div className={`text-gray-500 ${isMobile ? 'text-xs' : 'text-xs'}`}>
                       {recipe.prep_time + recipe.cook_time}min
@@ -994,7 +975,7 @@ function RecipeModal({ recipe, onClose, onAddToGroceryList }: RecipeModalProps) 
       <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900">{recipe.title}</h2>
+                            <h2 className="text-xl font-bold text-gray-900">{recipe.name}</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
               ✕
             </button>
@@ -1005,7 +986,7 @@ function RecipeModal({ recipe, onClose, onAddToGroceryList }: RecipeModalProps) 
               <h3 className="font-semibold text-gray-900 mb-2">Ingredients</h3>
               <ul className="space-y-1">
                 {recipe.ingredients.map((ingredient, index) => (
-                  <li key={index} className="text-sm text-gray-700">
+                  <li key={ingredient.id || index} className="text-sm text-gray-700">
                     {ingredient.amount} {ingredient.unit} {ingredient.name}
                   </li>
                 ))}
@@ -1016,8 +997,8 @@ function RecipeModal({ recipe, onClose, onAddToGroceryList }: RecipeModalProps) 
               <h3 className="font-semibold text-gray-900 mb-2">Instructions</h3>
               <ol className="space-y-2">
                 {recipe.instructions.map((instruction, index) => (
-                  <li key={index} className="text-sm text-gray-700">
-                    {index + 1}. {instruction}
+                  <li key={instruction.id || index} className="text-sm text-gray-700">
+                    {instruction.step_number || index + 1}. {instruction.instruction}
                   </li>
                 ))}
               </ol>
@@ -1052,22 +1033,22 @@ interface CreateRecipeModalProps {
 function CreateRecipeModal({ onClose, onCreated }: CreateRecipeModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [ingredients, setIngredients] = useState<Ingredient[]>([{ name: '', amount: 1, unit: 'cup', category: 'other' }]);
-  const [instructions, setInstructions] = useState<string[]>(['']);
+  const [ingredients, setIngredients] = useState<Omit<RecipeIngredient, 'id' | 'recipe_id'>[]>([{ name: '', amount: 1, unit: 'cup', notes: '' }]);
+  const [instructions, setInstructions] = useState<Omit<RecipeInstruction, 'id' | 'recipe_id'>[]>([{ step_number: 1, instruction: '' }]);
   const [prepTime, setPrepTime] = useState(0);
   const [cookTime, setCookTime] = useState(0);
   const [servings, setServings] = useState(4);
   const [creating, setCreating] = useState(false);
 
   function addIngredient() {
-    setIngredients([...ingredients, { name: '', amount: 1, unit: 'cup', category: 'other' }]);
+    setIngredients([...ingredients, { name: '', amount: 1, unit: 'cup', notes: '' }]);
   }
 
   function removeIngredient(index: number) {
     setIngredients(ingredients.filter((_, i) => i !== index));
   }
 
-  function updateIngredient(index: number, field: keyof Ingredient, value: string | number) {
+  function updateIngredient(index: number, field: keyof Omit<RecipeIngredient, 'id' | 'recipe_id'>, value: string | number) {
     const updated = [...ingredients];
     const currentIngredient = updated[index];
     if (!currentIngredient) return;
@@ -1076,23 +1057,31 @@ function CreateRecipeModal({ onClose, onCreated }: CreateRecipeModalProps) {
       name: currentIngredient.name || '',
       amount: currentIngredient.amount || 0,
       unit: currentIngredient.unit || '',
-      category: currentIngredient.category || '',
+      notes: currentIngredient.notes || '',
       [field]: value
     };
     setIngredients(updated);
   }
 
   function addInstruction() {
-    setInstructions([...instructions, '']);
+    setInstructions([...instructions, { step_number: instructions.length + 1, instruction: '' }]);
   }
 
   function removeInstruction(index: number) {
-    setInstructions(instructions.filter((_, i) => i !== index));
+    const updated = instructions.filter((_, i) => i !== index);
+    // Update step numbers
+    updated.forEach((instruction, i) => {
+      instruction.step_number = i + 1;
+    });
+    setInstructions(updated);
   }
 
   function updateInstruction(index: number, value: string) {
     const updated = [...instructions];
-    updated[index] = value;
+    const currentInstruction = updated[index];
+    if (currentInstruction) {
+      updated[index] = { step_number: currentInstruction.step_number, instruction: value };
+    }
     setInstructions(updated);
   }
 
@@ -1100,7 +1089,7 @@ function CreateRecipeModal({ onClose, onCreated }: CreateRecipeModalProps) {
     if (!title.trim()) return;
 
     const validIngredients = ingredients.filter(ing => ing.name.trim());
-    const validInstructions = instructions.filter(inst => inst.trim());
+    const validInstructions = instructions.filter(inst => inst.instruction.trim());
 
     if (validIngredients.length === 0 || validInstructions.length === 0) {
       toast.error('Please add at least one ingredient and one instruction.');
@@ -1299,7 +1288,7 @@ function CreateRecipeModal({ onClose, onCreated }: CreateRecipeModalProps) {
                         {index + 1}.
                       </span>
                       <textarea
-                        value={instruction}
+                        value={instruction.instruction}
                         onChange={(e) => updateInstruction(index, e.target.value)}
                         rows={2}
                         className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
