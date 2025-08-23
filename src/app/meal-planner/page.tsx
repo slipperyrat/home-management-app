@@ -40,7 +40,7 @@ export default function MealPlannerPage() {
   
   // Use React Query hooks for data fetching
   const { userData, isLoading: userDataLoading, error: userDataError } = useUserData();
-  const { data: recipes, isLoading: recipesLoading, error: recipesError } = useRecipes(userData?.household?.id);
+  const { data: recipes, isLoading: recipesLoading, error: recipesError } = useRecipes();
   
   const [currentWeek, setCurrentWeek] = useState<Date>(new Date());
   const weekStartDate = getWeekStart(currentWeek);
@@ -93,7 +93,7 @@ export default function MealPlannerPage() {
 
         // Invalidate both the specific query and refetch immediately
         queryClient.invalidateQueries({
-          queryKey: ['mealPlan', userData?.household?.id, weekStartString]
+          queryKey: ['mealPlan', weekStartString]
         });
 
         // Also invalidate all meal plan queries to ensure consistency
@@ -293,7 +293,7 @@ export default function MealPlannerPage() {
     onSuccess: (data) => {
       // Invalidate and refetch the meal plan using the correct query key format
       const weekStartString = weekStartDate.toISOString().split('T')[0];
-      queryClient.invalidateQueries({ queryKey: ['mealPlan', userData?.household?.id, weekStartString] });
+      queryClient.invalidateQueries({ queryKey: ['mealPlan', weekStartString] });
       
       // Also invalidate all meal plan queries to ensure consistency
       queryClient.invalidateQueries({ queryKey: ['mealPlan'] });
