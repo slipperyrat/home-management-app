@@ -10,10 +10,11 @@ const supabase = createClient(
 );
 
 export async function GET(_request: NextRequest) {
-  // Force new deployment - debugging enabled
-  console.log('🚀 GET: Function called - before try block');
+  // Simplified version for debugging
+  console.log('🚀 GET: Function called - simplified version');
   try {
-    console.log('🔄 GET: Starting shopping lists fetch...');
+    console.log('🔄 GET: Starting simplified shopping lists fetch...');
+    
     const { userId } = await auth();
     if (!userId) {
       console.log('❌ GET: No userId from auth');
@@ -22,164 +23,47 @@ export async function GET(_request: NextRequest) {
 
     console.log('✅ GET: Got userId:', userId);
 
-    // Get user's household and plan
-    console.log('🔍 GET: Querying user data from database...');
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select(`
-        household_id,
-        households!inner(
-          plan
-        )
-      `)
-      .eq('id', userId)
-      .single();
+    // Simple query without complex joins
+    console.log('🔍 GET: Querying shopping lists directly...');
+    const { data: shoppingLists, error: listsError } = await supabase
+      .from('shopping_lists')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    console.log('📊 GET: User data query result:', { userData, userError });
+    console.log('📊 GET: Direct query result:', { shoppingLists, listsError });
 
-    if (userError) {
-      console.error('❌ GET: Error fetching user data:', userError);
-      
-      // Check if it's a "not found" error vs other database errors
-      if (userError.code === 'PGRST116') {
-        return NextResponse.json({ 
-          error: 'User not found. Please complete onboarding first.',
-          needsOnboarding: true,
-          redirectTo: '/onboarding'
-        }, { status: 404 });
-      }
-      
+    if (listsError) {
+      console.error('❌ GET: Error fetching shopping lists:', listsError);
       return NextResponse.json({ 
-        error: 'Failed to fetch user data', 
-        details: userError.message 
+        error: 'Failed to fetch shopping lists',
+        details: listsError.message 
       }, { status: 500 });
     }
 
-    if (!userData) {
-      return NextResponse.json({ 
-        error: 'User not found in database. Please complete onboarding first.',
-        needsOnboarding: true,
-        redirectTo: '/onboarding'
-      }, { status: 404 });
-    }
+    // Transform the data
+    const transformedLists = shoppingLists?.map(list => ({
+      id: list.id,
+      name: list.title || list.name,
+      description: list.description,
+      created_at: list.created_at,
+      updated_at: list.updated_at || list.created_at,
+      is_completed: false,
+      total_items: 0,
+      completed_items: 0,
+      ai_suggestions_count: 0,
+      ai_confidence: 75
+    })) || [];
 
-    if (!userData.household_id) {
-      return NextResponse.json({ 
-        error: 'Household not set up. Please complete onboarding first.',
-        needsOnboarding: true,
-        redirectTo: '/onboarding'
-      }, { status: 404 });
-    }
-
-    const householdId = userData.household_id;
-    const userPlan = userData.households?.[0]?.plan || 'free';
-    
-    console.log('🏠 GET: Household ID:', householdId);
-    console.log('💳 GET: User plan:', userPlan);
-    console.log('🔐 GET: Checking feature access for meal_planner...');
-
-    // Check feature access for advanced features
-    if (!canAccessFeature(userPlan, 'meal_planner')) {
-      console.log('⚠️ GET: User does not have access to meal_planner, returning basic lists');
-      // If user doesn't have access, return basic lists without AI features
-      console.log('📋 GET: Querying basic shopping lists for household:', householdId);
-      const { data: shoppingLists, error: listsError } = await supabase
-        .from('shopping_lists')
-        .select(`
-          *,
-          shopping_items (
-            id,
-            name,
-            quantity,
-            completed,
-            category,
-            created_at
-          )
-        `)
-        .eq('household_id', householdId)
-        .order('created_at', { ascending: false });
-
-      console.log('📊 GET: Basic lists query result:', { shoppingLists, listsError });
-
-      if (listsError) {
-        console.error('❌ GET: Error fetching shopping lists:', listsError);
-        return NextResponse.json({ error: 'Failed to fetch shopping lists' }, { status: 500 });
-      }
-
-             const basicShoppingLists = shoppingLists?.map(list => {
-         const totalItems = list.shopping_items?.length || 0;
-         const completedItems = list.shopping_items?.filter((item: any) => item.completed).length || 0;
-         
-         return {
-           id: list.id,
-           name: list.title || list.name,
-           description: list.description,
-           created_at: list.created_at,
-           updated_at: list.updated_at || list.created_at,
-           is_completed: completedItems === totalItems && totalItems > 0,
-           total_items: totalItems,
-           completed_items: completedItems,
-           ai_suggestions_count: 0, // Default value since column doesn't exist
-           ai_confidence: 75 // Default value since column doesn't exist
-         };
-       }) || [];
-
-      return NextResponse.json({
-        success: true,
-        shoppingLists: basicShoppingLists,
-        plan: userPlan
-      });
-    }
-
-    // Fetch shopping lists with items (full features for premium users)
-    const { data: shoppingLists, error: listsError } = await supabase
-      .from('shopping_lists')
-      .select(`
-        *,
-        shopping_items (
-          id,
-          name,
-          quantity,
-          completed,
-          category,
-          created_at
-        )
-      `)
-      .eq('household_id', householdId)
-      .order('created_at', { ascending: false });
-
-    if (listsError) {
-      console.error('Error fetching shopping lists:', listsError);
-      return NextResponse.json({ error: 'Failed to fetch shopping lists' }, { status: 500 });
-    }
-
-    // Return the shopping lists with enhanced AI data
-    const shoppingListsWithCounts = shoppingLists?.map(list => {
-      const totalItems = list.shopping_items?.length || 0;
-      const completedItems = list.shopping_items?.filter((item: any) => item.completed).length || 0;
-      
-      return {
-        id: list.id,
-        name: list.title || list.name,
-        description: list.description,
-        created_at: list.created_at,
-        updated_at: list.updated_at || list.created_at,
-        is_completed: completedItems === totalItems && totalItems > 0,
-        total_items: totalItems,
-        completed_items: completedItems,
-        ai_suggestions_count: 0, // Default value since column doesn't exist
-        ai_confidence: 75 // Default value since column doesn't exist
-      };
-    }) || [];
+    console.log('✅ GET: Returning transformed lists:', transformedLists);
 
     return NextResponse.json({
       success: true,
-      shoppingLists: shoppingListsWithCounts,
-      plan: userPlan
+      shoppingLists: transformedLists,
+      plan: 'free'
     });
 
   } catch (error) {
-    console.error('💥 GET: Unexpected error in shopping lists fetch:', error);
+    console.error('💥 GET: Unexpected error in simplified fetch:', error);
     console.error('💥 GET: Error details:', {
       name: (error as any)?.name,
       message: (error as any)?.message,
