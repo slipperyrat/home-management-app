@@ -231,7 +231,7 @@ export default function TestAutomationPage() {
         source: 'email'
       };
       
-      await postEventTypes.billReceived({ 
+      await postEventTypes.billEmailReceived({ 
         household_id: userData.household_id, 
         ...billData 
       });
