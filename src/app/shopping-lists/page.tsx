@@ -72,13 +72,18 @@ export default function ShoppingListsPage() {
 
   const fetchShoppingLists = async () => {
     try {
+      console.log('Fetching shopping lists...');
       const response = await fetch('/api/shopping-lists');
+      console.log('Response status:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('Shopping lists data:', data);
         setShoppingLists(data.shoppingLists || []);
         setNeedsOnboarding(false);
       } else {
         const errorData = await response.json();
+        console.error('Error response:', errorData);
         if (errorData.needsOnboarding) {
           setNeedsOnboarding(true);
         }
@@ -120,7 +125,11 @@ export default function ShoppingListsPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setShoppingLists(prev => [data.shoppingList, ...prev]);
+        console.log('Created shopping list:', data);
+        
+        // Refresh the lists instead of manually updating state
+        await fetchShoppingLists();
+        
         setShowCreateModal(false);
         setNewListName('');
         setNewListDescription('');
