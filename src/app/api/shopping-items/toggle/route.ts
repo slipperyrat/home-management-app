@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { schemas } from '@/lib/validation/schemas';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,18 +16,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { itemId } = await request.json();
-
-    if (!itemId) {
-      return NextResponse.json({ error: 'Item ID is required' }, { status: 400 });
+    // Validate input using Zod
+    let validatedData;
+    try {
+      const body = await request.json();
+      validatedData = schemas.toggleShoppingItem.parse(body);
+    } catch (validationError: any) {
+      return NextResponse.json({ 
+        error: 'Invalid input', 
+        details: validationError.errors 
+      }, { status: 400 });
     }
 
-    console.log(`🔄 API: Toggling shopping item ${itemId} for user ${userId}`);
+    const { id: itemId, is_complete } = validatedData;
 
-    // First get the current item to check its completion status
+    console.log(`🔄 API: Toggling shopping item ${itemId} for user ${userId} to ${is_complete}`);
+
+    // First get the current item to check its completion status and household
     const { data: currentItem, error: fetchError } = await supabase
       .from('shopping_items')
-      .select('completed')
+      .select(`
+        completed,
+        shopping_lists!inner(household_id)
+      `)
       .eq('id', itemId)
       .single();
 
@@ -39,10 +51,11 @@ export async function POST(request: NextRequest) {
 
     // Check if item was previously incomplete (to award rewards only once)
     const wasIncomplete = !currentItem.completed;
+    const householdId = currentItem.shopping_lists.household_id;
 
     console.log(`🔄 Item was incomplete: ${wasIncomplete}`);
 
-    if (wasIncomplete) {
+    if (is_complete && wasIncomplete) {
       // Complete the item and award rewards
       console.log(`🎁 Awarding rewards for completing item`);
       
@@ -105,27 +118,66 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: `Failed to update user rewards: ${updateError.message}` }, { status: 500 });
       }
 
+      // Add audit log entry for completion
+      try {
+        await supabase.rpc('add_audit_log', {
+          p_action: 'shopping_item.completed',
+          p_target_table: 'shopping_items',
+          p_target_id: itemId,
+          p_meta: { 
+            household_id: householdId,
+            xp_awarded: 10,
+            coins_awarded: 1,
+            previous_status: false
+          }
+        });
+      } catch (auditError) {
+        console.warn('Failed to add audit log:', auditError);
+        // Don't fail the request if audit logging fails
+      }
+
       console.log(`✅ Successfully completed shopping item and awarded rewards`);
-      return NextResponse.json({ success: true, item: updatedItem });
+      return NextResponse.json({ 
+        success: true, 
+        item: updatedItem,
+        rewards: { xp: 10, coins: 1 }
+      });
     } else {
-      // Uncomplete the item (no rewards)
+      // Toggle the item to the requested state
       const { data: updatedItem, error: itemError } = await supabase
         .from('shopping_items')
         .update({
-          completed: false,
-          completed_by: null,
-          completed_at: null
+          completed: is_complete,
+          completed_by: is_complete ? userId : null,
+          completed_at: is_complete ? new Date().toISOString() : null
         })
         .eq('id', itemId)
         .select()
         .single();
 
       if (itemError) {
-        console.error(`❌ Error uncompleting shopping item:`, itemError);
-        return NextResponse.json({ error: `Failed to uncomplete shopping item: ${itemError.message}` }, { status: 500 });
+        console.error(`❌ Error updating shopping item:`, itemError);
+        return NextResponse.json({ error: `Failed to update shopping item: ${itemError.message}` }, { status: 500 });
       }
 
-      console.log(`✅ Successfully uncompleted shopping item`);
+      // Add audit log entry for status change
+      try {
+        await supabase.rpc('add_audit_log', {
+          p_action: is_complete ? 'shopping_item.completed' : 'shopping_item.uncompleted',
+          p_target_table: 'shopping_items',
+          p_target_id: itemId,
+          p_meta: { 
+            household_id: householdId,
+            previous_status: !is_complete,
+            new_status: is_complete
+          }
+        });
+      } catch (auditError) {
+        console.warn('Failed to add audit log:', auditError);
+        // Don't fail the request if audit logging fails
+      }
+
+      console.log(`✅ Successfully ${is_complete ? 'completed' : 'uncompleted'} shopping item`);
       return NextResponse.json({ success: true, item: updatedItem });
     }
   } catch (error) {
