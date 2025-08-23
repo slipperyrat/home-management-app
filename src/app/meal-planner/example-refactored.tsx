@@ -95,12 +95,22 @@ export default function MealPlannerPageRefactored() {
     if (!userData?.household?.id || !user?.id) return;
     
     try {
-      // Add optimistic update
+      // Add optimistic update with proper ingredient/instruction structure
       addOptimisticRecipe({
         ...data,
         household_id: userData.household.id,
         created_by: user.id,
         is_favorite: false,
+        ingredients: data.ingredients.map((ingredient, index) => ({
+          id: `temp-ingredient-${index}`,
+          recipe_id: 'temp-recipe-id',
+          ...ingredient,
+        })),
+        instructions: data.instructions.map((instruction, index) => ({
+          id: `temp-instruction-${index}`,
+          recipe_id: 'temp-recipe-id',
+          ...instruction,
+        })),
       });
       
       // Create the recipe
