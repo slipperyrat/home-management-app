@@ -306,9 +306,23 @@ export async function POST(request: NextRequest) {
       // Don't fail the request if audit logging fails
     }
 
+    // Transform the new list to match the GET response format
+    const transformedList = {
+      id: newList.id,
+      name: newList.title || newList.name,
+      description: newList.description,
+      created_at: newList.created_at,
+      updated_at: newList.updated_at || newList.created_at,
+      is_completed: false,
+      total_items: 0,
+      completed_items: 0,
+      ai_suggestions_count: 0,
+      ai_confidence: 75
+    };
+
     return NextResponse.json({
       success: true,
-      shoppingList: newList,
+      shoppingList: transformedList,
       plan: userPlan
     });
 
