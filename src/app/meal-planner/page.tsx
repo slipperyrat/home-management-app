@@ -425,117 +425,7 @@ export default function MealPlannerPage() {
 
   const weekDays = getWeekDays();
 
-  // Helper function to render AI insights tab
-  const renderAIInsightsTab = (): React.ReactNode => {
-    if (activeTab !== 'ai-insights') {
-      return null;
-    }
-    
-    return (
-      <div className="p-6">
-        {loadingAI ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-            <span className="ml-2 text-gray-600">Loading AI insights...</span>
-          </div>
-        ) : aiInsights ? (
-          <div className="space-y-6">
-            {/* AI Insights Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-500">Weeks Planned</h3>
-                  <span className="text-2xl font-bold text-green-600">{aiInsights.total_weeks_planned}</span>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-500">Planning Consistency</h3>
-                  <span className="text-2xl font-bold text-blue-600">{aiInsights.planning_consistency}%</span>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-500">AI Learning</h3>
-                  <span className="text-2xl font-bold text-purple-600">{aiInsights.ai_learning_progress}%</span>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-500">Avg Meals/Week</h3>
-                  <span className="text-2xl font-bold text-orange-600">{aiInsights.household_preferences.average_meals_per_week}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Popular Recipes */}
-            {aiInsights.popular_recipes && aiInsights.popular_recipes.length > 0 && (
-              <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Most Popular Recipes</h3>
-                <div className="space-y-3">
-                  {aiInsights.popular_recipes.map((recipe: any, index: number) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <h4 className="font-medium text-gray-900">{recipe.name}</h4>
-                        <p className="text-sm text-gray-500">Used {recipe.usage_count} times</p>
-                      </div>
-                      <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                        {recipe.category}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Seasonal Recommendations */}
-            <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Seasonal Recommendations</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700">Current Season:</span>
-                  <span className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 rounded-full capitalize">
-                    {aiInsights.seasonal_recommendations.current_season}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-gray-700">Focus on:</h4>
-                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
-                    {aiInsights.seasonal_recommendations.recommendations.map((rec: string, index: number) => (
-                      <li key={index}>{rec}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Improvement Suggestions */}
-            {aiInsights.suggested_improvements && aiInsights.suggested_improvements.length > 0 && (
-              <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Suggestions for Improvement</h3>
-                <div className="space-y-3">
-                  {aiInsights.suggested_improvements.map((suggestion: string, index: number) => (
-                    <div key={index} className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
-                      <span className="text-blue-500 mt-1">💡</span>
-                      <p className="text-sm text-blue-800">{suggestion}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <div className="text-gray-400 text-6xl mb-4">🤖</div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No AI Insights Available</h3>
-            <p className="text-gray-500">Start planning meals to generate AI insights and recommendations.</p>
-          </div>
-        )}
-        </div>
-      );
-    }
-    return null;
-  };
 
   // Final safety check - ensure user data is loaded
   if (!userData || !userData.household_id) {
@@ -827,7 +717,108 @@ export default function MealPlannerPage() {
           ) : null}
 
           {/* AI Insights Tab */}
-          {renderAIInsightsTab()}
+          {activeTab === 'ai-insights' ? (
+            <div className="p-6">
+              {loadingAI ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                  <span className="ml-2 text-gray-600">Loading AI insights...</span>
+                </div>
+              ) : aiInsights ? (
+                <div className="space-y-6">
+                  {/* AI Insights Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-500">Weeks Planned</h3>
+                        <span className="text-2xl font-bold text-green-600">{aiInsights.total_weeks_planned}</span>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-500">Planning Consistency</h3>
+                        <span className="text-2xl font-bold text-blue-600">{aiInsights.planning_consistency}%</span>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-500">AI Learning</h3>
+                        <span className="text-2xl font-bold text-purple-600">{aiInsights.ai_learning_progress}%</span>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-500">Avg Meals/Week</h3>
+                        <span className="text-2xl font-bold text-orange-600">{aiInsights.household_preferences.average_meals_per_week}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Popular Recipes */}
+                  {aiInsights.popular_recipes && aiInsights.popular_recipes.length > 0 && (
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Most Popular Recipes</h3>
+                      <div className="space-y-3">
+                        {aiInsights.popular_recipes.map((recipe: any, index: number) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div>
+                              <h4 className="font-medium text-gray-900">{recipe.name}</h4>
+                              <p className="text-sm text-gray-500">Used {recipe.usage_count} times</p>
+                            </div>
+                            <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                              {recipe.category}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Seasonal Recommendations */}
+                  <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Seasonal Recommendations</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Current Season:</span>
+                        <span className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 rounded-full capitalize">
+                          {aiInsights.seasonal_recommendations.current_season}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium text-gray-700">Focus on:</h4>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                          {aiInsights.seasonal_recommendations.recommendations.map((rec: string, index: number) => (
+                            <li key={index}>{rec}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Improvement Suggestions */}
+                  {aiInsights.suggested_improvements && aiInsights.suggested_improvements.length > 0 && (
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Suggestions for Improvement</h3>
+                      <div className="space-y-3">
+                        {aiInsights.suggested_improvements.map((suggestion: string, index: number) => (
+                          <div key={index} className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
+                            <span className="text-blue-500 mt-1">💡</span>
+                            <p className="text-sm text-blue-800">{suggestion}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 text-6xl mb-4">🤖</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No AI Insights Available</h3>
+                  <p className="text-gray-500">Start planning meals to generate AI insights and recommendations.</p>
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {/* AI Suggestions Tab */}
           {activeTab === 'ai-suggestions' ? (
