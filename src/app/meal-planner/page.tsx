@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
@@ -487,31 +487,31 @@ export default function MealPlannerPage() {
                 
                 {/* Mobile-first button layout */}
                 <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-4">
-                  <button
-                    onClick={() => {
-                      console.log('🔍 New Recipe button clicked');
-                      console.log('🔍 Current user data:', userData);
-                      console.log('🔍 Current modal state:', showCreateRecipeModal);
-                      
-                      if (!userData?.household_id) {
-                        console.error('❌ Cannot create recipe: No household_id available');
-                        toast.error('Please complete onboarding first');
-                        return;
-                      }
-                      
-                      console.log('🔍 Setting modal to true...');
-                      setShowCreateRecipeModal(true);
-                      console.log('🔍 Modal state after setState:', true);
-                      
-                      // Force a re-render check
-                      setTimeout(() => {
-                        console.log('🔍 Modal state after timeout:', showCreateRecipeModal);
-                      }, 100);
-                    }}
-                    className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 text-sm font-medium"
-                  >
-                    + New Recipe
-                  </button>
+                                     <button
+                     onClick={() => {
+                       console.log('🔍 New Recipe button clicked');
+                       console.log('🔍 Current user data:', userData);
+                       console.log('🔍 Current modal state:', showCreateRecipeModal);
+                       
+                       if (!userData?.household_id) {
+                         console.error('❌ Cannot create recipe: No household_id available');
+                         toast.error('Please complete onboarding first');
+                         return;
+                       }
+                       
+                       console.log('🔍 Setting modal to true...');
+                       setShowCreateRecipeModal(true);
+                       console.log('🔍 Modal state after setState:', true);
+                       
+                       // Force a re-render check
+                       setTimeout(() => {
+                         console.log('🔍 Modal state after timeout:', showCreateRecipeModal);
+                       }, 100);
+                     }}
+                     className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 text-sm font-medium"
+                   >
+                     + New Recipe
+                   </button>
                   
                   {/* Week Navigation */}
                   <div className="flex items-center justify-between sm:justify-start space-x-4">
@@ -596,13 +596,14 @@ export default function MealPlannerPage() {
                       {(() => {
                         const breakfastRecipe = getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast');
                         return (
-                          <MealSlot
-                            date={date.toISOString().split('T')[0] || ''}
-                            mealType="breakfast"
-                            recipe={breakfastRecipe || undefined}
-                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
-                            recipes={recipesData?.recipes || []}
-                          />
+                                                     <MealSlot
+                             date={date.toISOString().split('T')[0] || ''}
+                             mealType="breakfast"
+                             recipe={breakfastRecipe || undefined}
+                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
+                             onCreateRecipe={() => setShowCreateRecipeModal(true)}
+                             recipes={recipesData?.recipes || []}
+                           />
                         );
                       })()}
                     </div>
@@ -613,13 +614,14 @@ export default function MealPlannerPage() {
                       {(() => {
                         const lunchRecipe = getMealForDay(date.toISOString().split('T')[0] || '', 'lunch');
                         return (
-                          <MealSlot
-                            date={date.toISOString().split('T')[0] || ''}
-                            mealType="lunch"
-                            recipe={lunchRecipe || undefined}
-                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
-                            recipes={recipesData?.recipes || []}
-                          />
+                                                     <MealSlot
+                             date={date.toISOString().split('T')[0] || ''}
+                             mealType="lunch"
+                             recipe={lunchRecipe || undefined}
+                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
+                             onCreateRecipe={() => setShowCreateRecipeModal(true)}
+                             recipes={recipesData?.recipes || []}
+                           />
                         );
                       })()}
                     </div>
@@ -630,13 +632,14 @@ export default function MealPlannerPage() {
                       {(() => {
                         const dinnerRecipe = getMealForDay(date.toISOString().split('T')[0] || '', 'dinner');
                         return (
-                          <MealSlot
-                            date={date.toISOString().split('T')[0] || ''}
-                            mealType="dinner"
-                            recipe={dinnerRecipe || undefined}
-                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
-                            recipes={recipesData?.recipes || []}
-                          />
+                                                     <MealSlot
+                             date={date.toISOString().split('T')[0] || ''}
+                             mealType="dinner"
+                             recipe={dinnerRecipe || undefined}
+                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
+                             onCreateRecipe={() => setShowCreateRecipeModal(true)}
+                             recipes={recipesData?.recipes || []}
+                           />
                         );
                       })()}
                     </div>
@@ -664,40 +667,43 @@ export default function MealPlannerPage() {
                       {/* Breakfast */}
                       <div className="space-y-2">
                         <div className="text-sm font-medium text-gray-700 text-center">🌅 Breakfast</div>
-                        <MealSlot
-                          date={date.toISOString().split('T')[0] || ''}
-                          mealType="breakfast"
-                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
-                          recipes={recipesData?.recipes || []}
-                          isMobile={true}
-                        />
+                                                 <MealSlot
+                           date={date.toISOString().split('T')[0] || ''}
+                           mealType="breakfast"
+                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
+                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
+                           onCreateRecipe={() => setShowCreateRecipeModal(true)}
+                           recipes={recipesData?.recipes || []}
+                           isMobile={true}
+                         />
                       </div>
 
                       {/* Lunch */}
                       <div className="space-y-2">
                         <div className="text-sm font-medium text-gray-700 text-center">☀️ Lunch</div>
-                        <MealSlot
-                          date={date.toISOString().split('T')[0] || ''}
-                          mealType="lunch"
-                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
-                          recipes={recipesData?.recipes || []}
-                          isMobile={true}
-                        />
+                                                 <MealSlot
+                           date={date.toISOString().split('T')[0] || ''}
+                           mealType="lunch"
+                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
+                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
+                           onCreateRecipe={() => setShowCreateRecipeModal(true)}
+                           recipes={recipesData?.recipes || []}
+                           isMobile={true}
+                         />
                       </div>
 
                       {/* Dinner */}
                       <div className="space-y-2">
                         <div className="text-sm font-medium text-gray-700 text-center">🌙 Dinner</div>
-                        <MealSlot
-                          date={date.toISOString().split('T')[0] || ''}
-                          mealType="dinner"
-                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
-                          recipes={recipesData?.recipes || []}
-                          isMobile={true}
-                        />
+                                                 <MealSlot
+                           date={date.toISOString().split('T')[0] || ''}
+                           mealType="dinner"
+                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
+                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
+                           onCreateRecipe={() => setShowCreateRecipeModal(true)}
+                           recipes={recipesData?.recipes || []}
+                           isMobile={true}
+                         />
                       </div>
                     </div>
                   </div>
@@ -944,8 +950,9 @@ export default function MealPlannerPage() {
             /> : null}
 
           {/* Create Recipe Modal */}
-          {showCreateRecipeModal && (
+          {showCreateRecipeModal ? (
             <>
+              {console.log('🔍 RENDERING MODAL - showCreateRecipeModal is TRUE')}
               <CreateRecipeModal
                 onClose={() => {
                   console.log('🔍 Closing create recipe modal');
@@ -958,6 +965,8 @@ export default function MealPlannerPage() {
                 }}
               />
             </>
+          ) : (
+            console.log('🔍 NOT RENDERING MODAL - showCreateRecipeModal is FALSE')
           )}
         </div>
       </div>
@@ -970,11 +979,12 @@ interface MealSlotProps {
   mealType: 'breakfast' | 'lunch' | 'dinner';
   recipe: Recipe | undefined;
   onAssign: (recipe: Recipe) => void;
+  onCreateRecipe: () => void;
   recipes: Recipe[];
   isMobile?: boolean;
 }
 
-function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes, isMobile = false }: MealSlotProps) {
+function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, onCreateRecipe, recipes, isMobile = false }: MealSlotProps) {
   const [showDropdown, setShowDropdown] = useState(false);
 
   return (
@@ -1007,7 +1017,10 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
                 <div className={`p-3 text-gray-500 text-center ${isMobile ? 'text-sm' : 'text-xs'}`}>
                   <div>No recipes yet!</div>
                   <button
-                    onClick={() => setShowDropdown(false)}
+                    onClick={() => {
+                      setShowDropdown(false);
+                      onCreateRecipe();
+                    }}
                     className="mt-2 text-blue-600 hover:text-blue-800 underline"
                   >
                     Create your first recipe
