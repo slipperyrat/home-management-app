@@ -3,21 +3,25 @@
 import { useAuth } from '@clerk/nextjs';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
-import { useRecipes } from '@/hooks/useRecipes';
+import { useRecipes, Recipe } from '@/hooks/useRecipes';
 import { useMealPlan } from '@/hooks/useMealPlan';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 export default function MealPlannerPage() {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   
   // Data fetching hooks
   const { userData, isLoading: userDataLoading, error: userDataError } = useUserData();
-  const { isLoading: recipesLoading, error: recipesError } = useRecipes();
+  const { data: recipes, isLoading: recipesLoading, error: recipesError } = useRecipes();
+  const recipesData = recipes as { success: boolean; recipes: Recipe[] } | undefined;
   
   const [currentWeek, setCurrentWeek] = useState<Date>(new Date());
   const weekStartDate = getWeekStart(currentWeek);
-  const { isLoading: mealPlanLoading, error: mealPlanError } = useMealPlan(weekStartDate);
+  const { data: mealPlan, isLoading: mealPlanLoading, error: mealPlanError } = useMealPlan(weekStartDate);
   
   // Loading and error states
   const loading = userDataLoading || recipesLoading || mealPlanLoading;
@@ -28,8 +32,75 @@ export default function MealPlannerPage() {
   
   // Local state
   const [activeTab, setActiveTab] = useState('planner');
+  const [aiInsights, setAiInsights] = useState<any>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<any>(null);
+  const [loadingAI, setLoadingAI] = useState(false);
 
+  // React Query mutations
+  const assignRecipeMutation = useMutation({
+    mutationFn: async ({ date, mealType, recipe }: { date: string; mealType: 'breakfast' | 'lunch' | 'dinner'; recipe: Recipe }) => {
+      const dateObj = new Date(date);
+      const weekStart = getWeekStart(dateObj);
+      const weekStartDate = weekStart.toISOString().split('T')[0];
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayName = dayNames[dateObj.getDay()];
 
+      const response = await fetch('/api/meal-planner/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          week: weekStartDate,
+          day: dayName,
+          slot: mealType,
+          recipe_id: recipe.id,
+          alsoAddToList: true
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to assign recipe: ${response.status}`);
+      }
+
+      return response.json();
+    },
+    onSuccess: (result, _variables) => {
+      const weekStartString = weekStartDate.toISOString().split('T')[0];
+      
+      queryClient.invalidateQueries({
+        queryKey: ['mealPlan', weekStartString]
+      });
+      
+      queryClient.invalidateQueries({
+        queryKey: ['mealPlan']
+      });
+
+      if (result.ingredients) {
+        const { added = 0, updated = 0 } = result.ingredients;
+        
+        if (added > 0 || updated > 0) {
+          let message = '';
+          if (added > 0 && updated > 0) {
+            message = `Added ${added} items • Merged ${updated} items`;
+          } else if (added > 0) {
+            message = `Added ${added} items`;
+          } else if (updated > 0) {
+            message = `Merged ${updated} items`;
+          }
+          
+          toast.success(message, {
+            action: {
+              label: 'View List',
+              onClick: () => router.push('/shopping-lists')
+            },
+            duration: 5000
+          });
+        }
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to assign recipe: ${error.message}`);
+    },
+  });
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -71,7 +142,35 @@ export default function MealPlannerPage() {
     });
   }
 
+  function getMealForDay(date: string, mealType: 'breakfast' | 'lunch' | 'dinner'): Recipe | undefined {
+    if (!mealPlan?.meals) return undefined;
+    
+    const dateObj = new Date(date);
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayName = dayNames[dateObj.getDay()];
+    
+    if (!dayName) return undefined;
+    
+    const dayMeals = mealPlan.meals[dayName];
+    if (!dayMeals) return undefined;
+    
+    const meal = dayMeals[mealType];
+    
+    if (typeof meal === 'string') {
+      return recipesData?.recipes?.find(r => r.id === meal);
+    }
+    
+    return meal as Recipe | undefined;
+  }
 
+  function assignRecipe(date: string, mealType: 'breakfast' | 'lunch' | 'dinner', recipe: Recipe) {
+    if (!userData?.household_id) {
+      toast.error('Please complete onboarding first');
+      return;
+    }
+    
+    assignRecipeMutation.mutate({ date, mealType, recipe });
+  }
 
   function navigateWeek(direction: 'prev' | 'next') {
     const newWeek = new Date(currentWeek);
@@ -82,6 +181,45 @@ export default function MealPlannerPage() {
     }
     setCurrentWeek(newWeek);
   }
+
+  // AI Functions
+  const fetchAIInsights = async () => {
+    try {
+      setLoadingAI(true);
+      const response = await fetch('/api/ai/meal-insights');
+      if (response.ok) {
+        const data = await response.json();
+        setAiInsights(data.insights);
+      }
+    } catch (error) {
+      console.error('Error fetching AI insights:', error);
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
+  const fetchAISuggestions = async (mealType = 'dinner') => {
+    try {
+      setLoadingAI(true);
+      const response = await fetch(`/api/ai/meal-suggestions?mealType=${mealType}`);
+      if (response.ok) {
+        const data = await response.json();
+        setAiSuggestions(data);
+      }
+    } catch (error) {
+      console.error('Error fetching AI suggestions:', error);
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'ai-insights') {
+      fetchAIInsights();
+    } else if (activeTab === 'ai-suggestions') {
+      fetchAISuggestions();
+    }
+  }, [activeTab]);
 
   // Show loading spinner while auth is loading or data is being fetched
   if (!isLoaded || loading) {
@@ -257,33 +395,427 @@ export default function MealPlannerPage() {
 
           {/* Conditional Content Based on Active Tab */}
           {activeTab === 'planner' && (
-            <div className="p-6">
-              <div className="text-center text-gray-500">
-                <p>Meal planner content will go here</p>
-                <p>This is a simplified version to avoid TypeScript issues</p>
+            <>
+              {/* Weekly Grid */}
+              <div className="hidden lg:block">
+                <div className="grid grid-cols-7 gap-4 p-6">
+                  {weekDays.map((date, index) => (
+                    <div key={index} className="space-y-2">
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-gray-900">
+                          {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                      </div>
+
+                      {/* Breakfast */}
+                      <div className="space-y-1">
+                        <div className="text-xs font-medium text-gray-700">Breakfast</div>
+                        <MealSlot
+                          date={date.toISOString().split('T')[0] || ''}
+                          mealType="breakfast"
+                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
+                          recipes={recipesData?.recipes || []}
+                        />
+                      </div>
+
+                      {/* Lunch */}
+                      <div className="space-y-1">
+                        <div className="text-xs font-medium text-gray-700">Lunch</div>
+                        <MealSlot
+                          date={date.toISOString().split('T')[0] || ''}
+                          mealType="lunch"
+                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
+                          recipes={recipesData?.recipes || []}
+                        />
+                      </div>
+
+                      {/* Dinner */}
+                      <div className="space-y-1">
+                        <div className="text-xs font-medium text-gray-700">Dinner</div>
+                        <MealSlot
+                          date={date.toISOString().split('T')[0] || ''}
+                          mealType="dinner"
+                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
+                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
+                          recipes={recipesData?.recipes || []}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+
+              {/* Mobile/Tablet Layout - Stacked cards */}
+              <div className="lg:hidden">
+                <div className="space-y-4 p-4">
+                  {weekDays.map((date, index) => (
+                    <div key={index} className="bg-gray-50 rounded-lg p-4">
+                      <div className="text-center mb-4">
+                        <div className="text-lg font-semibold text-gray-900">
+                          {date.toLocaleDateString('en-US', { weekday: 'long' })}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {/* Breakfast */}
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium text-gray-700 text-center">🌅 Breakfast</div>
+                          <MealSlot
+                            date={date.toISOString().split('T')[0] || ''}
+                            mealType="breakfast"
+                            recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
+                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
+                            recipes={recipesData?.recipes || []}
+                            isMobile={true}
+                          />
+                        </div>
+
+                        {/* Lunch */}
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium text-gray-700 text-center">☀️ Lunch</div>
+                          <MealSlot
+                            date={date.toISOString().split('T')[0] || ''}
+                            mealType="lunch"
+                            recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
+                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
+                            recipes={recipesData?.recipes || []}
+                            isMobile={true}
+                          />
+                        </div>
+
+                        {/* Dinner */}
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium text-gray-700 text-center">🌙 Dinner</div>
+                          <MealSlot
+                            date={date.toISOString().split('T')[0] || ''}
+                            mealType="dinner"
+                            recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
+                            onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
+                            recipes={recipesData?.recipes || []}
+                            isMobile={true}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
 
+          {/* AI Insights Tab */}
           {activeTab === 'ai-insights' && (
             <div className="p-6">
-              <div className="text-center text-gray-500">
-                <p>AI Insights content will go here</p>
-                <p>This is a simplified version to avoid TypeScript issues</p>
-              </div>
+              {loadingAI ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                  <span className="ml-2 text-gray-600">Loading AI insights...</span>
+                </div>
+              ) : aiInsights ? (
+                <div className="space-y-6">
+                  {/* AI Insights Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-500">Weeks Planned</h3>
+                        <span className="text-2xl font-bold text-green-600">{aiInsights.total_weeks_planned}</span>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-500">Planning Consistency</h3>
+                        <span className="text-2xl font-bold text-blue-600">{aiInsights.planning_consistency}%</span>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-500">AI Learning</h3>
+                        <span className="text-2xl font-bold text-purple-600">{aiInsights.ai_learning_progress}%</span>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-gray-500">Avg Meals/Week</h3>
+                        <span className="text-2xl font-bold text-orange-600">{aiInsights.household_preferences.average_meals_per_week}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Popular Recipes */}
+                  {aiInsights.popular_recipes && aiInsights.popular_recipes.length > 0 && (
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Most Popular Recipes</h3>
+                      <div className="space-y-3">
+                        {aiInsights.popular_recipes.map((recipe: any, index: number) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div>
+                              <h4 className="font-medium text-gray-900">{recipe.name}</h4>
+                              <p className="text-sm text-gray-500">Used {recipe.usage_count} times</p>
+                            </div>
+                            <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                              {recipe.category}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Seasonal Recommendations */}
+                  <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Seasonal Recommendations</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Current Season:</span>
+                        <span className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 rounded-full capitalize">
+                          {aiInsights.seasonal_recommendations.current_season}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium text-gray-700">Focus on:</h4>
+                        <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                          {aiInsights.seasonal_recommendations.recommendations.map((rec: string, index: number) => (
+                            <li key={index}>{rec}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Improvement Suggestions */}
+                  {aiInsights.suggested_improvements && aiInsights.suggested_improvements.length > 0 && (
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Suggestions for Improvement</h3>
+                      <div className="space-y-3">
+                        {aiInsights.suggested_improvements.map((suggestion: string, index: number) => (
+                          <div key={index} className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
+                            <span className="text-blue-500 mt-1">💡</span>
+                            <p className="text-sm text-blue-800">{suggestion}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 text-6xl mb-4">🤖</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No AI Insights Available</h3>
+                  <p className="text-gray-500">Start planning meals to generate AI insights and recommendations.</p>
+                </div>
+              )}
             </div>
           )}
 
+          {/* AI Suggestions Tab */}
           {activeTab === 'ai-suggestions' && (
             <div className="p-6">
-              <div className="text-center text-gray-500">
-                <p>AI Suggestions content will go here</p>
-                <p>This is a simplified version to avoid TypeScript issues</p>
-              </div>
+              {loadingAI ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                  <span className="ml-2 text-gray-600">Loading AI suggestions...</span>
+                </div>
+              ) : aiSuggestions ? (
+                <div className="space-y-6">
+                  {/* Meal Type Filter */}
+                  <div className="flex space-x-4 mb-6">
+                    {['breakfast', 'lunch', 'dinner'].map((mealType) => (
+                      <button
+                        key={mealType}
+                        onClick={() => fetchAISuggestions(mealType)}
+                        className={`px-4 py-2 rounded-md font-medium capitalize ${
+                          aiSuggestions.suggestions?.[0]?.mealType === mealType
+                            ? 'bg-green-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {mealType}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* AI Confidence */}
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-blue-800">AI Confidence</span>
+                      <span className="text-sm font-medium text-blue-600">{aiSuggestions.ai_confidence}%</span>
+                    </div>
+                    <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${aiSuggestions.ai_confidence}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Recipe Suggestions */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {aiSuggestions.suggestions?.map((recipe: any, index: number) => (
+                      <div key={index} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between mb-3">
+                          <h3 className="text-lg font-semibold text-gray-900">{recipe.name}</h3>
+                          <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                            Score: {recipe.ai_score}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-4">{recipe.description}</p>
+                        <div className="space-y-2 mb-4">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Prep Time:</span>
+                            <span className="text-gray-700">{recipe.prep_time} min</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Cook Time:</span>
+                            <span className="text-gray-700">{recipe.cook_time} min</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Servings:</span>
+                            <span className="text-gray-700">{recipe.servings}</span>
+                          </div>
+                        </div>
+                        <div className="mb-4">
+                          <p className="text-xs text-green-600 font-medium mb-1">AI Reasoning:</p>
+                          <p className="text-xs text-gray-600">{recipe.ai_reasoning}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {recipe.tags.map((tag: string, tagIndex: number) => (
+                            <span key={tagIndex} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => {
+                            console.log('Assigning recipe:', recipe);
+                          }}
+                          className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition-colors"
+                        >
+                          Use This Recipe
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* AI Insights */}
+                  {aiSuggestions.insights && (
+                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Insights</h3>
+                      <div className="space-y-4">
+                        <div>
+                          <h4 className="font-medium text-gray-700 mb-2">Meal Type Optimization</h4>
+                          <p className="text-sm text-gray-600">{aiSuggestions.insights.meal_type_optimization}</p>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-700 mb-2">Seasonal Tips</h4>
+                          <p className="text-sm text-gray-600">{aiSuggestions.insights.seasonal_tips}</p>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-700 mb-2">Nutritional Balance</h4>
+                          <p className="text-sm text-gray-600">{aiSuggestions.insights.nutritional_balance}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-gray-400 text-6xl mb-4">🤖</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No AI Suggestions Available</h3>
+                  <p className="text-gray-500">Start planning meals to receive AI-powered recipe recommendations.</p>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// MealSlot Component
+interface MealSlotProps {
+  date: string;
+  mealType: 'breakfast' | 'lunch' | 'dinner';
+  recipe: Recipe | undefined;
+  onAssign: (recipe: Recipe) => void;
+  recipes: Recipe[];
+  isMobile?: boolean;
+}
+
+function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes, isMobile = false }: MealSlotProps) {
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  return (
+    <div className="relative">
+      {recipe ? (
+        <div className={`bg-green-50 border border-green-200 rounded-md cursor-pointer hover:bg-green-100 ${isMobile ? 'p-3' : 'p-2'}`}>
+          <div className={`font-medium text-green-800 truncate ${isMobile ? 'text-sm' : 'text-xs'}`}>
+            {recipe.name}
+          </div>
+          <div className={`text-green-600 ${isMobile ? 'text-xs' : 'text-xs'}`}>
+            {recipe.prep_time + recipe.cook_time}min
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className={`w-full bg-gray-50 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-100 text-left ${isMobile ? 'p-3 text-sm' : 'p-2 text-xs'}`}
+        >
+          + Add Recipe
+        </button>
+      )}
+
+      {showDropdown && (
+        <div className={`absolute z-50 mt-1 bg-white border border-gray-200 rounded-md shadow-lg ${isMobile ? 'w-72 left-0 right-0' : 'w-64'}`}>
+          <div className="p-3">
+            <div className={`font-medium text-gray-700 mb-3 ${isMobile ? 'text-sm' : 'text-xs'}`}>
+              Select Recipe
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-1">
+              {recipes.length === 0 ? (
+                <div className={`p-3 text-gray-500 text-center ${isMobile ? 'text-sm' : 'text-xs'}`}>
+                  <div>No recipes yet!</div>
+                  <button
+                    onClick={() => {
+                      setShowDropdown(false);
+                      // TODO: Add create recipe functionality
+                    }}
+                    className="mt-2 text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Create your first recipe
+                  </button>
+                </div>
+              ) : (
+                recipes.map((recipe) => (
+                  <button
+                    key={recipe.id}
+                    onClick={() => {
+                      onAssign(recipe);
+                      setShowDropdown(false);
+                    }}
+                    className={`w-full text-left hover:bg-gray-50 rounded ${isMobile ? 'p-3' : 'p-2'}`}
+                  >
+                    <div className={`font-medium text-gray-900 ${isMobile ? 'text-sm' : 'text-xs'}`}>
+                      {recipe.name}
+                    </div>
+                    <div className={`text-gray-500 ${isMobile ? 'text-xs' : 'text-xs'}`}>
+                      {recipe.prep_time + recipe.cook_time}min
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
