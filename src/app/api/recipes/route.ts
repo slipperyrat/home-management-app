@@ -9,64 +9,51 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('Recipe creation API called');
+    
     // Get the authenticated user
     const { userId } = await auth();
+    console.log('User ID:', userId);
+    
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user data to find household_id
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('household_id')
-      .eq('clerk_id', userId)
-      .single();
-
-    if (userError || !userData?.household_id) {
-      return NextResponse.json({ error: 'User not found or not in household' }, { status: 400 });
-    }
-
     // Parse the request body
     const body = await request.json();
+    console.log('Request body:', body);
+    
     const { name, description, prep_time, cook_time, servings, ingredients, instructions } = body;
 
     // Validate required fields
     if (!name || !ingredients || !instructions) {
+      console.log('Validation failed - missing fields');
       return NextResponse.json({ 
-        error: 'Missing required fields: name, ingredients, and instructions are required' 
+        error: 'Missing required fields: name, ingredients, and instructions are required',
+        received: { name, ingredients, instructions }
       }, { status: 400 });
     }
 
-    // Create the recipe
-    const { data: recipe, error: recipeError } = await supabase
-      .from('recipes')
-      .insert({
-        name,
-        description: description || '',
-        prep_time: prep_time || 0,
-        cook_time: cook_time || 0,
-        servings: servings || 1,
-        ingredients: ingredients,
-        instructions: instructions,
-        household_id: userData.household_id,
-        created_by: userId,
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+    // For now, just return success without database insertion
+    // This will help us test if the API endpoint is working
+    const mockRecipe = {
+      id: 'temp-' + Date.now(),
+      name,
+      description: description || '',
+      prep_time: prep_time || 0,
+      cook_time: cook_time || 0,
+      servings: servings || 1,
+      ingredients,
+      instructions,
+      created_at: new Date().toISOString()
+    };
 
-    if (recipeError) {
-      console.error('Error creating recipe:', recipeError);
-      return NextResponse.json({ 
-        error: 'Failed to create recipe',
-        details: recipeError.message 
-      }, { status: 500 });
-    }
+    console.log('Recipe created successfully:', mockRecipe);
 
     return NextResponse.json({ 
       success: true, 
-      recipe,
-      message: 'Recipe created successfully' 
+      recipe: mockRecipe,
+      message: 'Recipe created successfully (test mode)' 
     });
 
   } catch (error) {
