@@ -71,8 +71,8 @@ export default function MealPlannerPage() {
 
       return response.json();
     },
-          onSuccess: (result, _variables) => {
-        // Invalidate the specific meal plan query to refetch data
+    onSuccess: (result, _variables) => {
+      // Invalidate the specific meal plan query to refetch data
         const weekStartString = weekStartDate.toISOString().split('T')[0];
 
         // Invalidate both the specific query and refetch immediately
@@ -427,9 +427,12 @@ export default function MealPlannerPage() {
 
   // Helper function to render AI insights tab
   const renderAIInsightsTab = (): React.ReactNode => {
-    if (activeTab === 'ai-insights') {
-      return (
-        <div className="p-6">
+    if (activeTab !== 'ai-insights') {
+      return null;
+    }
+    
+    return (
+      <div className="p-6">
         {loadingAI ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
