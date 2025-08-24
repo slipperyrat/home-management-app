@@ -499,8 +499,14 @@ export default function MealPlannerPage() {
                         return;
                       }
                       
+                      console.log('🔍 Setting modal to true...');
                       setShowCreateRecipeModal(true);
                       console.log('🔍 Modal state after setState:', true);
+                      
+                      // Force a re-render check
+                      setTimeout(() => {
+                        console.log('🔍 Modal state after timeout:', showCreateRecipeModal);
+                      }, 100);
                     }}
                     className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 text-sm font-medium"
                   >
@@ -939,18 +945,23 @@ export default function MealPlannerPage() {
 
           {/* Create Recipe Modal */}
           {showCreateRecipeModal ? (
-            <CreateRecipeModal
-              onClose={() => {
-                console.log('🔍 Closing create recipe modal');
-                setShowCreateRecipeModal(false);
-              }}
-              onCreated={(newRecipe) => {
-                console.log('🔍 Recipe created:', newRecipe);
-                // React Query will automatically refetch recipes due to our mutation
-                setShowCreateRecipeModal(false);
-              }}
-            />
-          ) : null}
+            <>
+              {console.log('🔍 Rendering CreateRecipeModal, showCreateRecipeModal:', showCreateRecipeModal)}
+              <CreateRecipeModal
+                onClose={() => {
+                  console.log('🔍 Closing create recipe modal');
+                  setShowCreateRecipeModal(false);
+                }}
+                onCreated={(newRecipe) => {
+                  console.log('🔍 Recipe created:', newRecipe);
+                  // React Query will automatically refetch recipes due to our mutation
+                  setShowCreateRecipeModal(false);
+                }}
+              />
+            </>
+          ) : (
+            console.log('🔍 Not rendering modal, showCreateRecipeModal:', showCreateRecipeModal)
+          )}
         </div>
       </div>
     </div>
