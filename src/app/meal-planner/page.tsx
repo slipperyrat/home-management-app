@@ -944,9 +944,8 @@ export default function MealPlannerPage() {
             /> : null}
 
           {/* Create Recipe Modal */}
-          {showCreateRecipeModal ? (
+          {showCreateRecipeModal && (
             <>
-              {console.log('🔍 Rendering CreateRecipeModal, showCreateRecipeModal:', showCreateRecipeModal)}
               <CreateRecipeModal
                 onClose={() => {
                   console.log('🔍 Closing create recipe modal');
@@ -959,8 +958,6 @@ export default function MealPlannerPage() {
                 }}
               />
             </>
-          ) : (
-            console.log('🔍 Not rendering modal, showCreateRecipeModal:', showCreateRecipeModal)
           )}
         </div>
       </div>
