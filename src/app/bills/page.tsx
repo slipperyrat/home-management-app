@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { toast } from 'sonner';
 import { postEventTypes } from '@/lib/postEvent';
+import { useUserData } from '@/hooks/useUserData';
 
 interface Bill {
   id: string;
@@ -23,6 +24,7 @@ interface Bill {
 
 export default function BillsPage() {
   const { user } = useUser();
+  const { userData } = useUserData();
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingBill, setCreatingBill] = useState(false);
@@ -101,13 +103,15 @@ export default function BillsPage() {
         
         // Trigger automation event
         try {
-          await postEventTypes.billCreated({
-            household_id: userData?.household_id,
-            title: formData.title,
-            amount: parseFloat(formData.amount),
-            due_date: formData.due_date,
-            category: formData.category
-          });
+          if (userData?.household_id) {
+            await postEventTypes.billCreated({
+              household_id: userData.household_id,
+              title: formData.title,
+              amount: parseFloat(formData.amount),
+              due_date: formData.due_date,
+              category: formData.category
+            });
+          }
         } catch (error) {
           console.error('Failed to trigger automation event:', error);
         }
@@ -135,10 +139,12 @@ export default function BillsPage() {
         
         // Trigger automation event
         try {
-          await postEventTypes.billPaid({ 
-            household_id: userData?.household_id,
-            bill_id: billId 
-          });
+          if (userData?.household_id) {
+            await postEventTypes.billPaid({ 
+              household_id: userData.household_id,
+              bill_id: billId 
+            });
+          }
         } catch (error) {
           console.error('Failed to trigger automation event:', error);
         }
@@ -153,9 +159,14 @@ export default function BillsPage() {
 
   const handleTestAutomation = async () => {
     try {
+      if (!userData?.household_id) {
+        toast.error('Please complete onboarding first');
+        return;
+      }
+      
       // Trigger a test bill event
       await postEventTypes.billEmailReceived({
-        household_id: userData?.household_id,
+        household_id: userData.household_id,
         subject: 'Test Electricity Bill',
         amount: 89.50,
         due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
