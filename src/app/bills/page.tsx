@@ -102,6 +102,7 @@ export default function BillsPage() {
         // Trigger automation event
         try {
           await postEventTypes.billCreated({
+            household_id: userData?.household_id,
             title: formData.title,
             amount: parseFloat(formData.amount),
             due_date: formData.due_date,
@@ -134,7 +135,10 @@ export default function BillsPage() {
         
         // Trigger automation event
         try {
-          await postEventTypes.billPaid({ bill_id: billId });
+          await postEventTypes.billPaid({ 
+            household_id: userData?.household_id,
+            bill_id: billId 
+          });
         } catch (error) {
           console.error('Failed to trigger automation event:', error);
         }
@@ -151,6 +155,7 @@ export default function BillsPage() {
     try {
       // Trigger a test bill event
       await postEventTypes.billEmailReceived({
+        household_id: userData?.household_id,
         subject: 'Test Electricity Bill',
         amount: 89.50,
         due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
