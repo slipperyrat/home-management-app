@@ -35,3 +35,8 @@
          subject: 'Test Electricity Bill',[m
          amount: 89.50,[m
          due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],[m
+[33m6238b4b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Fix: Remove unused useCallback import from meal planner page
+[33mbbf850b[m Fix meal slot create recipe button: add onCreateRecipe prop to MealSlot component and wire up all instances
+[33m0b4733c[m Fix TypeScript error in meal planner: remove console.log from JSX conditional rendering
+[33m327030a[m Add debugging to meal planner create recipe functionality to identify why modal is not working
+[33m11ffb69[m Add debugging and safety checks to prevent postEvent calls with empty household IDs

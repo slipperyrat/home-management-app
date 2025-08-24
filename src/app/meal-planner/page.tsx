@@ -419,6 +419,7 @@ export default function MealPlannerPage() {
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
                           recipes={recipesData?.recipes || []}
+                          onCreateRecipe={() => router.push('/recipes/create')}
                         />
                       </div>
 
@@ -431,6 +432,7 @@ export default function MealPlannerPage() {
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
                           recipes={recipesData?.recipes || []}
+                          onCreateRecipe={() => router.push('/recipes/create')}
                         />
                       </div>
 
@@ -443,6 +445,7 @@ export default function MealPlannerPage() {
                           recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
                           onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
                           recipes={recipesData?.recipes || []}
+                          onCreateRecipe={() => router.push('/recipes/create')}
                         />
                       </div>
                     </div>
@@ -475,6 +478,7 @@ export default function MealPlannerPage() {
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
                             recipes={recipesData?.recipes || []}
                             isMobile={true}
+                            onCreateRecipe={() => router.push('/recipes/create')}
                           />
                         </div>
 
@@ -488,6 +492,7 @@ export default function MealPlannerPage() {
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
                             recipes={recipesData?.recipes || []}
                             isMobile={true}
+                            onCreateRecipe={() => router.push('/recipes/create')}
                           />
                         </div>
 
@@ -501,6 +506,7 @@ export default function MealPlannerPage() {
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
                             recipes={recipesData?.recipes || []}
                             isMobile={true}
+                            onCreateRecipe={() => router.push('/recipes/create')}
                           />
                         </div>
                       </div>
@@ -748,9 +754,10 @@ interface MealSlotProps {
   onAssign: (recipe: Recipe) => void;
   recipes: Recipe[];
   isMobile?: boolean;
+  onCreateRecipe: () => void;
 }
 
-function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes, isMobile = false }: MealSlotProps) {
+function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes, isMobile = false, onCreateRecipe }: MealSlotProps) {
   const [showDropdown, setShowDropdown] = useState(false);
 
   return (
@@ -786,7 +793,7 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
                   <button
                     onClick={() => {
                       setShowDropdown(false);
-                      // TODO: Add create recipe functionality
+                      onCreateRecipe();
                     }}
                     className="mt-2 text-blue-600 hover:text-blue-800 underline"
                   >
