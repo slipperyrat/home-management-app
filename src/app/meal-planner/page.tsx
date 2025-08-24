@@ -717,7 +717,9 @@ export default function MealPlannerPage() {
           ) : null}
 
           {/* AI Insights Tab */}
-          {activeTab === 'ai-insights' ? (
+          {(() => {
+            if (activeTab === 'ai-insights') {
+              return (
             <div className="p-6">
               {loadingAI ? (
                 <div className="flex items-center justify-center py-12">
@@ -818,7 +820,10 @@ export default function MealPlannerPage() {
                 </div>
               )}
             </div>
-          ) : null}
+              );
+            }
+            return null;
+          })() as React.ReactNode}
 
           {/* AI Suggestions Tab */}
           {activeTab === 'ai-suggestions' ? (
