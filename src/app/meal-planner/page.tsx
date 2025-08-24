@@ -490,7 +490,15 @@ export default function MealPlannerPage() {
                   <button
                     onClick={() => {
                       console.log('🔍 New Recipe button clicked');
+                      console.log('🔍 Current user data:', userData);
                       console.log('🔍 Current modal state:', showCreateRecipeModal);
+                      
+                      if (!userData?.household_id) {
+                        console.error('❌ Cannot create recipe: No household_id available');
+                        toast.error('Please complete onboarding first');
+                        return;
+                      }
+                      
                       setShowCreateRecipeModal(true);
                       console.log('🔍 Modal state after setState:', true);
                     }}

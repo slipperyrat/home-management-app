@@ -3,3 +3,35 @@
 [33m8795e9c[m Implement AI Email Processing System - Complete AI-powered email parsing with OpenAI integration
 [33m3b8d1de[m Fix TypeScript error in debug API - add explicit type annotations
 [33m95c68e9[m Fix leaderboard API - replace broken join with proper two-step query
+[1mdiff --git a/src/app/bills/page.tsx b/src/app/bills/page.tsx[m
+[1mindex 14a0d79..5b205e8 100644[m
+[1m--- a/src/app/bills/page.tsx[m
+[1m+++ b/src/app/bills/page.tsx[m
+[36m@@ -102,6 +102,7 @@[m [mexport default function BillsPage() {[m
+         // Trigger automation event[m
+         try {[m
+           await postEventTypes.billCreated({[m
+[32m+[m[32m            household_id: userData?.household_id,[m
+             title: formData.title,[m
+             amount: parseFloat(formData.amount),[m
+             due_date: formData.due_date,[m
+[36m@@ -134,7 +135,10 @@[m [mexport default function BillsPage() {[m
+         [m
+         // Trigger automation event[m
+         try {[m
+[31m-          await postEventTypes.billPaid({ bill_id: billId });[m
+[32m+[m[32m          await postEventTypes.billPaid({[m[41m [m
+[32m+[m[32m            household_id: userData?.household_id,[m
+[32m+[m[32m            bill_id: billId[m[41m [m
+[32m+[m[32m          });[m
+         } catch (error) {[m
+           console.error('Failed to trigger automation event:', error);[m
+         }[m
+[36m@@ -151,6 +155,7 @@[m [mexport default function BillsPage() {[m
+     try {[m
+       // Trigger a test bill event[m
+       await postEventTypes.billEmailReceived({[m
+[32m+[m[32m        household_id: userData?.household_id,[m
+         subject: 'Test Electricity Bill',[m
+         amount: 89.50,[m
+         due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],[m
