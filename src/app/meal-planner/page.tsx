@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
 import { useRecipes, Recipe } from '@/hooks/useRecipes';
 import { useMealPlan, useAssignMeal, useCopyWeek, useClearWeek } from '@/hooks/useMealPlans';
-import { useQueryClient } from '@tanstack/react-query';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,7 @@ import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 export default function MealPlannerPage() {
   const { isSignedIn, isLoaded } = useAuth();
   const router = useRouter();
-  const queryClient = useQueryClient();
+
   
   // Data fetching hooks
   const { userData, isLoading: userDataLoading, error: userDataError } = useUserData();
