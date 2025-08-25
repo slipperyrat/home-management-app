@@ -176,7 +176,7 @@ export default function RecipesPage() {
               <Card key={recipe.id} className="hover:shadow-md transition-shadow">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg line-clamp-2">{recipe.title || recipe.name}</CardTitle>
+                    <CardTitle className="text-lg line-clamp-2">{recipe.name}</CardTitle>
                     <div className="flex items-center space-x-1">
                       <Badge variant="secondary" className="text-xs">
                         {recipe.difficulty || 'Easy'}
