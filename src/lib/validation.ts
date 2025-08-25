@@ -31,6 +31,15 @@ export const AssignMealSchema = z.object({
   alsoAddToList: z.boolean().optional(),
 });
 
+export const CopyWeekSchema = z.object({
+  fromWeek: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid from week format (YYYY-MM-DD)'),
+  toWeek: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid to week format (YYYY-MM-DD)'),
+});
+
+export const ClearWeekSchema = z.object({
+  week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid week format (YYYY-MM-DD)'),
+});
+
 export const GetMealPlanSchema = z.object({
   household_id: z.string().uuid('Invalid household ID').optional(),
   week_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)'),

@@ -1,8 +1,10 @@
+'use client';
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/lib/react-query/config';
+import { toast } from 'sonner';
 
 // Types
-export interface MealPlan {
+export interface Recipe {
   id: string;
   name: string;
   description?: string;
@@ -10,258 +12,237 @@ export interface MealPlan {
   created_by: string;
   created_at: string;
   updated_at: string;
-  start_date: string;
-  end_date: string;
-  is_active: boolean;
-  total_meals: number;
-  planned_meals: number;
+  prep_time: number;
+  cook_time: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  servings: number;
+  image_url?: string;
+  is_favorite: boolean;
+  tags: string[];
+  ingredients: RecipeIngredient[];
+  instructions: RecipeInstruction[];
 }
 
-export interface MealPlanRecipe {
+export interface RecipeIngredient {
   id: string;
-  meal_plan_id: string;
   recipe_id: string;
-  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
-  day_of_week: number; // 0-6 (Sunday-Saturday)
-  servings: number;
-  notes?: string;
-  recipe: {
-    id: string;
-    name: string;
-    description?: string;
-    prep_time: number;
-    cook_time: number;
-    difficulty: 'easy' | 'medium' | 'hard';
-    image_url?: string;
-  };
-}
-
-export interface CreateMealPlanData {
   name: string;
-  description?: string;
-  start_date: string;
-  end_date: string;
-  household_id: string;
+  amount: number;
+  unit: string;
+  notes?: string;
 }
 
-export interface AddRecipeToMealPlanData {
-  meal_plan_id: string;
+export interface RecipeInstruction {
+  id: string;
   recipe_id: string;
-  meal_type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
-  day_of_week: number;
-  servings: number;
-  notes?: string;
+  step_number: number;
+  instruction: string;
+  time_minutes?: number;
+}
+
+export interface MealPlan {
+  id: string;
+  household_id: string;
+  week_start_date: string;
+  meals: {
+    [day: string]: {
+      breakfast?: Recipe | string | null;
+      lunch?: Recipe | string | null;
+      dinner?: Recipe | string | null;
+    };
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssignMealData {
+  week: string;
+  day: string;
+  slot: 'breakfast' | 'lunch' | 'dinner';
+  recipe_id: string | null;
+  alsoAddToList?: boolean;
+}
+
+export interface CopyWeekData {
+  fromWeek: string;
+  toWeek: string;
+}
+
+export interface ClearWeekData {
+  week: string;
 }
 
 // API functions
-async function fetchMealPlans(): Promise<{ success: boolean; mealPlans: MealPlan[] }> {
-  const response = await fetch('/api/meal-planner');
+async function fetchMealPlan(weekStart: string): Promise<MealPlan | null> {
+  const response = await fetch(`/api/meal-planner?week_start_date=${weekStart}`);
+  
   if (!response.ok) {
-    throw new Error('Failed to fetch meal plans');
+    if (response.status === 404) {
+      return null; // No meal plan exists for this week
+    }
+    throw new Error(`Failed to fetch meal plan: ${response.status}`);
   }
-  return response.json();
+  
+  const data = await response.json();
+  
+  // Handle the API response structure
+  if (data.success && data.mealPlan) {
+    return data.mealPlan;
+  }
+  
+  // Return null if no meal plan exists
+  return null;
 }
 
-async function fetchMealPlan(mealPlanId: string): Promise<{ success: boolean; mealPlan: MealPlan; recipes: MealPlanRecipe[] }> {
-  const response = await fetch(`/api/meal-planner/${mealPlanId}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch meal plan');
-  }
-  return response.json();
-}
-
-async function createMealPlan(data: CreateMealPlanData): Promise<{ success: boolean; mealPlan: MealPlan }> {
-  const response = await fetch('/api/meal-planner', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to create meal plan');
-  }
-  return response.json();
-}
-
-async function updateMealPlan(mealPlanId: string, data: Partial<MealPlan>): Promise<{ success: boolean; mealPlan: MealPlan }> {
-  const response = await fetch(`/api/meal-planner/${mealPlanId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to update meal plan');
-  }
-  return response.json();
-}
-
-async function deleteMealPlan(mealPlanId: string): Promise<{ success: boolean }> {
-  const response = await fetch(`/api/meal-planner/${mealPlanId}`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to delete meal plan');
-  }
-  return response.json();
-}
-
-async function addRecipeToMealPlan(data: AddRecipeToMealPlanData): Promise<{ success: boolean; mealPlanRecipe: MealPlanRecipe }> {
+async function assignMeal(data: AssignMealData): Promise<{ plan: MealPlan; ingredients?: any }> {
   const response = await fetch('/api/meal-planner/assign', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+
   if (!response.ok) {
-    throw new Error('Failed to add recipe to meal plan');
+    throw new Error(`Failed to assign meal: ${response.status}`);
   }
+
   return response.json();
 }
 
-async function removeRecipeFromMealPlan(mealPlanRecipeId: string): Promise<{ success: boolean }> {
-  const response = await fetch(`/api/meal-planner/assign/${mealPlanRecipeId}`, {
-    method: 'DELETE',
+async function copyWeek(data: CopyWeekData): Promise<{ success: boolean; message: string }> {
+  const response = await fetch('/api/meal-planner/copy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
   });
+
   if (!response.ok) {
-    throw new Error('Failed to remove recipe from meal plan');
+    throw new Error(`Failed to copy week: ${response.status}`);
   }
+
+  return response.json();
+}
+
+async function clearWeek(data: ClearWeekData): Promise<{ success: boolean; message: string }> {
+  const response = await fetch('/api/meal-planner/clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to clear week: ${response.status}`);
+  }
+
   return response.json();
 }
 
 // Custom hooks
-export function useMealPlans() {
+export function useMealPlan(weekStart?: Date) {
+  const weekStartString = weekStart?.toISOString().split('T')[0];
+  
   return useQuery({
-    queryKey: queryKeys.mealPlans.all,
-    queryFn: fetchMealPlans,
+    queryKey: ['mealPlan', weekStartString],
+    queryFn: () => fetchMealPlan(weekStartString!),
+    enabled: !!weekStartString,
     staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes in cache
   });
 }
 
-export function useMealPlan(mealPlanId: string) {
-  return useQuery({
-    queryKey: queryKeys.mealPlans.byId(mealPlanId),
-    queryFn: () => fetchMealPlan(mealPlanId),
-    enabled: !!mealPlanId,
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 5 * 60 * 1000, // 5 minutes
-  });
-}
-
-export function useCreateMealPlan() {
+export function useAssignMeal() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: createMealPlan,
-    onSuccess: (data) => {
-      // Invalidate and refetch meal plans
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans.all });
+    mutationFn: assignMeal,
+    onMutate: async (data) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['mealPlan', data.week] });
       
-      // Add the new meal plan to cache
-      queryClient.setQueryData(
-        queryKeys.mealPlans.byId(data.mealPlan.id),
-        { success: true, mealPlan: data.mealPlan, recipes: [] }
-      );
-    },
-    onError: (error) => {
-      console.error('Failed to create meal plan:', error);
-    },
-  });
-}
-
-export function useUpdateMealPlan() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: ({ mealPlanId, data }: { mealPlanId: string; data: Partial<MealPlan> }) =>
-      updateMealPlan(mealPlanId, data),
-    onSuccess: (data, variables) => {
-      // Update the specific meal plan in cache
-      queryClient.setQueryData(
-        queryKeys.mealPlans.byId(variables.mealPlanId),
-        (oldData: any) => ({
-          ...oldData,
-          mealPlan: { ...oldData.mealPlan, ...data.mealPlan },
-        })
-      );
+      // Snapshot the previous value
+      const previousMealPlan = queryClient.getQueryData(['mealPlan', data.week]);
       
-      // Invalidate the list to reflect changes
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans.all });
-    },
-    onError: (error) => {
-      console.error('Failed to update meal plan:', error);
-    },
-  });
-}
-
-export function useDeleteMealPlan() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: deleteMealPlan,
-    onSuccess: (_, mealPlanId) => {
-      // Remove from cache
-      queryClient.removeQueries({ queryKey: queryKeys.mealPlans.byId(mealPlanId) });
-      
-      // Invalidate and refetch meal plans list
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans.all });
-    },
-    onError: (error) => {
-      console.error('Failed to delete meal plan:', error);
-    },
-  });
-}
-
-export function useAddRecipeToMealPlan() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: addRecipeToMealPlan,
-    onSuccess: (data, variables) => {
-      // Update the meal plan's recipes in cache
-      queryClient.setQueryData(
-        queryKeys.mealPlans.byId(variables.meal_plan_id),
-        (oldData: any) => ({
-          ...oldData,
-          recipes: [...(oldData.recipes || []), data.mealPlanRecipe],
-        })
-      );
-      
-      // Invalidate the list to reflect changes
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans.all });
-    },
-    onError: (error) => {
-      console.error('Failed to add recipe to meal plan:', error);
-    },
-  });
-}
-
-export function useRemoveRecipeFromMealPlan() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: removeRecipeFromMealPlan,
-    onSuccess: (_, _mealPlanRecipeId) => {
-      // Find and remove the recipe from all meal plans in cache
-      queryClient.setQueriesData(
-        { queryKey: queryKeys.mealPlans.all },
-        (oldData: any) => {
-          if (!oldData?.mealPlans) return oldData;
-          
+      // Optimistically update to the new value
+      queryClient.setQueryData(['mealPlan', data.week], (old: MealPlan | null) => {
+        if (!old) {
+          // Create new meal plan if none exists
           return {
-            ...oldData,
-            mealPlans: oldData.mealPlans.map((mealPlan: MealPlan) => ({
-              ...mealPlan,
-              // Note: This is a simplified update - in practice, you might need to
-              // update the specific meal plan's recipes cache as well
-            })),
+            id: `temp-${Date.now()}`,
+            household_id: '', // Will be filled by API
+            week_start_date: data.week,
+            meals: {
+              [data.day]: {
+                breakfast: data.slot === 'breakfast' ? data.recipe_id : null,
+                lunch: data.slot === 'lunch' ? data.recipe_id : null,
+                dinner: data.slot === 'dinner' ? data.recipe_id : null,
+              }
+            },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           };
         }
-      );
+        
+        // Update existing meal plan
+        return {
+          ...old,
+          meals: {
+            ...old.meals,
+            [data.day]: {
+              ...old.meals[data.day],
+              [data.slot]: data.recipe_id,
+            }
+          },
+          updated_at: new Date().toISOString(),
+        };
+      });
       
-      // Invalidate all meal plan queries to ensure consistency
-      queryClient.invalidateQueries({ queryKey: queryKeys.mealPlans.all });
+      // Return a context object with the snapshotted value
+      return { previousMealPlan };
+    },
+    onError: (err, data, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousMealPlan) {
+        queryClient.setQueryData(['mealPlan', data.week], context.previousMealPlan);
+      }
+      toast.error(`Failed to assign meal: ${err.message}`);
+    },
+    onSettled: (data) => {
+      // Always refetch after error or success
+      if (data) {
+        queryClient.invalidateQueries({ queryKey: ['mealPlan', data.plan.week_start_date] });
+      }
+    },
+  });
+}
+
+export function useCopyWeek() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: copyWeek,
+    onSuccess: (data, variables) => {
+      // Invalidate both weeks to refresh data
+      queryClient.invalidateQueries({ queryKey: ['mealPlan', variables.fromWeek] });
+      queryClient.invalidateQueries({ queryKey: ['mealPlan', variables.toWeek] });
+      toast.success(data.message || 'Week copied successfully');
     },
     onError: (error) => {
-      console.error('Failed to remove recipe from meal plan:', error);
+      toast.error(`Failed to copy week: ${error.message}`);
+    },
+  });
+}
+
+export function useClearWeek() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: clearWeek,
+    onSuccess: (data, variables) => {
+      // Invalidate the week to refresh data
+      queryClient.invalidateQueries({ queryKey: ['mealPlan', variables.week] });
+      toast.success(data.message || 'Week cleared successfully');
+    },
+    onError: (error) => {
+      toast.error(`Failed to clear week: ${error.message}`);
     },
   });
 }
@@ -270,35 +251,56 @@ export function useRemoveRecipeFromMealPlan() {
 export function useOptimisticMealPlans() {
   const queryClient = useQueryClient();
   
-  const addOptimisticMealPlan = (mealPlan: Omit<MealPlan, 'id' | 'created_at' | 'updated_at'>) => {
-    const tempId = `temp-${Date.now()}`;
-    const optimisticMealPlan: MealPlan = {
-      ...mealPlan,
-      id: tempId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    
-    queryClient.setQueryData(
-      queryKeys.mealPlans.all,
-      (oldData: any) => ({
-        ...oldData,
-        mealPlans: [optimisticMealPlan, ...(oldData?.mealPlans || [])],
-      })
-    );
-    
-    return tempId;
+  const addOptimisticMeal = (weekStart: string, day: string, slot: string, recipe: Recipe | null) => {
+    queryClient.setQueryData(['mealPlan', weekStart], (old: MealPlan | null) => {
+      if (!old) {
+        return {
+          id: `temp-${Date.now()}`,
+          household_id: '', // Will be filled by API
+          week_start_date: weekStart,
+          meals: {
+            [day]: {
+              breakfast: slot === 'breakfast' ? recipe : null,
+              lunch: slot === 'lunch' ? recipe : null,
+              dinner: slot === 'dinner' ? recipe : null,
+            }
+          },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+      }
+      
+      return {
+        ...old,
+        meals: {
+          ...old.meals,
+          [day]: {
+            ...old.meals[day],
+            [slot]: recipe,
+          }
+        },
+        updated_at: new Date().toISOString(),
+      };
+    });
   };
   
-  const removeOptimisticMealPlan = (tempId: string) => {
-    queryClient.setQueryData(
-      queryKeys.mealPlans.all,
-      (oldData: any) => ({
-        ...oldData,
-        mealPlans: (oldData?.mealPlans || []).filter((mp: MealPlan) => mp.id !== tempId),
-      })
-    );
+  const removeOptimisticMeal = (weekStart: string, day: string, slot: string) => {
+    queryClient.setQueryData(['mealPlan', weekStart], (old: MealPlan | null) => {
+      if (!old) return old;
+      
+      return {
+        ...old,
+        meals: {
+          ...old.meals,
+          [day]: {
+            ...old.meals[day],
+            [slot]: null,
+          }
+        },
+        updated_at: new Date().toISOString(),
+      };
+    });
   };
   
-  return { addOptimisticMealPlan, removeOptimisticMealPlan };
+  return { addOptimisticMeal, removeOptimisticMeal };
 }

@@ -1,178 +1,101 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getUserAndHousehold, sb } from '@/lib/server/supabaseAdmin';
+import { NextResponse } from 'next/server';
+import { sb, getUserAndHousehold } from '@/lib/server/supabaseAdmin';
+import { CopyWeekSchema, validateRequest, createValidationErrorResponse } from '@/lib/validation';
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
-const SLOTS = ['breakfast', 'lunch', 'dinner'] as const;
-
-interface DayMeals {
-  breakfast: string | null;
-  lunch: string | null;
-  dinner: string | null;
-}
-
-interface MealsStructure {
-  monday: DayMeals;
-  tuesday: DayMeals;
-  wednesday: DayMeals;
-  thursday: DayMeals;
-  friday: DayMeals;
-  saturday: DayMeals;
-  sunday: DayMeals;
-}
-
-interface CopyMealPlanRequest {
-  from: string; // YYYY-MM-DD format
-  to: string;   // YYYY-MM-DD format
-  overwrite: boolean;
-}
-
-// Create empty meal plan template
-function createEmptyMealPlan(): MealsStructure {
-  return {
-    monday: { breakfast: null, lunch: null, dinner: null },
-    tuesday: { breakfast: null, lunch: null, dinner: null },
-    wednesday: { breakfast: null, lunch: null, dinner: null },
-    thursday: { breakfast: null, lunch: null, dinner: null },
-    friday: { breakfast: null, lunch: null, dinner: null },
-    saturday: { breakfast: null, lunch: null, dinner: null },
-    sunday: { breakfast: null, lunch: null, dinner: null },
-  };
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { householdId } = await getUserAndHousehold();
-    const body: CopyMealPlanRequest = await request.json();
+    const { userId, householdId } = await getUserAndHousehold();
+    const body = await req.json();
 
-    const { from, to, overwrite } = body;
-
-    // Validate date format
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(from) || !dateRegex.test(to)) {
-      return NextResponse.json(
-        { error: 'Invalid date format. Use YYYY-MM-DD' },
-        { status: 400 }
-      );
+    // Validate request body with Zod
+    const validation = validateRequest(CopyWeekSchema, body);
+    if (!validation.success) {
+      return createValidationErrorResponse(validation.error);
     }
 
-    // Validate that dates are different
-    if (from === to) {
-      return NextResponse.json(
-        { error: 'Source and destination weeks must be different' },
-        { status: 400 }
-      );
-    }
+    const { fromWeek, toWeek } = validation.data;
 
     const supabase = sb();
 
-    // Load source meal plan
-    const { data: sourcePlan, error: sourceError } = await supabase
+    // Fetch the source week's meal plan
+    const { data: sourcePlan, error: fetchError } = await supabase
       .from('meal_plans')
       .select('*')
       .eq('household_id', householdId)
-      .eq('week_start_date', from)
+      .eq('week_start_date', fromWeek)
       .maybeSingle();
 
-    if (sourceError) {
-      console.error('Error fetching source meal plan:', sourceError);
-      return NextResponse.json(
-        { error: 'Failed to fetch source meal plan' },
-        { status: 500 }
-      );
+    if (fetchError) {
+      console.error('Error fetching source meal plan:', fetchError);
+      return NextResponse.json({ error: 'Failed to fetch source meal plan' }, { status: 500 });
     }
 
     if (!sourcePlan) {
-      return NextResponse.json(
-        { error: 'Source meal plan not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Source week has no meal plan to copy' }, { status: 404 });
     }
 
-    // Load destination meal plan (or prepare to create one)
-    const { data: destPlan, error: destError } = await supabase
+    // Check if target week already has a meal plan
+    const { data: existingTargetPlan, error: checkError } = await supabase
       .from('meal_plans')
-      .select('*')
+      .select('id')
       .eq('household_id', householdId)
-      .eq('week_start_date', to)
+      .eq('week_start_date', toWeek)
       .maybeSingle();
 
-    if (destError) {
-      console.error('Error fetching destination meal plan:', destError);
-      return NextResponse.json(
-        { error: 'Failed to fetch destination meal plan' },
-        { status: 500 }
-      );
+    if (checkError) {
+      console.error('Error checking target meal plan:', checkError);
+      return NextResponse.json({ error: 'Failed to check target meal plan' }, { status: 500 });
     }
 
-    // Prepare source and destination meals objects
-    const sourceMeals = sourcePlan.meals || createEmptyMealPlan();
-    const destMeals = destPlan?.meals || createEmptyMealPlan();
+    if (existingTargetPlan) {
+      // Update existing target plan
+      const { data: updatedPlan, error: updateError } = await supabase
+        .from('meal_plans')
+        .update({
+          meals: sourcePlan.meals,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingTargetPlan.id)
+        .select()
+        .single();
 
-    // Build new meals object based on overwrite setting
-    const newMeals = { ...destMeals };
-
-    for (const day of DAYS) {
-      // Ensure day exists in both source and destination
-      if (!sourceMeals[day]) continue;
-      if (!newMeals[day]) {
-        newMeals[day] = { breakfast: null, lunch: null, dinner: null };
+      if (updateError) {
+        console.error('Error updating target meal plan:', updateError);
+        return NextResponse.json({ error: 'Failed to update target meal plan' }, { status: 500 });
       }
 
-      for (const slot of SLOTS) {
-        const sourceSlot = sourceMeals[day]?.[slot];
-        const destSlot = newMeals[day]?.[slot];
+      return NextResponse.json({
+        success: true,
+        message: `Meal plan copied from ${fromWeek} to ${toWeek}`,
+        plan: updatedPlan
+      });
+    } else {
+      // Create new target plan
+      const { data: newPlan, error: insertError } = await supabase
+        .from('meal_plans')
+        .insert({
+          household_id: householdId,
+          week_start_date: toWeek,
+          meals: sourcePlan.meals,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-        if (sourceSlot !== undefined && sourceSlot !== null) {
-          // Copy from source if:
-          // 1. overwrite is true (copy everything)
-          // 2. overwrite is false but destination slot is null/empty
-          if (overwrite || destSlot === null || destSlot === undefined) {
-            newMeals[day][slot] = sourceSlot;
-          }
-        }
+      if (insertError) {
+        console.error('Error creating target meal plan:', insertError);
+        return NextResponse.json({ error: 'Failed to create target meal plan' }, { status: 500 });
       }
+
+      return NextResponse.json({
+        success: true,
+        message: `Meal plan copied from ${fromWeek} to ${toWeek}`,
+        plan: newPlan
+      });
     }
-
-    // Upsert the destination meal plan
-    const { data: updatedPlan, error: upsertError } = await supabase
-      .from('meal_plans')
-      .upsert([{
-        household_id: householdId,
-        week_start_date: to,
-        meals: newMeals
-      }], {
-        onConflict: 'household_id,week_start_date'
-      })
-      .select('*')
-      .single();
-
-    if (upsertError) {
-      console.error('Error upserting destination meal plan:', upsertError);
-      return NextResponse.json(
-        { error: 'Failed to update destination meal plan' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      plan: updatedPlan
-    });
-
-  } catch (error: any) {
-    console.error('Error in meal planner copy:', error);
-    
-    // Handle specific error types
-    if (error.message?.includes('Unauthorized') || error.status === 403) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
-
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: error.status || 500 }
-    );
+  } catch (e: any) {
+    console.error('Error in copy week API:', e);
+    return NextResponse.json({ error: e.message || 'Internal server error' }, { status: 500 });
   }
 }

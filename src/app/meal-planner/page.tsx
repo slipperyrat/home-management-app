@@ -6,8 +6,14 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
 import { useRecipes, Recipe } from '@/hooks/useRecipes';
-import { useMealPlan } from '@/hooks/useMealPlan';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMealPlan, useAssignMeal, useCopyWeek, useClearWeek } from '@/hooks/useMealPlans';
+import { useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 
 export default function MealPlannerPage() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -37,70 +43,9 @@ export default function MealPlannerPage() {
   const [loadingAI, setLoadingAI] = useState(false);
 
   // React Query mutations
-  const assignRecipeMutation = useMutation({
-    mutationFn: async ({ date, mealType, recipe }: { date: string; mealType: 'breakfast' | 'lunch' | 'dinner'; recipe: Recipe }) => {
-      const dateObj = new Date(date);
-      const weekStart = getWeekStart(dateObj);
-      const weekStartDate = weekStart.toISOString().split('T')[0];
-      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const dayName = dayNames[dateObj.getDay()];
-
-      const response = await fetch('/api/meal-planner/assign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          week: weekStartDate,
-          day: dayName,
-          slot: mealType,
-          recipe_id: recipe.id,
-          alsoAddToList: true
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to assign recipe: ${response.status}`);
-      }
-
-      return response.json();
-    },
-    onSuccess: (result, _variables) => {
-      const weekStartString = weekStartDate.toISOString().split('T')[0];
-      
-      queryClient.invalidateQueries({
-        queryKey: ['mealPlan', weekStartString]
-      });
-      
-      queryClient.invalidateQueries({
-        queryKey: ['mealPlan']
-      });
-
-      if (result.ingredients) {
-        const { added = 0, updated = 0 } = result.ingredients;
-        
-        if (added > 0 || updated > 0) {
-          let message = '';
-          if (added > 0 && updated > 0) {
-            message = `Added ${added} items • Merged ${updated} items`;
-          } else if (added > 0) {
-            message = `Added ${added} items`;
-          } else if (updated > 0) {
-            message = `Merged ${updated} items`;
-          }
-          
-          toast.success(message, {
-            action: {
-              label: 'View List',
-              onClick: () => router.push('/shopping-lists')
-            },
-            duration: 5000
-          });
-        }
-      }
-    },
-    onError: (error) => {
-      toast.error(`Failed to assign recipe: ${error.message}`);
-    },
-  });
+  const assignMeal = useAssignMeal();
+  const copyWeek = useCopyWeek();
+  const clearWeek = useClearWeek();
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -142,11 +87,23 @@ export default function MealPlannerPage() {
     });
   }
 
+  function getDayName(date: Date): string {
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+    const dayIndex = date.getDay();
+    const dayName = dayNames[dayIndex];
+    
+    if (!dayName) {
+      throw new Error('Invalid day index');
+    }
+    
+    return dayName;
+  }
+
   function getMealForDay(date: string, mealType: 'breakfast' | 'lunch' | 'dinner'): Recipe | undefined {
     if (!mealPlan?.meals) return undefined;
     
     const dateObj = new Date(date);
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
     const dayName = dayNames[dateObj.getDay()];
     
     if (!dayName) return undefined;
@@ -169,7 +126,22 @@ export default function MealPlannerPage() {
       return;
     }
     
-    assignRecipeMutation.mutate({ date, mealType, recipe });
+    try {
+      const dateObj = new Date(date);
+      const weekStart = getWeekStart(dateObj);
+      const weekStartDate = weekStart.toISOString().split('T')[0];
+      const dayName = getDayName(dateObj);
+
+      assignMeal.mutate({
+        week: weekStartDate,
+        day: dayName,
+        slot: mealType,
+        recipe_id: recipe.id,
+        alsoAddToList: true
+      });
+    } catch (error) {
+      toast.error('Invalid date format');
+    }
   }
 
   function navigateWeek(direction: 'prev' | 'next') {
@@ -225,10 +197,7 @@ export default function MealPlannerPage() {
   if (!isLoaded || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
+        <LoadingSpinner size="lg" text="Loading meal planner..." />
       </div>
     );
   }
@@ -240,23 +209,10 @@ export default function MealPlannerPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white shadow rounded-lg p-6 max-w-md w-full mx-4">
-          <div className="text-center">
-            <div className="text-red-500 text-6xl mb-4">⚠️</div>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Error</h1>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <button 
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.location.reload();
-                }
-              }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-            >
-              Try Again
-            </button>
-          </div>
-        </div>
+        <ErrorDisplay 
+          error={error.message || 'Failed to load meal planner'} 
+          onRetry={() => window.location.reload()}
+        />
       </div>
     );
   }
@@ -265,21 +221,23 @@ export default function MealPlannerPage() {
   if (!hasCompletedOnboarding) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white shadow rounded-lg p-6 max-w-md w-full mx-4">
-          <div className="text-center">
+        <Card className="max-w-md w-full mx-4">
+          <CardHeader className="text-center">
             <div className="text-blue-500 text-6xl mb-4">🏠</div>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Complete Onboarding First</h1>
+            <CardTitle>Complete Onboarding First</CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
             <p className="text-gray-600 mb-4">
               You need to complete the onboarding process to access the meal planner.
             </p>
-            <button 
+            <Button 
               onClick={() => router.push('/onboarding')}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+              className="w-full"
             >
               Go to Onboarding
-            </button>
-          </div>
-        </div>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -290,10 +248,7 @@ export default function MealPlannerPage() {
   if (!userData || !userData.household_id) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading user data...</p>
-        </div>
+        <LoadingSpinner size="lg" text="Loading user data..." />
       </div>
     );
   }
@@ -301,446 +256,477 @@ export default function MealPlannerPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="bg-white shadow rounded-lg">
-          {/* Header */}
-          <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+        <Card>
+          <CardHeader className="border-b border-gray-200">
             {/* Tab Navigation */}
-            <div className="flex space-x-8 mb-4">
-              <button
-                onClick={() => setActiveTab('planner')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'planner'
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Meal Planner
-              </button>
-              <button
-                onClick={() => setActiveTab('ai-insights')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'ai-insights'
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                AI Insights
-              </button>
-              <button
-                onClick={() => setActiveTab('ai-suggestions')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'ai-suggestions'
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                AI Suggestions
-              </button>
-            </div>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="planner">Meal Planner</TabsTrigger>
+                <TabsTrigger value="ai-insights">AI Insights</TabsTrigger>
+                <TabsTrigger value="ai-suggestions">AI Suggestions</TabsTrigger>
+              </TabsList>
+            </Tabs>
 
             {/* Conditional Header Content */}
             {activeTab === 'planner' && (
-              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 mt-4">
                 <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Smart Meal Planner</h1>
+                  <CardTitle className="text-xl sm:text-2xl">Smart Meal Planner</CardTitle>
                   <p className="text-sm sm:text-base text-gray-600">AI-powered meal planning with intelligent suggestions</p>
                 </div>
                 
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center space-x-2">
-                    <button
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => navigateWeek('prev')}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
                       aria-label="Previous week"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                       </svg>
-                    </button>
+                    </Button>
                     <span className="text-sm font-medium text-gray-900">
                       {weekDays[0] && formatDate(weekDays[0])} - {weekDays[6] && formatDate(weekDays[6])}
                     </span>
-                    <button
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => navigateWeek('next')}
-                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
                       aria-label="Next week"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
-                    </button>
+                    </Button>
+                  </div>
+                  
+                  {/* Week Actions */}
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const nextWeek = new Date(currentWeek);
+                        nextWeek.setDate(nextWeek.getDate() + 7);
+                        const nextWeekStart = getWeekStart(nextWeek).toISOString().split('T')[0];
+                        const currentWeekStart = weekStartDate.toISOString().split('T')[0];
+                        
+                        copyWeek.mutate({
+                          fromWeek: currentWeekStart,
+                          toWeek: nextWeekStart
+                        });
+                      }}
+                      disabled={copyWeek.isPending}
+                    >
+                      {copyWeek.isPending ? 'Copying...' : 'Copy to Next Week'}
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const currentWeekStart = weekStartDate.toISOString().split('T')[0];
+                        clearWeek.mutate({ week: currentWeekStart });
+                      }}
+                      disabled={clearWeek.isPending}
+                    >
+                      {clearWeek.isPending ? 'Clearing...' : 'Clear Week'}
+                    </Button>
                   </div>
                 </div>
               </div>
             )}
 
             {activeTab === 'ai-insights' && (
-              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900">AI Meal Insights</h1>
-                  <p className="text-sm sm:text-base text-gray-600">Intelligent analysis of your meal planning patterns</p>
-                </div>
+              <div className="mt-4">
+                <CardTitle className="text-xl sm:text-2xl">AI Meal Insights</CardTitle>
+                <p className="text-sm sm:text-base text-gray-600">Intelligent analysis of your meal planning patterns</p>
               </div>
             )}
 
             {activeTab === 'ai-suggestions' && (
-              <div className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900">AI Meal Suggestions</h1>
-                  <p className="text-sm sm:text-base text-gray-600">Smart recipe recommendations based on your preferences</p>
-                </div>
+              <div className="mt-4">
+                <CardTitle className="text-xl sm:text-2xl">AI Meal Suggestions</CardTitle>
+                <p className="text-sm sm:text-base text-gray-600">Smart recipe recommendations based on your preferences</p>
               </div>
             )}
-          </div>
+          </CardHeader>
 
-          {/* Conditional Content Based on Active Tab */}
-          {activeTab === 'planner' && (
-            <>
-              {/* Weekly Grid */}
-              <div className="hidden lg:block">
-                <div className="grid grid-cols-7 gap-4 p-6">
-                  {weekDays.map((date, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="text-center">
-                        <div className="text-sm font-medium text-gray-900">
-                          {date.toLocaleDateString('en-US', { weekday: 'short' })}
+          <CardContent className="p-0">
+            {/* Conditional Content Based on Active Tab */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsContent value="planner" className="m-0">
+                {/* Weekly Grid */}
+                <div className="hidden lg:block">
+                  <div className="grid grid-cols-7 gap-4 p-6">
+                    {weekDays.map((date, index) => (
+                      <div key={index} className="space-y-2">
+                        <div className="text-center">
+                          <div className="text-sm font-medium text-gray-900">
+                            {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </div>
-                      </div>
 
-                      {/* Breakfast */}
-                      <div className="space-y-1">
-                        <div className="text-xs font-medium text-gray-700">Breakfast</div>
-                        <MealSlot
-                          date={date.toISOString().split('T')[0] || ''}
-                          mealType="breakfast"
-                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
-                          recipes={recipesData?.recipes || []}
-                          onCreateRecipe={() => router.push('/recipes/create')}
-                        />
-                      </div>
-
-                      {/* Lunch */}
-                      <div className="space-y-1">
-                        <div className="text-xs font-medium text-gray-700">Lunch</div>
-                        <MealSlot
-                          date={date.toISOString().split('T')[0] || ''}
-                          mealType="lunch"
-                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
-                          recipes={recipesData?.recipes || []}
-                          onCreateRecipe={() => router.push('/recipes/create')}
-                        />
-                      </div>
-
-                      {/* Dinner */}
-                      <div className="space-y-1">
-                        <div className="text-xs font-medium text-gray-700">Dinner</div>
-                        <MealSlot
-                          date={date.toISOString().split('T')[0] || ''}
-                          mealType="dinner"
-                          recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
-                          onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
-                          recipes={recipesData?.recipes || []}
-                          onCreateRecipe={() => router.push('/recipes/create')}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Mobile/Tablet Layout - Stacked cards */}
-              <div className="lg:hidden">
-                <div className="space-y-4 p-4">
-                  {weekDays.map((date, index) => (
-                    <div key={index} className="bg-gray-50 rounded-lg p-4">
-                      <div className="text-center mb-4">
-                        <div className="text-lg font-semibold text-gray-900">
-                          {date.toLocaleDateString('en-US', { weekday: 'long' })}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {/* Breakfast */}
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium text-gray-700 text-center">🌅 Breakfast</div>
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium text-gray-700">Breakfast</div>
                           <MealSlot
                             date={date.toISOString().split('T')[0] || ''}
                             mealType="breakfast"
                             recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
                             recipes={recipesData?.recipes || []}
-                            isMobile={true}
                             onCreateRecipe={() => router.push('/recipes/create')}
                           />
                         </div>
 
                         {/* Lunch */}
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium text-gray-700 text-center">☀️ Lunch</div>
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium text-gray-700">Lunch</div>
                           <MealSlot
                             date={date.toISOString().split('T')[0] || ''}
                             mealType="lunch"
                             recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
                             recipes={recipesData?.recipes || []}
-                            isMobile={true}
                             onCreateRecipe={() => router.push('/recipes/create')}
                           />
                         </div>
 
                         {/* Dinner */}
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium text-gray-700 text-center">🌙 Dinner</div>
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium text-gray-700">Dinner</div>
                           <MealSlot
                             date={date.toISOString().split('T')[0] || ''}
                             mealType="dinner"
                             recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
                             onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
                             recipes={recipesData?.recipes || []}
-                            isMobile={true}
                             onCreateRecipe={() => router.push('/recipes/create')}
                           />
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* AI Insights Tab */}
-          {activeTab === 'ai-insights' && (
-            <div className="p-6">
-              {loadingAI ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-                  <span className="ml-2 text-gray-600">Loading AI insights...</span>
-                </div>
-              ) : aiInsights ? (
-                <div className="space-y-6">
-                  {/* AI Insights Summary Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-medium text-gray-500">Weeks Planned</h3>
-                        <span className="text-2xl font-bold text-green-600">{aiInsights.total_weeks_planned}</span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-medium text-gray-500">Planning Consistency</h3>
-                        <span className="text-2xl font-bold text-blue-600">{aiInsights.planning_consistency}%</span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-medium text-gray-500">AI Learning</h3>
-                        <span className="text-2xl font-bold text-purple-600">{aiInsights.ai_learning_progress}%</span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-medium text-gray-500">Avg Meals/Week</h3>
-                        <span className="text-2xl font-bold text-orange-600">{aiInsights.household_preferences.average_meals_per_week}</span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
+                </div>
 
-                  {/* Popular Recipes */}
-                  {aiInsights.popular_recipes && aiInsights.popular_recipes.length > 0 && (
-                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Most Popular Recipes</h3>
-                      <div className="space-y-3">
-                        {aiInsights.popular_recipes.map((recipe: any, index: number) => (
-                          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div>
-                              <h4 className="font-medium text-gray-900">{recipe.name}</h4>
-                              <p className="text-sm text-gray-500">Used {recipe.usage_count} times</p>
+                {/* Mobile/Tablet Layout - Stacked cards */}
+                <div className="lg:hidden">
+                  <div className="space-y-4 p-4">
+                    {weekDays.map((date, index) => (
+                      <Card key={index} className="bg-gray-50">
+                        <CardContent className="p-4">
+                          <div className="text-center mb-4">
+                            <div className="text-lg font-semibold text-gray-900">
+                              {date.toLocaleDateString('en-US', { weekday: 'long' })}
                             </div>
-                            <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                              {recipe.category}
-                            </span>
+                            <div className="text-sm text-gray-500">
+                              {date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Seasonal Recommendations */}
-                  <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Seasonal Recommendations</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700">Current Season:</span>
-                        <span className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-800 rounded-full capitalize">
-                          {aiInsights.seasonal_recommendations.current_season}
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium text-gray-700">Focus on:</h4>
-                        <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
-                          {aiInsights.seasonal_recommendations.recommendations.map((rec: string, index: number) => (
-                            <li key={index}>{rec}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {/* Breakfast */}
+                            <div className="space-y-2">
+                              <div className="text-sm font-medium text-gray-700 text-center">🌅 Breakfast</div>
+                              <MealSlot
+                                date={date.toISOString().split('T')[0] || ''}
+                                mealType="breakfast"
+                                recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'breakfast') || undefined}
+                                onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'breakfast', recipe)}
+                                recipes={recipesData?.recipes || []}
+                                isMobile={true}
+                                onCreateRecipe={() => router.push('/recipes/create')}
+                              />
+                            </div>
 
-                  {/* Improvement Suggestions */}
-                  {aiInsights.suggested_improvements && aiInsights.suggested_improvements.length > 0 && (
-                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Suggestions for Improvement</h3>
-                      <div className="space-y-3">
-                        {aiInsights.suggested_improvements.map((suggestion: string, index: number) => (
-                          <div key={index} className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
-                            <span className="text-blue-500 mt-1">💡</span>
-                            <p className="text-sm text-blue-800">{suggestion}</p>
+                            {/* Lunch */}
+                            <div className="space-y-2">
+                              <div className="text-sm font-medium text-gray-700 text-center">☀️ Lunch</div>
+                              <MealSlot
+                                date={date.toISOString().split('T')[0] || ''}
+                                mealType="lunch"
+                                recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'lunch') || undefined}
+                                onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'lunch', recipe)}
+                                recipes={recipesData?.recipes || []}
+                                isMobile={true}
+                                onCreateRecipe={() => router.push('/recipes/create')}
+                              />
+                            </div>
+
+                            {/* Dinner */}
+                            <div className="space-y-2">
+                              <div className="text-sm font-medium text-gray-700 text-center">🌙 Dinner</div>
+                              <MealSlot
+                                date={date.toISOString().split('T')[0] || ''}
+                                mealType="dinner"
+                                recipe={getMealForDay(date.toISOString().split('T')[0] || '', 'dinner') || undefined}
+                                onAssign={(recipe) => assignRecipe(date.toISOString().split('T')[0] || '', 'dinner', recipe)}
+                                recipes={recipesData?.recipes || []}
+                                isMobile={true}
+                                onCreateRecipe={() => router.push('/recipes/create')}
+                              />
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="text-gray-400 text-6xl mb-4">🤖</div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No AI Insights Available</h3>
-                  <p className="text-gray-500">Start planning meals to generate AI insights and recommendations.</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* AI Suggestions Tab */}
-          {activeTab === 'ai-suggestions' && (
-            <div className="p-6">
-              {loadingAI ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-                  <span className="ml-2 text-gray-600">Loading AI suggestions...</span>
-                </div>
-              ) : aiSuggestions ? (
-                <div className="space-y-6">
-                  {/* Meal Type Filter */}
-                  <div className="flex space-x-4 mb-6">
-                    {['breakfast', 'lunch', 'dinner'].map((mealType) => (
-                      <button
-                        key={mealType}
-                        onClick={() => fetchAISuggestions(mealType)}
-                        className={`px-4 py-2 rounded-md font-medium capitalize ${
-                          aiSuggestions.suggestions?.[0]?.mealType === mealType
-                            ? 'bg-green-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {mealType}
-                      </button>
+                        </CardContent>
+                      </Card>
                     ))}
                   </div>
+                </div>
+              </TabsContent>
 
-                  {/* AI Confidence */}
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-blue-800">AI Confidence</span>
-                      <span className="text-sm font-medium text-blue-600">{aiSuggestions.ai_confidence}%</span>
+              {/* AI Insights Tab */}
+              <TabsContent value="ai-insights" className="m-0">
+                <div className="p-6">
+                  {loadingAI ? (
+                    <div className="flex items-center justify-center py-12">
+                      <LoadingSpinner size="md" text="Loading AI insights..." />
                     </div>
-                    <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                        style={{ width: `${aiSuggestions.ai_confidence}%` }}
-                      ></div>
+                  ) : aiInsights ? (
+                    <div className="space-y-6">
+                      {/* AI Insights Summary Cards */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <Card>
+                          <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-sm font-medium text-gray-500">Weeks Planned</h3>
+                              <span className="text-2xl font-bold text-green-600">{aiInsights.total_weeks_planned}</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-sm font-medium text-gray-500">Planning Consistency</h3>
+                              <span className="text-2xl font-bold text-blue-600">{aiInsights.planning_consistency}%</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-sm font-medium text-gray-500">AI Learning</h3>
+                              <span className="text-2xl font-bold text-purple-600">{aiInsights.ai_learning_progress}%</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-sm font-medium text-gray-500">Avg Meals/Week</h3>
+                              <span className="text-2xl font-bold text-orange-600">{aiInsights.household_preferences.average_meals_per_week}</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* Popular Recipes */}
+                      {aiInsights.popular_recipes && aiInsights.popular_recipes.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Most Popular Recipes</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-3">
+                              {aiInsights.popular_recipes.map((recipe: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                  <div>
+                                    <h4 className="font-medium text-gray-900">{recipe.name}</h4>
+                                    <p className="text-sm text-gray-500">Used {recipe.usage_count} times</p>
+                                  </div>
+                                  <Badge variant="secondary">{recipe.category}</Badge>
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Seasonal Recommendations */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Seasonal Recommendations</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-gray-700">Current Season:</span>
+                              <Badge variant="outline" className="capitalize">
+                                {aiInsights.seasonal_recommendations.current_season}
+                              </Badge>
+                            </div>
+                            <div className="space-y-2">
+                              <h4 className="text-sm font-medium text-gray-700">Focus on:</h4>
+                              <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                                {aiInsights.seasonal_recommendations.recommendations.map((rec: string, index: number) => (
+                                  <li key={index}>{rec}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Improvement Suggestions */}
+                      {aiInsights.suggested_improvements && aiInsights.suggested_improvements.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>AI Suggestions for Improvement</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-3">
+                              {aiInsights.suggested_improvements.map((suggestion: string, index: number) => (
+                                <div key={index} className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
+                                  <span className="text-blue-500 mt-1">💡</span>
+                                  <p className="text-sm text-blue-800">{suggestion}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
                     </div>
-                  </div>
-
-                  {/* Recipe Suggestions */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {aiSuggestions.suggestions?.map((recipe: any, index: number) => (
-                      <div key={index} className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex items-start justify-between mb-3">
-                          <h3 className="text-lg font-semibold text-gray-900">{recipe.name}</h3>
-                          <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                            Score: {recipe.ai_score}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-4">{recipe.description}</p>
-                        <div className="space-y-2 mb-4">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Prep Time:</span>
-                            <span className="text-gray-700">{recipe.prep_time} min</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Cook Time:</span>
-                            <span className="text-gray-700">{recipe.cook_time} min</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Servings:</span>
-                            <span className="text-gray-700">{recipe.servings}</span>
-                          </div>
-                        </div>
-                        <div className="mb-4">
-                          <p className="text-xs text-green-600 font-medium mb-1">AI Reasoning:</p>
-                          <p className="text-xs text-gray-600">{recipe.ai_reasoning}</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {recipe.tags.map((tag: string, tagIndex: number) => (
-                            <span key={tagIndex} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                        <button
-                          onClick={() => {
-                            console.log('Assigning recipe:', recipe);
-                          }}
-                          className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition-colors"
-                        >
-                          Use This Recipe
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* AI Insights */}
-                  {aiSuggestions.insights && (
-                    <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Insights</h3>
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="font-medium text-gray-700 mb-2">Meal Type Optimization</h4>
-                          <p className="text-sm text-gray-600">{aiSuggestions.insights.meal_type_optimization}</p>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-gray-700 mb-2">Seasonal Tips</h4>
-                          <p className="text-sm text-gray-600">{aiSuggestions.insights.seasonal_tips}</p>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-gray-700 mb-2">Nutritional Balance</h4>
-                          <p className="text-sm text-gray-600">{aiSuggestions.insights.nutritional_balance}</p>
-                        </div>
-                      </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <div className="text-gray-400 text-6xl mb-4">🤖</div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No AI Insights Available</h3>
+                      <p className="text-gray-500">Start planning meals to generate AI insights and recommendations.</p>
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="text-gray-400 text-6xl mb-4">🤖</div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No AI Suggestions Available</h3>
-                  <p className="text-gray-500">Start planning meals to receive AI-powered recipe recommendations.</p>
+              </TabsContent>
+
+              {/* AI Suggestions Tab */}
+              <TabsContent value="ai-suggestions" className="m-0">
+                <div className="p-6">
+                  {loadingAI ? (
+                    <div className="flex items-center justify-center py-12">
+                      <LoadingSpinner size="md" text="Loading AI suggestions..." />
+                    </div>
+                  ) : aiSuggestions ? (
+                    <div className="space-y-6">
+                      {/* Meal Type Filter */}
+                      <div className="flex space-x-4 mb-6">
+                        {['breakfast', 'lunch', 'dinner'].map((mealType) => (
+                          <Button
+                            key={mealType}
+                            variant={aiSuggestions.suggestions?.[0]?.mealType === mealType ? "default" : "outline"}
+                            onClick={() => fetchAISuggestions(mealType)}
+                            className="capitalize"
+                          >
+                            {mealType}
+                          </Button>
+                        ))}
+                      </div>
+
+                      {/* AI Confidence */}
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-blue-800">AI Confidence</span>
+                            <span className="text-sm font-medium text-blue-600">{aiSuggestions.ai_confidence}%</span>
+                          </div>
+                          <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                              style={{ width: `${aiSuggestions.ai_confidence}%` }}
+                            ></div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Recipe Suggestions */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {aiSuggestions.suggestions?.map((recipe: any, index: number) => (
+                          <Card key={index} className="hover:shadow-md transition-shadow">
+                            <CardHeader>
+                              <div className="flex items-start justify-between">
+                                <CardTitle className="text-lg">{recipe.name}</CardTitle>
+                                <Badge variant="secondary">Score: {recipe.ai_score}</Badge>
+                              </div>
+                            </CardHeader>
+                            <CardContent>
+                              <p className="text-sm text-gray-600 mb-4">{recipe.description}</p>
+                              <div className="space-y-2 mb-4">
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-500">Prep Time:</span>
+                                  <span className="text-gray-700">{recipe.prep_time} min</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-500">Cook Time:</span>
+                                  <span className="text-gray-700">{recipe.cook_time} min</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-500">Servings:</span>
+                                  <span className="text-gray-700">{recipe.servings}</span>
+                                </div>
+                              </div>
+                              <div className="mb-4">
+                                <p className="text-xs text-green-600 font-medium mb-1">AI Reasoning:</p>
+                                <p className="text-xs text-gray-600">{recipe.ai_reasoning}</p>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mb-4">
+                                {recipe.tags.map((tag: string, tagIndex: number) => (
+                                  <Badge key={tagIndex} variant="outline" className="text-xs">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
+                              <Button
+                                onClick={() => {
+                                  console.log('Assigning recipe:', recipe);
+                                }}
+                                className="w-full"
+                              >
+                                Use This Recipe
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+
+                      {/* AI Insights */}
+                      {aiSuggestions.insights && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>AI Insights</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-4">
+                              <div>
+                                <h4 className="font-medium text-gray-700 mb-2">Meal Type Optimization</h4>
+                                <p className="text-sm text-gray-600">{aiSuggestions.insights.meal_type_optimization}</p>
+                              </div>
+                              <div>
+                                <h4 className="font-medium text-gray-700 mb-2">Seasonal Tips</h4>
+                                <p className="text-sm text-gray-600">{aiSuggestions.insights.seasonal_tips}</p>
+                              </div>
+                              <div>
+                                <h4 className="font-medium text-gray-700 mb-2">Nutritional Balance</h4>
+                                <p className="text-sm text-gray-600">{aiSuggestions.insights.nutritional_balance}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <div className="text-gray-400 text-6xl mb-4">🤖</div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No AI Suggestions Available</h3>
+                      <p className="text-gray-500">Start planning meals to receive AI-powered recipe recommendations.</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
@@ -772,12 +758,14 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
           </div>
         </div>
       ) : (
-        <button
+        <Button
+          variant="outline"
+          size={isMobile ? "default" : "sm"}
           onClick={() => setShowDropdown(!showDropdown)}
-          className={`w-full bg-gray-50 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-100 text-left ${isMobile ? 'p-3 text-sm' : 'p-2 text-xs'}`}
+          className="w-full justify-start text-gray-500 hover:text-gray-700"
         >
           + Add Recipe
-        </button>
+        </Button>
       )}
 
       {showDropdown && (
@@ -790,25 +778,29 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
               {recipes.length === 0 ? (
                 <div className={`p-3 text-gray-500 text-center ${isMobile ? 'text-sm' : 'text-xs'}`}>
                   <div>No recipes yet!</div>
-                  <button
+                  <Button
+                    variant="link"
+                    size="sm"
                     onClick={() => {
                       setShowDropdown(false);
                       onCreateRecipe();
                     }}
-                    className="mt-2 text-blue-600 hover:text-blue-800 underline"
+                    className="mt-2 p-0 h-auto text-blue-600 hover:text-blue-800"
                   >
                     Create your first recipe
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 recipes.map((recipe) => (
-                  <button
+                  <Button
                     key={recipe.id}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       onAssign(recipe);
                       setShowDropdown(false);
                     }}
-                    className={`w-full text-left hover:bg-gray-50 rounded ${isMobile ? 'p-3' : 'p-2'}`}
+                    className="w-full justify-start hover:bg-gray-50"
                   >
                     <div className={`font-medium text-gray-900 ${isMobile ? 'text-sm' : 'text-xs'}`}>
                       {recipe.name}
@@ -816,7 +808,7 @@ function MealSlot({ date: _date, mealType: _mealType, recipe, onAssign, recipes,
                     <div className={`text-gray-500 ${isMobile ? 'text-xs' : 'text-xs'}`}>
                       {recipe.prep_time + recipe.cook_time}min
                     </div>
-                  </button>
+                  </Button>
                 ))
               )}
             </div>
