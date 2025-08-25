@@ -1,10 +1,8 @@
 'use client';
 
-import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
 import { 
-  useMealPlan, 
-  useOptimisticMealPlans 
+  useMealPlan
 } from '@/hooks/useMealPlans';
 import { 
   useRecipes
@@ -12,7 +10,7 @@ import {
 
 export default function MealPlannerPageRefactored() {
   // User data
-  const { userData, isLoading: userDataLoading, user } = useUserData();
+  const { isLoading: userDataLoading } = useUserData();
   
   // React Query hooks for meal plans
   const { 
@@ -27,9 +25,6 @@ export default function MealPlannerPageRefactored() {
     isLoading: recipesLoading, 
     error: recipesError 
   } = useRecipes();
-  
-  // Optimistic updates
-  const { addOptimisticMeal } = useOptimisticMealPlans();
   
   // Extract data from React Query
   const mealPlans = mealPlansData ? [mealPlansData] : [];
