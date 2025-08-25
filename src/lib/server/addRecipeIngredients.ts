@@ -9,10 +9,10 @@ function normalizeName(name: string): string {
   // Remove parenthetical descriptions
   normalized = normalized.replace(/\s*\(.*\)/, '');
   // Remove trailing 's' for basic pluralization (e.g., "tomatoes" -> "tomato")
-  if (normalized.endsWith('s') && !normalized.endsWith('ss')) { // Avoid removing 's' from words like 'grass'
+  if (normalized.endsWith('s') && !normalized.endsWith('ss')) { // Avoid "grass" -> "gras"
     normalized = normalized.slice(0, -1);
   }
-  return normalized.trim();
+  return normalized;
 }
 
 interface ParsedQuantity {
@@ -62,26 +62,6 @@ function getIngredientName(ingredient: any): string {
     return ingredient;
   }
   return String(ingredient || '');
-}
-
-// Helper to merge quantities
-function mergeQuantities(q1: ParsedQuantity, q2: ParsedQuantity): ParsedQuantity {
-  if (q1.unit && q1.unit === q2.unit && q1.amount !== null && q2.amount !== null) {
-    // If units are the same and both are numbers, sum them
-    return {
-      amount: q1.amount + q2.amount,
-      unit: q1.unit,
-      originalText: `${q1.amount + q2.amount} ${q1.unit}`.trim()
-    };
-  } else {
-    // Otherwise, concatenate them
-    const combinedText = [q1.originalText, q2.originalText].filter(Boolean).join(' + ');
-    return {
-      amount: null, // Cannot sum different units reliably
-      unit: null,
-      originalText: combinedText
-    };
-  }
 }
 
 /**
