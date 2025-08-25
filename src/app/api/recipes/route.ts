@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { sb, getUserAndHousehold } from '@/lib/server/supabaseAdmin';
 
 export async function POST(request: NextRequest) {
