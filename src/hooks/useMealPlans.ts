@@ -12,11 +12,11 @@ export interface Recipe {
   created_by: string;
   created_at: string;
   updated_at: string;
-  prep_time: number;
-  cook_time: number;
-  difficulty: 'easy' | 'medium' | 'hard';
+    prep_time: number;
+    cook_time: number;
+    difficulty: 'easy' | 'medium' | 'hard';
   servings: number;
-  image_url?: string;
+    image_url?: string;
   is_favorite: boolean;
   tags: string[];
   ingredients: RecipeIngredient[];
@@ -265,9 +265,9 @@ export function useOptimisticMealPlans() {
               dinner: slot === 'dinner' ? recipe : null,
             }
           },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
       }
       
       return {

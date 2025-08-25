@@ -99,7 +99,7 @@ export async function addRecipeIngredientsToGroceries(
   try {
     const supabase = sb()
 
-    // Get recipe
+    // Get recipe - note: database uses 'title' field, not 'title'
     const { data: recipe, error: rErr } = await supabase
       .from('recipes').select('id, ingredients, title')
       .eq('id', recipeId).eq('household_id', householdId).single()
@@ -157,37 +157,75 @@ export async function addRecipeIngredientsToGroceries(
       const existingItem = existingItemsMap.get(normalizedIngName);
 
       if (existingItem) {
-        // Update existing item
-        const currentQuantity = parseQuantity(existingItem.quantity);
-        const mergedQuantity = mergeQuantities(currentQuantity, parsedIngredient);
+        // Update existing item - note: shopping_items.quantity is INTEGER, not TEXT
+        // We'll store the quantity as a number if possible, otherwise use the original text
+        let quantityValue: number | string;
+        
+        if (parsedIngredient.amount !== null && typeof existingItem.quantity === 'number') {
+          // If existing item has numeric quantity and we can parse the new quantity, sum them
+          quantityValue = existingItem.quantity + parsedIngredient.amount;
+        } else {
+          // Otherwise, concatenate the text representations
+          const currentQuantity = existingItem.quantity?.toString() || '';
+          const newQuantity = parsedIngredient.originalText;
+          quantityValue = `${currentQuantity} + ${newQuantity}`.trim();
+        }
 
         const { error: updateErr } = await supabase
           .from('shopping_items')
-          .update({ quantity: mergedQuantity.originalText })
+          .update({ quantity: quantityValue })
           .eq('id', existingItem.id)
         
         if (updateErr) {
           console.error('Error updating shopping item:', updateErr)
         } else {
           updatedCount++
-          console.log(`✅ Updated "${name}" quantity: ${existingItem.quantity} → ${mergedQuantity.originalText}`)
+          console.log(`✅ Updated "${name}" quantity: ${existingItem.quantity} → ${quantityValue}`)
         }
       } else {
-        // Insert new item
+        // Insert new item - convert quantity to appropriate format
+        let quantityValue: number | string;
+        
+        if (parsedIngredient.amount !== null) {
+          // If we have a numeric amount, use it (shopping_items.quantity is INTEGER)
+          quantityValue = parsedIngredient.amount;
+        } else {
+          // Otherwise, use the original text (this might cause issues with INTEGER field)
+          quantityValue = parsedIngredient.originalText;
+        }
+
         const { error: insertErr } = await supabase
           .from('shopping_items')
           .insert([{
             list_id: listId,
             name: name.trim(),
-            quantity: parsedIngredient.originalText,
+            quantity: quantityValue,
             completed: false
           }])
         
         if (insertErr) {
           console.error('Error inserting shopping item:', insertErr)
+          // If the insert fails due to quantity type mismatch, try with default value
+          if (insertErr.message.includes('quantity')) {
+            const { error: retryErr } = await supabase
+              .from('shopping_items')
+              .insert([{
+                list_id: listId,
+                name: name.trim(),
+                quantity: 1, // Default to 1 if quantity parsing fails
+                completed: false
+              }])
+            
+            if (!retryErr) {
+              addedCount++
+              console.log(`➕ Added new item: "${name}" with default quantity 1`)
+            } else {
+              console.error('Retry insert also failed:', retryErr)
+            }
+          }
         } else {
           addedCount++
-          console.log(`➕ Added new item: "${name}" with quantity "${parsedIngredient.originalText}"`)
+          console.log(`➕ Added new item: "${name}" with quantity "${quantityValue}"`)
         }
       }
     }

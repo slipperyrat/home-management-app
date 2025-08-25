@@ -29,6 +29,16 @@ export default function MealPlannerPage() {
   const weekStartDate = getWeekStart(currentWeek);
   const { data: mealPlan, isLoading: mealPlanLoading, error: mealPlanError } = useMealPlan(weekStartDate);
   
+  // Debug logging
+  console.log('🔍 Meal Planner Debug Info:', {
+    userDataLoading,
+    recipesLoading,
+    mealPlanLoading,
+    userData: userData ? { household_id: userData.household_id, has_onboarded: userData.has_onboarded } : null,
+    recipesData: recipesData ? { success: recipesData.success, count: recipesData.recipes?.length || 0 } : null,
+    mealPlan: mealPlan ? { weekStart: weekStartDate, mealsCount: Object.keys(mealPlan.meals || {}).length } : null
+  });
+  
   // Loading and error states
   const loading = userDataLoading || recipesLoading || mealPlanLoading;
   const error = userDataError || recipesError || mealPlanError;
@@ -114,6 +124,7 @@ export default function MealPlannerPage() {
     const meal = dayMeals[mealType];
     
     if (typeof meal === 'string') {
+      // If meal is a recipe ID, find the recipe in the recipes list
       return recipesData?.recipes?.find(r => r.id === meal);
     }
     

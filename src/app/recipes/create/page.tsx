@@ -42,20 +42,34 @@ export default function CreateRecipePage() {
     setIsSubmitting(true);
 
     try {
+      // Format ingredients and instructions properly
+      const formattedData = {
+        ...formData,
+        ingredients: formData.ingredients.trim(),
+        instructions: formData.instructions.trim()
+      };
+
       const response = await fetch('/api/recipes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(formattedData),
       });
 
       if (response.ok) {
-        toast.success('Recipe created successfully!');
-        router.push('/meal-planner');
+        const result = await response.json();
+        if (result.success) {
+          toast.success('Recipe created successfully!');
+          // Invalidate recipes cache to refresh the list
+          // This will ensure the new recipe appears in the meal planner
+          router.push('/meal-planner');
+        } else {
+          toast.error(`Failed to create recipe: ${result.error || 'Unknown error'}`);
+        }
       } else {
         const error = await response.json();
-        toast.error(`Failed to create recipe: ${error.message || 'Unknown error'}`);
+        toast.error(`Failed to create recipe: ${error.error || error.message || 'Unknown error'}`);
       }
     } catch (error) {
       toast.error('Failed to create recipe. Please try again.');
