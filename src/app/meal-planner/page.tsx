@@ -21,7 +21,7 @@ export default function MealPlannerPage() {
 
   
   // Data fetching hooks
-  const { userData, isLoading: userDataLoading, error: userDataError } = useUserData();
+  const { userData, isLoading: userDataLoading, error: userDataError, user } = useUserData();
   const { data: recipes, isLoading: recipesLoading, error: recipesError } = useRecipes();
   const recipesData = recipes as { success: boolean; recipes: Recipe[] } | undefined;
   
@@ -53,6 +53,17 @@ export default function MealPlannerPage() {
   const [aiInsights, setAiInsights] = useState<any>(null);
   const [aiSuggestions, setAiSuggestions] = useState<any>(null);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [showRecipeForm, setShowRecipeForm] = useState(false);
+  const [recipeFormData, setRecipeFormData] = useState({
+    name: '',
+    description: '',
+    ingredients: '',
+    instructions: '',
+    prep_time: 0,
+    cook_time: 0,
+    servings: 1
+  });
+  const [isCreatingRecipe, setIsCreatingRecipe] = useState(false);
 
   // React Query mutations
   const assignMeal = useAssignMeal();
@@ -158,7 +169,63 @@ export default function MealPlannerPage() {
         alsoAddToList: true
       });
     } catch (error) {
-      toast.error('Invalid date format');
+      console.error('Error assigning recipe:', error);
+      toast.error('Failed to assign recipe');
+    }
+  }
+
+  async function createRecipe() {
+    if (!userData?.household_id) {
+      toast.error('Please complete onboarding first');
+      return;
+    }
+
+    if (!recipeFormData.name.trim()) {
+      toast.error('Recipe name is required');
+      return;
+    }
+
+    setIsCreatingRecipe(true);
+    try {
+      const response = await fetch('/api/recipes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...recipeFormData,
+          household_id: userData.household_id,
+          created_by: user?.id || 'unknown'
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          toast.success('Recipe created successfully!');
+          setShowRecipeForm(false);
+          setRecipeFormData({
+            name: '',
+            description: '',
+            ingredients: '',
+            instructions: '',
+            prep_time: 0,
+            cook_time: 0,
+            servings: 1
+          });
+          // Refresh recipes data
+          window.location.reload();
+        } else {
+          toast.error(result.error || 'Failed to create recipe');
+        }
+      } else {
+        toast.error('Failed to create recipe');
+      }
+    } catch (error) {
+      console.error('Error creating recipe:', error);
+      toast.error('Failed to create recipe');
+    } finally {
+      setIsCreatingRecipe(false);
     }
   }
 
@@ -294,6 +361,73 @@ export default function MealPlannerPage() {
                 </div>
                 
                 <div className="flex items-center space-x-4">
+                  {/* Recipe Management Buttons */}
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setShowRecipeForm(!showRecipeForm)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      {showRecipeForm ? 'Hide Form' : 'Create Recipe'}
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push('/recipes')}
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                      Manage Recipes
+                    </Button>
+                  </div>
+                  
+                  {/* Week Actions */}
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const nextWeek = new Date(currentWeek);
+                        nextWeek.setDate(nextWeek.getDate() + 7);
+                        const nextWeekStart = getWeekStart(nextWeek).toISOString().split('T')[0];
+                        const currentWeekStart = weekStartDate.toISOString().split('T')[0];
+                        
+                        const fromWeek = currentWeekStart;
+                        const toWeek = nextWeekStart;
+                        
+                        if (fromWeek && toWeek) {
+                          copyWeek.mutate({
+                            fromWeek,
+                            toWeek
+                          });
+                        }
+                      }}
+                      disabled={copyWeek.isPending}
+                    >
+                      {copyWeek.isPending ? 'Copying...' : 'Copy to Next Week'}
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const currentWeekStart = weekStartDate.toISOString().split('T')[0];
+                        if (currentWeekStart) {
+                          clearWeek.mutate({ week: currentWeekStart });
+                        }
+                      }}
+                      disabled={clearWeek.isPending}
+                    >
+                      {clearWeek.isPending ? 'Clearing...' : 'Clear Week'}
+                    </Button>
+                  </div>
+                  
                   <div className="flex items-center space-x-2">
                     <Button
                       variant="outline"
@@ -319,47 +453,6 @@ export default function MealPlannerPage() {
                       </svg>
                     </Button>
                   </div>
-                  
-                  {/* Week Actions */}
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const nextWeek = new Date(currentWeek);
-                        nextWeek.setDate(nextWeek.getDate() + 7);
-                        const nextWeekStart = getWeekStart(nextWeek).toISOString().split('T')[0];
-                        const currentWeekStart = weekStartDate.toISOString().split('T')[0];
-                        
-                                                 const fromWeek = currentWeekStart;
-                         const toWeek = nextWeekStart;
-                         
-                         if (fromWeek && toWeek) {
-                           copyWeek.mutate({
-                             fromWeek,
-                             toWeek
-                           });
-                         }
-                      }}
-                      disabled={copyWeek.isPending}
-                    >
-                      {copyWeek.isPending ? 'Copying...' : 'Copy to Next Week'}
-                    </Button>
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                                             onClick={() => {
-                         const currentWeekStart = weekStartDate.toISOString().split('T')[0];
-                         if (currentWeekStart) {
-                           clearWeek.mutate({ week: currentWeekStart });
-                         }
-                       }}
-                      disabled={clearWeek.isPending}
-                    >
-                      {clearWeek.isPending ? 'Clearing...' : 'Clear Week'}
-                    </Button>
-                  </div>
                 </div>
               </div>
             )}
@@ -383,6 +476,135 @@ export default function MealPlannerPage() {
             {/* Conditional Content Based on Active Tab */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsContent value="planner" className="m-0">
+                {/* Inline Recipe Creation Form */}
+                {showRecipeForm && (
+                  <div className="p-6 border-b border-gray-200 bg-gray-50">
+                    <div className="max-w-2xl mx-auto">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900">Create New Recipe</h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowRecipeForm(false)}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </Button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Recipe Name *
+                          </label>
+                          <input
+                            type="text"
+                            value={recipeFormData.name}
+                            onChange={(e) => setRecipeFormData({...recipeFormData, name: e.target.value})}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="e.g., Spaghetti Carbonara"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Description
+                          </label>
+                          <input
+                            type="text"
+                            value={recipeFormData.description}
+                            onChange={(e) => setRecipeFormData({...recipeFormData, description: e.target.value})}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="Brief description of the recipe"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Prep Time (minutes)
+                          </label>
+                          <input
+                            type="number"
+                            value={recipeFormData.prep_time}
+                            onChange={(e) => setRecipeFormData({...recipeFormData, prep_time: parseInt(e.target.value) || 0})}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            min="0"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Cook Time (minutes)
+                          </label>
+                          <input
+                            type="number"
+                            value={recipeFormData.cook_time}
+                            onChange={(e) => setRecipeFormData({...recipeFormData, cook_time: parseInt(e.target.value) || 0})}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            min="0"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Servings
+                          </label>
+                          <input
+                            type="number"
+                            value={recipeFormData.servings}
+                            onChange={(e) => setRecipeFormData({...recipeFormData, servings: parseInt(e.target.value) || 1})}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            min="1"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Ingredients (one per line)
+                        </label>
+                        <textarea
+                          value={recipeFormData.ingredients}
+                          onChange={(e) => setRecipeFormData({...recipeFormData, ingredients: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={3}
+                          placeholder="2 cups flour&#10;1 cup sugar&#10;3 eggs&#10;1 tsp vanilla"
+                        />
+                      </div>
+                      
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Instructions (one per line)
+                        </label>
+                        <textarea
+                          value={recipeFormData.instructions}
+                          onChange={(e) => setRecipeFormData({...recipeFormData, instructions: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          rows={3}
+                          placeholder="Preheat oven to 350°F&#10;Mix dry ingredients&#10;Add wet ingredients&#10;Bake for 25 minutes"
+                        />
+                      </div>
+                      
+                      <div className="mt-6 flex justify-end space-x-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowRecipeForm(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={createRecipe}
+                          disabled={isCreatingRecipe || !recipeFormData.name.trim()}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          {isCreatingRecipe ? 'Creating...' : 'Create Recipe'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {/* Weekly Grid */}
                 <div className="hidden lg:block">
                   <div className="grid grid-cols-7 gap-4 p-6">
