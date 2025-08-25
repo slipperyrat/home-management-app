@@ -3,11 +3,11 @@ import { sb, getUserAndHousehold } from '@/lib/server/supabaseAdmin';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { householdId } = await getUserAndHousehold();
-    const recipeId = params.id;
+    const { id: recipeId } = await params;
 
     if (!householdId) {
       return NextResponse.json({ error: 'Unauthorized or household not found' }, { status: 401 });
