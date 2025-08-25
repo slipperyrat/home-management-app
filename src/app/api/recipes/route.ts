@@ -194,7 +194,7 @@ function parseIngredients(ingredientsText: string): any[] {
   });
 }
 
-// Helper function to parse instructions text into array
+// Helper function to parse instructions text into array format
 function parseInstructions(instructionsText: string): string[] {
   if (!instructionsText) return [];
   
@@ -203,7 +203,7 @@ function parseInstructions(instructionsText: string): string[] {
     .split('\n')
     .map(line => line.trim())
     .filter(Boolean)
-    .map((line, index) => {
+    .map((line, _index) => {
       // Remove step numbers if they exist (e.g., "1. ", "Step 1: ")
       const cleaned = line.replace(/^(\d+\.?\s*|Step\s*\d+:\s*)/i, '').trim();
       return cleaned || line; // If cleaning results in empty string, use original
