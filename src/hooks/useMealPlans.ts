@@ -138,7 +138,7 @@ async function clearWeek(data: ClearWeekData): Promise<{ success: boolean; messa
 
 // Custom hooks
 export function useMealPlan(weekStart?: Date) {
-  const weekStartString = weekStart?.toISOString().split('T')[0];
+  const weekStartString = weekStart ? weekStart.toISOString().split('T')[0] : undefined;
   
   return useQuery({
     queryKey: ['mealPlan', weekStartString],

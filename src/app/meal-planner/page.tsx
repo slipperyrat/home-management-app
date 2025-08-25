@@ -36,7 +36,9 @@ export default function MealPlannerPage() {
     mealPlanLoading,
     userData: userData ? { household_id: userData.household_id, has_onboarded: userData.has_onboarded } : null,
     recipesData: recipesData ? { success: recipesData.success, count: recipesData.recipes?.length || 0 } : null,
-    mealPlan: mealPlan ? { weekStart: weekStartDate, mealsCount: Object.keys(mealPlan.meals || {}).length } : null
+    mealPlan: mealPlan ? { weekStart: weekStartDate, mealsCount: Object.keys(mealPlan.meals || {}).length } : null,
+    weekStartDate: weekStartDate?.toISOString().split('T')[0], // Add this line
+    currentWeek: currentWeek.toISOString().split('T')[0] // Add this line
   });
   
   // Loading and error states

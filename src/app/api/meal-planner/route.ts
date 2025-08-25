@@ -21,6 +21,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const weekStartDate = searchParams.get('week_start_date');
 
+    console.log('🔍 Meal Planner API Debug:', {
+      householdId,
+      weekStartDate,
+      url: request.url
+    });
+
     if (!weekStartDate) {
       throw new ServerError('week_start_date parameter is required', 400);
     }
@@ -39,12 +45,16 @@ export async function GET(request: NextRequest) {
       .eq('week_start_date', weekStartDate)
       .maybeSingle();
 
+    console.log('🔍 Database Query Result:', {
+      mealPlan,
+      error,
+      query: `SELECT * FROM meal_plans WHERE household_id = '${householdId}' AND week_start_date = '${weekStartDate}'`
+    });
+
     if (error) {
       console.error('Error fetching meal plan:', error);
       throw new ServerError('Failed to fetch meal plan', 500);
     }
-
-
 
     return NextResponse.json({
       success: true,
