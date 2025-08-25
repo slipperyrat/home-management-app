@@ -4,13 +4,10 @@ import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
 import { 
   useMealPlan, 
-  useCreateMealPlan, 
   useOptimisticMealPlans 
 } from '@/hooks/useMealPlans';
 import { 
-  useRecipes, 
-  useCreateRecipe,
-  useOptimisticRecipes 
+  useRecipes
 } from '@/hooks/useRecipes';
 
 export default function MealPlannerPageRefactored() {
@@ -31,99 +28,16 @@ export default function MealPlannerPageRefactored() {
     error: recipesError 
   } = useRecipes();
   
-  // Mutations
-  const createMealPlan = useCreateMealPlan();
-  const createRecipe = useCreateRecipe();
-  
   // Optimistic updates
-  const { addOptimisticMealPlan } = useOptimisticMealPlans();
-  const { addOptimisticRecipe } = useOptimisticRecipes();
+  const { addOptimisticMeal } = useOptimisticMealPlans();
   
   // Extract data from React Query
-  const mealPlans = mealPlansData?.mealPlans || [];
+  const mealPlans = mealPlansData ? [mealPlansData] : [];
   const recipes = recipesData?.recipes || [];
   
   // Loading and error states
   const loading = userDataLoading || mealPlansLoading || recipesLoading;
   const error = mealPlansError || recipesError;
-  
-  // Handle creating a new meal plan
-  const handleCreateMealPlan = async (data: {
-    name: string;
-    description?: string;
-    start_date: string;
-    end_date: string;
-  }) => {
-    if (!userData?.household?.id || !user?.id) return;
-    
-    try {
-      // Add optimistic update
-      addOptimisticMealPlan({
-        ...data,
-        household_id: userData.household.id,
-        created_by: user.id,
-        is_active: true,
-        total_meals: 0,
-        planned_meals: 0,
-      });
-      
-      // Create the meal plan
-      await createMealPlan.mutateAsync({
-        ...data,
-        household_id: userData.household.id,
-      });
-      
-      toast.success('Meal plan created successfully!');
-    } catch {
-      toast.error('Failed to create meal plan. Please try again.');
-    }
-  };
-  
-  // Handle creating a new recipe
-  const handleCreateRecipe = async (data: {
-    name: string;
-    description?: string;
-    prep_time: number;
-    cook_time: number;
-    difficulty: 'easy' | 'medium' | 'hard';
-    servings: number;
-    image_url?: string;
-    tags: string[];
-    ingredients: Array<{ name: string; amount: number; unit: string; notes?: string }>;
-    instructions: Array<{ step_number: number; instruction: string; time_minutes?: number }>;
-  }) => {
-    if (!userData?.household?.id || !user?.id) return;
-    
-    try {
-      // Add optimistic update with proper ingredient/instruction structure
-      addOptimisticRecipe({
-        ...data,
-        household_id: userData.household.id,
-        created_by: user.id,
-        is_favorite: false,
-        ingredients: data.ingredients.map((ingredient, index) => ({
-          id: `temp-ingredient-${index}`,
-          recipe_id: 'temp-recipe-id',
-          ...ingredient,
-        })),
-        instructions: data.instructions.map((instruction, index) => ({
-          id: `temp-instruction-${index}`,
-          recipe_id: 'temp-recipe-id',
-          ...instruction,
-        })),
-      });
-      
-      // Create the recipe
-      await createRecipe.mutateAsync({
-        ...data,
-        household_id: userData.household.id,
-      });
-      
-      toast.success('Recipe created successfully!');
-    } catch {
-      toast.error('Failed to create recipe. Please try again.');
-    }
-  };
   
   // Loading state
   if (loading) {
@@ -168,43 +82,13 @@ export default function MealPlannerPageRefactored() {
         </p>
       </div>
       
-      {/* Quick Actions */}
-      <div className="flex gap-4 mb-8">
-                 <button
-           onClick={() => handleCreateMealPlan({
-             name: 'New Meal Plan',
-             start_date: new Date().toISOString().split('T')[0] || new Date().toISOString().slice(0, 10),
-             end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-           })}
-           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-           disabled={createMealPlan.isPending}
-         >
-           {createMealPlan.isPending ? 'Creating...' : 'Create Meal Plan'}
-         </button>
-        
-        <button
-          onClick={() => handleCreateRecipe({
-            name: 'New Recipe',
-            prep_time: 15,
-            cook_time: 30,
-            difficulty: 'medium',
-            servings: 4,
-            tags: [],
-            ingredients: [],
-            instructions: []
-          })}
-          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg"
-          disabled={createRecipe.isPending}
-        >
-          {createRecipe.isPending ? 'Creating...' : 'Create Recipe'}
-        </button>
-      </div>
-      
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Total Meal Plans</h3>
-          <p className="text-3xl font-bold text-blue-500">{mealPlans.length}</p>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Current Week</h3>
+          <p className="text-3xl font-bold text-blue-500">
+            {mealPlans.length > 0 ? 'Active' : 'No Plan'}
+          </p>
         </div>
         
         <div className="bg-white p-6 rounded-lg shadow">
@@ -213,16 +97,16 @@ export default function MealPlannerPageRefactored() {
         </div>
         
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Active Plans</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Meals Planned</h3>
           <p className="text-3xl font-bold text-purple-500">
-            {mealPlans.filter(mp => mp.is_active).length}
+            {mealPlans.length > 0 ? 'This Week' : 'None'}
           </p>
         </div>
       </div>
       
       {/* Meal Plans List */}
       <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Your Meal Plans</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Current Week</h2>
         
         {mealPlans.length > 0 ? (
           <div className="space-y-4">
@@ -230,26 +114,16 @@ export default function MealPlannerPageRefactored() {
               <div key={mealPlan.id} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900">{mealPlan.name}</h3>
-                    {mealPlan.description && (
-                      <p className="text-gray-600 text-sm">{mealPlan.description}</p>
-                    )}
+                    <h3 className="text-lg font-medium text-gray-900">Week of {new Date(mealPlan.week_start_date).toLocaleDateString()}</h3>
                     <p className="text-sm text-gray-500">
-                      {new Date(mealPlan.start_date).toLocaleDateString()} - {new Date(mealPlan.end_date).toLocaleDateString()}
+                      {Object.keys(mealPlan.meals).length} days with meals planned
                     </p>
                   </div>
                   
                   <div className="text-right">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      mealPlan.is_active 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {mealPlan.is_active ? 'Active' : 'Inactive'}
+                    <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                      Active
                     </span>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {mealPlan.planned_meals} of {mealPlan.total_meals} meals planned
-                    </p>
                   </div>
                 </div>
               </div>
@@ -257,7 +131,7 @@ export default function MealPlannerPageRefactored() {
           </div>
         ) : (
           <div className="text-center py-8">
-            <p className="text-gray-500">No meal plans yet. Create your first one to get started!</p>
+            <p className="text-gray-500">No meal plan for this week. Use the main meal planner to create one!</p>
           </div>
         )}
       </div>
@@ -293,13 +167,18 @@ export default function MealPlannerPageRefactored() {
           </div>
         ) : (
           <div className="text-center py-8">
-            <p className="text-gray-500">No recipes yet. Create your first one to get started!</p>
+            <p className="text-gray-500">No recipes yet. Use the main meal planner to create your first one!</p>
           </div>
         )}
       </div>
       
-      {/* Note: Modal implementations would go here */}
-      {/* This is just an example of the refactored structure */}
+      {/* Note: This is just an example of the refactored structure */}
+      <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+        <p className="text-blue-800 text-sm">
+          <strong>Note:</strong> This is an example refactored component showing the basic structure. 
+          For full functionality, use the main meal planner page.
+        </p>
+      </div>
     </div>
   );
 }
