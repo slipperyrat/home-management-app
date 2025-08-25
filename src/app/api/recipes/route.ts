@@ -175,7 +175,7 @@ function parseIngredients(ingredientsText: string): any[] {
       return {
         id: `temp-${index}`,
         recipe_id: '', // Will be set by database
-        name: name.trim(),
+        name: (name || line).trim(), // Fallback to full line if name is undefined
         amount: amount ? parseFloat(amount) : 1,
         unit: unit ? unit.trim() : '',
         notes: ''
