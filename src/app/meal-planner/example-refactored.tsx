@@ -3,7 +3,7 @@
 import { toast } from 'sonner';
 import { useUserData } from '@/hooks/useUserData';
 import { 
-  useMealPlans, 
+  useMealPlan, 
   useCreateMealPlan, 
   useOptimisticMealPlans 
 } from '@/hooks/useMealPlans';
@@ -22,7 +22,7 @@ export default function MealPlannerPageRefactored() {
     data: mealPlansData, 
     isLoading: mealPlansLoading, 
     error: mealPlansError 
-  } = useMealPlans();
+  } = useMealPlan();
   
   // React Query hooks for recipes
   const { 
