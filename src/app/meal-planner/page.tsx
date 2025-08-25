@@ -132,6 +132,11 @@ export default function MealPlannerPage() {
       const weekStartDate = weekStart.toISOString().split('T')[0];
       const dayName = getDayName(dateObj);
 
+      if (!weekStartDate || !dayName) {
+        toast.error('Invalid date format');
+        return;
+      }
+
       assignMeal.mutate({
         week: weekStartDate,
         day: dayName,
@@ -313,10 +318,15 @@ export default function MealPlannerPage() {
                         const nextWeekStart = getWeekStart(nextWeek).toISOString().split('T')[0];
                         const currentWeekStart = weekStartDate.toISOString().split('T')[0];
                         
-                        copyWeek.mutate({
-                          fromWeek: currentWeekStart,
-                          toWeek: nextWeekStart
-                        });
+                                                 const fromWeek = currentWeekStart;
+                         const toWeek = nextWeekStart;
+                         
+                         if (fromWeek && toWeek) {
+                           copyWeek.mutate({
+                             fromWeek,
+                             toWeek
+                           });
+                         }
                       }}
                       disabled={copyWeek.isPending}
                     >
@@ -326,10 +336,12 @@ export default function MealPlannerPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        const currentWeekStart = weekStartDate.toISOString().split('T')[0];
-                        clearWeek.mutate({ week: currentWeekStart });
-                      }}
+                                             onClick={() => {
+                         const currentWeekStart = weekStartDate.toISOString().split('T')[0];
+                         if (currentWeekStart) {
+                           clearWeek.mutate({ week: currentWeekStart });
+                         }
+                       }}
                       disabled={clearWeek.isPending}
                     >
                       {clearWeek.isPending ? 'Clearing...' : 'Clear Week'}
