@@ -4,7 +4,7 @@ import { ClearWeekSchema, validateRequest, createValidationErrorResponse } from 
 
 export async function POST(req: Request) {
   try {
-    const { userId, householdId } = await getUserAndHousehold();
+    const { householdId } = await getUserAndHousehold();
     const body = await req.json();
 
     // Validate request body with Zod
