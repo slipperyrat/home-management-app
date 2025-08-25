@@ -109,7 +109,7 @@ export default function RecipesPage() {
     router.push('/meal-planner');
   };
 
-  const handleEditRecipe = (recipeId: string) => {
+  const handleEditRecipe = (_recipeId: string) => {
     // For now, just show a toast. You can implement edit functionality later
     toast.info('Edit functionality coming soon!');
   };
