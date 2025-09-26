@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { postEventTypes } from '@/lib/postEvent';
 import { useUserData } from '@/hooks/useUserData';
@@ -25,6 +26,7 @@ interface Bill {
 export default function BillsPage() {
   const { user } = useUser();
   const { userData } = useUserData();
+  const router = useRouter();
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingBill, setCreatingBill] = useState(false);
@@ -422,7 +424,10 @@ export default function BillsPage() {
                           Mark Paid
                         </button>
                       )}
-                      <button className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50 transition-colors">
+                      <button 
+                        onClick={() => router.push(`/bills/${bill.id}/edit`)}
+                        className="px-3 py-1 border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50 transition-colors"
+                      >
                         Edit
                       </button>
                     </div>

@@ -1,240 +1,191 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { auth } from '@clerk/nextjs/server';
+import { withAPISecurity } from '@/lib/security/apiProtection';
+import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
+import { getAuthenticatedUser, getUserEmail, getUserFullName } from '@/lib/api/auth';
+import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { canAccessFeature } from '@/lib/server/canAccessFeature';
 import { z } from 'zod';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export async function GET(request: NextRequest) {
+  return withAPISecurity(request, async (req, user) => {
+    try {
+      console.log('🚀 GET: Fetching shopping lists for user:', user.id);
 
-export async function GET(_request: NextRequest) {
-  // Simplified version for debugging
-  console.log('🚀 GET: Function called - simplified version');
-  try {
-    console.log('🔄 GET: Starting simplified shopping lists fetch...');
-    
-    const { userId } = await auth();
-    if (!userId) {
-      console.log('❌ GET: No userId from auth');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      // Get user and household data
+      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      
+      if (userError || !household) {
+        return createErrorResponse('User not found or no household', 404);
+      }
+
+      // Query shopping lists for the household
+      const supabase = getDatabaseClient();
+      const { data: shoppingLists, error: listsError } = await supabase
+        .from('shopping_lists')
+        .select('*')
+        .eq('household_id', household.id)
+        .order('created_at', { ascending: false });
+
+      if (listsError) {
+        console.error('❌ GET: Error fetching shopping lists:', listsError);
+        return createErrorResponse('Failed to fetch shopping lists', 500, listsError.message);
+      }
+
+      // Get item counts for each list
+      const listsWithCounts = await Promise.all(
+        shoppingLists?.map(async (list) => {
+          // Get total items count
+          const { count: totalItems } = await supabase
+            .from('shopping_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('list_id', list.id);
+
+          // Get completed items count
+          const { count: completedItems } = await supabase
+            .from('shopping_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('list_id', list.id)
+            .eq('is_complete', true);
+
+          // Get AI suggestions count
+          const { count: aiSuggestions } = await supabase
+            .from('shopping_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('list_id', list.id)
+            .eq('ai_suggested', true);
+
+          console.log(`🔍 Counts for list ${list.title || list.name} (${list.id}):`, {
+            totalItems,
+            completedItems,
+            aiSuggestions
+          });
+
+          return {
+            id: list.id,
+            name: list.title || list.name,
+            description: list.description,
+            created_at: list.created_at,
+            updated_at: list.updated_at || list.created_at,
+            is_completed: false,
+            total_items: totalItems || 0,
+            completed_items: completedItems || 0,
+            ai_suggestions_count: aiSuggestions || 0,
+            ai_confidence: 75
+          };
+        }) || []
+      );
+
+      console.log('✅ GET: Returning transformed lists:', listsWithCounts);
+
+      return createSuccessResponse({
+        shoppingLists: listsWithCounts,
+        plan: household.plan || 'free'
+      }, 'Shopping lists fetched successfully');
+
+    } catch (error) {
+      return handleApiError(error, { route: '/api/shopping-lists', method: 'GET', userId: user.id });
     }
-
-    console.log('✅ GET: Got userId:', userId);
-
-    // Simple query without complex joins
-    console.log('🔍 GET: Querying shopping lists directly...');
-    const { data: shoppingLists, error: listsError } = await supabase
-      .from('shopping_lists')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    console.log('📊 GET: Direct query result:', { shoppingLists, listsError });
-
-    if (listsError) {
-      console.error('❌ GET: Error fetching shopping lists:', listsError);
-      return NextResponse.json({ 
-        error: 'Failed to fetch shopping lists',
-        details: listsError.message 
-      }, { status: 500 });
-    }
-
-    // Transform the data
-    const transformedLists = shoppingLists?.map(list => ({
-      id: list.id,
-      name: list.title || list.name,
-      description: list.description,
-      created_at: list.created_at,
-      updated_at: list.updated_at || list.created_at,
-      is_completed: false,
-      total_items: 0,
-      completed_items: 0,
-      ai_suggestions_count: 0,
-      ai_confidence: 75
-    })) || [];
-
-    console.log('✅ GET: Returning transformed lists:', transformedLists);
-
-    return NextResponse.json({
-      success: true,
-      shoppingLists: transformedLists,
-      plan: 'free'
-    });
-
-  } catch (error) {
-    console.error('💥 GET: Unexpected error in simplified fetch:', error);
-    console.error('💥 GET: Error details:', {
-      name: (error as any)?.name,
-      message: (error as any)?.message,
-      stack: (error as any)?.stack,
-      cause: (error as any)?.cause
-    });
-    return NextResponse.json(
-      { 
-        error: 'Failed to fetch shopping lists',
-        details: (error as any)?.message || 'Unknown error'
-      },
-      { status: 500 }
-    );
-  }
+  }, {
+    requireAuth: true,
+    requireCSRF: false,
+    rateLimitConfig: 'api'
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Validate input using Zod (without household_id since it comes from user context)
-    let validatedData;
+  return withAPISecurity(request, async (req, user) => {
     try {
-      const body = await request.json();
-      // Create a temporary schema for validation that doesn't require household_id
-      const tempSchema = z.object({
-        name: z.string().min(1).max(100),
-        description: z.string().max(500).optional(),
-      });
-      validatedData = tempSchema.parse(body);
-    } catch (validationError: any) {
-      return NextResponse.json({ 
-        error: 'Invalid input', 
-        details: validationError.errors 
-      }, { status: 400 });
-    }
+      console.log('🚀 POST: Creating shopping list for user:', user.id);
 
-    console.log('POST: Fetching user data for userId:', userId);
+      // Validate input using Zod
+      let validatedData;
+      try {
+        const body = await req.json();
+        const { createShoppingListSchema } = await import('@/lib/validation/schemas');
+        const tempSchema = createShoppingListSchema.omit({ household_id: true });
+        validatedData = tempSchema.parse(body);
+      } catch (validationError: any) {
+        return createErrorResponse('Invalid input', 400, validationError.errors);
+      }
 
-    // Get user's household and plan
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select(`
-        household_id,
-        households!inner(
-          plan
-        )
-      `)
-      .eq('id', userId)
-      .single();
-
-    if (userError) {
-      console.error('POST: Error fetching user data:', userError);
+      // Get user and household data
+      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
       
-      // Check if it's a "not found" error vs other database errors
-      if (userError.code === 'PGRST116') {
-        return NextResponse.json({ 
-          error: 'User not found. Please complete onboarding first.',
+      if (userError || !household) {
+        return createErrorResponse('User not found or no household. Please complete onboarding first.', 404, {
           needsOnboarding: true,
           redirectTo: '/onboarding'
-        }, { status: 404 });
+        });
       }
+
+      // Check feature access
+      if (!canAccessFeature(household.plan || 'free', 'meal_planner')) {
+        return createErrorResponse('Feature not available on your plan', 403, {
+          requiredPlan: 'pro',
+          currentPlan: household.plan || 'free'
+        });
+      }
+
+      // Create new shopping list
+      const supabase = getDatabaseClient();
+      const insertData = {
+        title: validatedData.name,
+        description: validatedData.description,
+        household_id: household.id,
+        created_by: user.id
+      };
       
-      return NextResponse.json({ 
-        error: 'Failed to fetch user data', 
-        details: userError.message 
-      }, { status: 500 });
-    }
+      console.log('Creating shopping list with data:', insertData);
+      
+      const { data: newList, error: createError } = await supabase
+        .from('shopping_lists')
+        .insert(insertData)
+        .select()
+        .single();
 
-    if (!userData) {
-      return NextResponse.json({ 
-        error: 'User not found in database. Please complete onboarding first.',
-        needsOnboarding: true,
-        redirectTo: '/onboarding'
-      }, { status: 404 });
-    }
+      if (createError) {
+        console.error('Error creating shopping list:', createError);
+        return createErrorResponse('Failed to create shopping list', 500, createError.message);
+      }
 
-    if (!userData.household_id) {
-      return NextResponse.json({ 
-        error: 'Household not set up. Please complete onboarding first.',
-        needsOnboarding: true,
-        redirectTo: '/onboarding'
-      }, { status: 404 });
-    }
-
-    const householdId = userData.household_id;
-    const userPlan = userData.households?.[0]?.plan || 'free';
-
-    // Check feature access for premium features
-    if (!canAccessFeature(userPlan, 'meal_planner')) {
-      return NextResponse.json({ 
-        error: 'Feature not available on your plan',
-        requiredPlan: 'premium'
-      }, { status: 403 });
-    }
-
-    // Create new shopping list
-    const insertData = {
-      title: validatedData.name,
-      description: validatedData.description,
-      household_id: householdId,
-      created_by: userId
-    };
-    
-    console.log('Attempting to insert shopping list with data:', insertData);
-    
-    const { data: newList, error: createError } = await supabase
-      .from('shopping_lists')
-      .insert(insertData)
-      .select()
-      .single();
-
-    if (createError) {
-      console.error('Error creating shopping list:', createError);
-      console.error('Create error details:', {
-        code: createError.code,
-        message: createError.message,
-        details: createError.details,
-        hint: createError.hint
-      });
-      return NextResponse.json({ 
-        error: 'Failed to create shopping list',
-        details: createError.message 
-      }, { status: 500 });
-    }
-
-    // Add audit log entry
-    try {
-      await supabase.rpc('add_audit_log', {
-        p_action: 'shopping_list.created',
-        p_target_table: 'shopping_lists',
-        p_target_id: newList.id,
-        p_meta: { 
+      // Add audit log entry
+      await createAuditLog({
+        action: 'shopping_list.created',
+        targetTable: 'shopping_lists',
+        targetId: newList.id,
+        userId: user.id,
+        metadata: { 
           list_name: validatedData.name,
-          household_id: householdId,
-          user_plan: userPlan
+          household_id: household.id,
+          user_plan: household.plan || 'free'
         }
       });
-    } catch (auditError) {
-      console.warn('Failed to add audit log:', auditError);
-      // Don't fail the request if audit logging fails
+
+      // Transform the new list to match the GET response format
+      const transformedList = {
+        id: newList.id,
+        name: newList.title || newList.name,
+        description: newList.description,
+        created_at: newList.created_at,
+        updated_at: newList.updated_at || newList.created_at,
+        is_completed: false,
+        total_items: 0,
+        completed_items: 0,
+        ai_suggestions_count: 0,
+        ai_confidence: 75
+      };
+
+      return createSuccessResponse({
+        shoppingList: transformedList,
+        plan: household.plan || 'free'
+      }, 'Shopping list created successfully');
+
+    } catch (error) {
+      return handleApiError(error, { route: '/api/shopping-lists', method: 'POST', userId: user.id });
     }
-
-    // Transform the new list to match the GET response format
-    const transformedList = {
-      id: newList.id,
-      name: newList.title || newList.name,
-      description: newList.description,
-      created_at: newList.created_at,
-      updated_at: newList.updated_at || newList.created_at,
-      is_completed: false,
-      total_items: 0,
-      completed_items: 0,
-      ai_suggestions_count: 0,
-      ai_confidence: 75
-    };
-
-    return NextResponse.json({
-      success: true,
-      shoppingList: transformedList,
-      plan: userPlan
-    });
-
-  } catch (error) {
-    console.error('Error creating shopping list:', error);
-    return NextResponse.json(
-      { error: 'Failed to create shopping list' },
-      { status: 500 }
-    );
-  }
+  }, {
+    requireAuth: true,
+    requireCSRF: true,
+    rateLimitConfig: 'api'
+  });
 }

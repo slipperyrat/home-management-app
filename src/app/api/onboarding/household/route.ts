@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { z } from 'zod';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
-
-const HouseholdSchema = z.object({
-  name: z.string().min(1).max(100),
-});
+import { onboardingHouseholdSchema } from '@/lib/validation/schemas';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,16 +11,26 @@ export async function POST(request: NextRequest) {
       throw new ServerError('Unauthorized', 401);
     }
 
-    const body = await request.json();
-    const validatedData = HouseholdSchema.parse(body);
-    const { name } = validatedData;
+    // Parse and validate request body using Zod schema
+    let validatedData;
+    try {
+      const body = await request.json();
+      validatedData = onboardingHouseholdSchema.parse(body);
+    } catch (validationError: any) {
+      return NextResponse.json({ 
+        error: 'Invalid input', 
+        details: validationError.errors 
+      }, { status: 400 });
+    }
+
+    const { name, game_mode } = validatedData;
 
     // Create household
     const { data: household, error: householdError } = await sb()
       .from('households')
       .insert({
         name: name,
-        game_mode: 'default',
+        game_mode: game_mode,
         created_by: userId,
       })
       .select()

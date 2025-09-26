@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { usePWAPerformance } from '@/lib/performance';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -14,6 +15,7 @@ export default function PWAInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const { trackInstall } = usePWAPerformance();
 
   useEffect(() => {
     // Check if app is already installed
@@ -62,6 +64,9 @@ export default function PWAInstallPrompt() {
 
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
+    
+    // Track installation outcome
+    trackInstall(outcome);
     
     if (outcome === 'accepted') {
       console.log('PWA installation accepted');

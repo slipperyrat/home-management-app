@@ -11,7 +11,7 @@ import { ProBadge } from '@/components/ProBadge';
 interface UserData {
   email: string;
   role: 'owner' | 'member';
-  plan: 'free' | 'premium';
+  plan: 'free' | 'pro' | 'pro_plus';
   xp: number;
   coins: number;
   household: {

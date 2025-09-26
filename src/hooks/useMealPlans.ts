@@ -61,6 +61,7 @@ export interface AssignMealData {
   slot: 'breakfast' | 'lunch' | 'dinner';
   recipe_id: string | null;
   alsoAddToList?: boolean;
+  autoConfirm?: boolean;
 }
 
 export interface CopyWeekData {
@@ -70,6 +71,10 @@ export interface CopyWeekData {
 
 export interface ClearWeekData {
   week: string;
+}
+
+export interface AddWeekIngredientsData {
+  week_start_date: string;
 }
 
 // API functions
@@ -86,8 +91,8 @@ async function fetchMealPlan(weekStart: string): Promise<MealPlan | null> {
   const data = await response.json();
   
   // Handle the API response structure
-  if (data.success && data.mealPlan) {
-    return data.mealPlan;
+  if (data.success && data.data && data.data.mealPlan) {
+    return data.data.mealPlan;
   }
   
   // Return null if no meal plan exists
@@ -95,7 +100,10 @@ async function fetchMealPlan(weekStart: string): Promise<MealPlan | null> {
 }
 
 async function assignMeal(data: AssignMealData): Promise<{ plan: MealPlan; ingredients?: any }> {
-  const response = await fetch('/api/meal-planner/assign', {
+  // Import the CSRF utility
+  const { fetchWithCSRF } = await import('@/lib/csrf-client');
+  
+  const response = await fetchWithCSRF('/api/meal-planner/assign', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -109,7 +117,10 @@ async function assignMeal(data: AssignMealData): Promise<{ plan: MealPlan; ingre
 }
 
 async function copyWeek(data: CopyWeekData): Promise<{ success: boolean; message: string }> {
-  const response = await fetch('/api/meal-planner/copy', {
+  // Import the CSRF utility
+  const { fetchWithCSRF } = await import('@/lib/csrf-client');
+  
+  const response = await fetchWithCSRF('/api/meal-planner/copy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -123,7 +134,10 @@ async function copyWeek(data: CopyWeekData): Promise<{ success: boolean; message
 }
 
 async function clearWeek(data: ClearWeekData): Promise<{ success: boolean; message: string }> {
-  const response = await fetch('/api/meal-planner/clear', {
+  // Import the CSRF utility
+  const { fetchWithCSRF } = await import('@/lib/csrf-client');
+  
+  const response = await fetchWithCSRF('/api/meal-planner/clear', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -131,6 +145,27 @@ async function clearWeek(data: ClearWeekData): Promise<{ success: boolean; messa
 
   if (!response.ok) {
     throw new Error(`Failed to clear week: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function addWeekIngredients(data: AddWeekIngredientsData): Promise<{ 
+  success: boolean; 
+  message: string; 
+  totalAdded: number; 
+  totalUpdated: number; 
+  recipesProcessed: number;
+  results: Array<{ recipeId: string; added: number; updated: number }>;
+}> {
+  const response = await fetch('/api/meal-planner/add-week-ingredients', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to add week ingredients: ${response.status}`);
   }
 
   return response.json();
@@ -198,6 +233,27 @@ export function useAssignMeal() {
       // Return a context object with the snapshotted value
       return { previousMealPlan };
     },
+    onSuccess: (data, variables) => {
+      // Show success message with ingredient information
+      if (data.data && data.data.ingredients) {
+        const { added, updated } = data.data.ingredients;
+        if (added > 0 || updated > 0) {
+          let message = 'Meal assigned successfully!';
+          if (added > 0 && updated > 0) {
+            message += ` Added ${added} new ingredients and updated ${updated} existing ones to your shopping list.`;
+          } else if (added > 0) {
+            message += ` Added ${added} new ingredients to your shopping list.`;
+          } else if (updated > 0) {
+            message += ` Updated ${updated} ingredients in your shopping list.`;
+          }
+          toast.success(message);
+        } else {
+          toast.success('Meal assigned successfully! (No new ingredients needed)');
+        }
+      } else {
+        toast.success('Meal assigned successfully!');
+      }
+    },
     onError: (err, data, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
       if (context?.previousMealPlan) {
@@ -207,8 +263,8 @@ export function useAssignMeal() {
     },
     onSettled: (data) => {
       // Always refetch after error or success
-      if (data) {
-        queryClient.invalidateQueries({ queryKey: ['mealPlan', data.plan.week_start_date] });
+      if (data && data.data && data.data.plan) {
+        queryClient.invalidateQueries({ queryKey: ['mealPlan', data.data.plan.week_start_date] });
       }
     },
   });
@@ -243,6 +299,20 @@ export function useClearWeek() {
     },
     onError: (error) => {
       toast.error(`Failed to clear week: ${error.message}`);
+    },
+  });
+}
+
+export function useAddWeekIngredients() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: addWeekIngredients,
+    onSuccess: (data) => {
+      toast.success(`${data.message} (${data.totalAdded} new, ${data.totalUpdated} updated)`);
+    },
+    onError: (error) => {
+      toast.error(`Failed to add week ingredients: ${error.message}`);
     },
   });
 }

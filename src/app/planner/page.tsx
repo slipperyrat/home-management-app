@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 interface UserData {
   email: string;
   role: 'owner' | 'member';
-  plan: 'free' | 'premium';
+  plan: 'free' | 'pro' | 'pro_plus';
   household: {
     id: string;
     plan: string;

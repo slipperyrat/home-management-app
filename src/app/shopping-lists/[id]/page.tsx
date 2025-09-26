@@ -1,442 +1,608 @@
 'use client';
 
-import { useAuth, useUser } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { useRouter, useParams } from 'next/navigation';
-import { getShoppingItems, addShoppingItem } from '@/lib/shoppingLists';
-import { debugUser } from '@/lib/debugUser';
+import { toast } from 'sonner';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { 
+  ArrowLeft, 
+  Plus, 
+  ShoppingCart, 
+  Brain, 
+  CheckCircle, 
+  Clock,
+  Edit,
+  Trash2,
+  X,
+  Sparkles
+} from 'lucide-react';
+import { fetchWithCSRF } from '@/lib/csrf-client';
 
 interface ShoppingItem {
   id: string;
   name: string;
-  quantity: string | null; // Changed from number to string to support "500 g", "1 kg", etc.
-  completed: boolean;
-  list_id: string;
+  quantity: number;
+  unit: string;
+  category: string;
+  is_completed: boolean;
+  notes?: string;
   created_at: string;
-  completed_at: string | null;
-  completed_by: string | null;
+  updated_at: string;
 }
 
 interface ShoppingList {
   id: string;
-  title: string;
-  created_at: string;
-  created_by: string;
+  name: string;
+  description?: string;
   household_id: string;
+  created_by: string;
+  created_at: string;
+  is_completed: boolean;
+  total_items: number;
+  completed_items: number;
+  ai_suggestions_count: number;
+  ai_confidence: number;
 }
 
 export default function ShoppingListDetailPage() {
-  const { isSignedIn, isLoaded } = useAuth();
-  const { user } = useUser();
+  const { userId } = useAuth();
   const router = useRouter();
   const params = useParams();
   const listId = params.id as string;
   
-  const [shoppingList, setShoppingList] = useState<ShoppingList | null>(null);
-  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
+  const [list, setList] = useState<ShoppingList | null>(null);
+  const [items, setItems] = useState<ShoppingItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemQuantity, setNewItemQuantity] = useState("1");
-  const [addingItem, setAddingItem] = useState(false);
-  const [togglingItems, setTogglingItems] = useState<Set<string>>(new Set());
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [showEditListModal, setShowEditListModal] = useState(false);
+  const [newItem, setNewItem] = useState({
+    name: '',
+    quantity: 1,
+    unit: '',
+    category: 'general',
+    notes: ''
+  });
+  const [editListData, setEditListData] = useState({
+    name: '',
+    description: ''
+  });
+
+  const categories = [
+    'general', 'produce', 'dairy', 'meat', 'pantry', 'frozen', 'bakery', 'beverages', 'snacks', 'health', 'household'
+  ];
 
   useEffect(() => {
-    if (!isLoaded) return;
-
-    if (!isSignedIn) {
-      router.push('/sign-in');
-      return;
-    }
-
     if (listId) {
-      fetchShoppingListData();
+      fetchListDetails();
     }
-  }, [isLoaded, isSignedIn, listId, router]);
+  }, [listId]);
 
-  async function fetchShoppingListData() {
-    if (!listId) return;
-
-    // Check if listId is a valid UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(listId)) {
-      setError('Invalid shopping list ID');
-      setLoading(false);
-      return;
-    }
-
+  const fetchListDetails = async () => {
     try {
-      setLoading(true);
-      setError(null);
-
-      // Debug user data
-      if (user?.id) {
-        await debugUser(user.id);
+      // Fetch list details
+      const listResponse = await fetch(`/api/shopping-lists/${listId}`);
+      if (listResponse.ok) {
+        const listData = await listResponse.json();
+        // Handle the correct API response structure
+        const list = listData.data?.list || listData.list;
+        if (list) {
+          setList(list);
+          setEditListData({
+            name: list.name || list.title, // Handle both 'name' and 'title' fields
+            description: list.description || ''
+          });
+        } else {
+          console.error('List not found in response:', listData);
+          setError('List not found');
+        }
+      } else {
+        setError('Failed to load shopping list');
       }
 
-      // For now, we'll fetch the list data separately
-      // In a real app, you might want to create a getShoppingList function
-      const items = await getShoppingItems(listId);
-      setShoppingItems(items);
-
-      // Mock the list data for now - in a real app you'd fetch this
-      setShoppingList({
-        id: listId,
-        title: `Shopping List ${listId.slice(0, 8)}`,
-        created_at: new Date().toISOString(),
-        created_by: user?.id || '',
-        household_id: ''
-      });
-
-    } catch (err) {
-      console.error('Error fetching shopping list data:', err);
-      setError('Failed to load shopping list');
+      // Fetch items
+      const itemsResponse = await fetch(`/api/shopping-lists/${listId}/items`);
+      if (itemsResponse.ok) {
+        const itemsData = await itemsResponse.json();
+        setItems(itemsData.items || []);
+      }
+    } catch (error) {
+      console.error('Error fetching list details:', error);
+      toast.error('Failed to load shopping list');
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleAddItem() {
-    if (!newItemName.trim() || !listId) return;
-
-    try {
-      setAddingItem(true);
-      const newItem = await addShoppingItem(listId, newItemName.trim(), newItemQuantity);
-      
-      setShoppingItems(prev => [...prev, newItem]);
-      setNewItemName('');
-      setNewItemQuantity("1");
-    } catch (err) {
-      console.error('Error adding shopping item:', err);
-      setError('Failed to add item');
-    } finally {
-      setAddingItem(false);
-    }
-  }
-
-  async function handleToggleItem(itemId: string) {
-    console.log('🔄 handleToggleItem called with:', { itemId, userId: user?.id });
-    
-    if (!user?.id) {
-      console.log('❌ No user ID found');
-      return;
-    }
-
-    // Find the current item for optimistic update
-    const currentItem = shoppingItems.find(item => item.id === itemId);
-    if (!currentItem) {
-      console.log('❌ No current item found');
-      return;
-    }
-
-    // Optimistic update - immediately update UI
-    const optimisticItem = {
-      ...currentItem,
-      completed: !currentItem.completed,
-      completed_by: !currentItem.completed ? user.id : null,
-      completed_at: !currentItem.completed ? new Date().toISOString() : null
-    };
-
-    setShoppingItems(prev => 
-      prev.map(item => 
-        item.id === itemId ? optimisticItem : item
-      )
-    );
-
-    setTogglingItems(prev => new Set(prev).add(itemId));
+  const handleAddItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItem.name.trim()) return;
 
     try {
-      console.log('🎯 About to call API endpoint with:', { itemId, userId: user.id });
-      
-      const response = await fetch('/api/shopping-items/toggle', {
+      const response = await fetch(`/api/shopping-lists/${listId}/items`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ itemId }),
+        body: JSON.stringify(newItem),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to toggle item');
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          toast.success('Item added successfully!');
+          setItems(prev => [...prev, result.item]);
+          setNewItem({ name: '', quantity: 1, unit: '', category: 'general', notes: '' });
+          setShowAddItemModal(false);
+          fetchListDetails(); // Refresh list stats
+        } else {
+          toast.error(`Failed to add item: ${result.error || 'Unknown error'}`);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(`Failed to add item: ${error.error || error.message || 'Unknown error'}`);
       }
-
-      const result = await response.json();
-      console.log('✅ API call succeeded:', result);
-      
-      // Update with actual server response
-      setShoppingItems(prev => 
-        prev.map(item => 
-          item.id === itemId ? result.item : item
-        )
-      );
-    } catch (err) {
-      console.error('❌ Error toggling item:', err);
-      
-      // Revert optimistic update on error
-      setShoppingItems(prev => 
-        prev.map(item => 
-          item.id === itemId ? currentItem : item
-        )
-      );
-      
-      setError('Failed to update item');
-    } finally {
-      setTogglingItems(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(itemId);
-        return newSet;
-      });
+    } catch (error) {
+      toast.error('Failed to add item. Please try again.');
+      console.error('Error adding item:', error);
     }
-  }
+  };
 
-  function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
+  const handleToggleItem = async (itemId: string, isCompleted: boolean) => {
+    try {
+      const response = await fetch(`/api/shopping-items/toggle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ itemId, isCompleted }),
+      });
 
-  // Show loading spinner while auth is loading or data is being fetched
-  if (!isLoaded || loading) {
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          setItems(prev => prev.map(item => 
+            item.id === itemId ? { ...item, is_completed: isCompleted } : item
+          ));
+          fetchListDetails(); // Refresh list stats
+        } else {
+          toast.error(`Failed to update item: ${result.error || 'Unknown error'}`);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(`Failed to update item: ${error.error || error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      toast.error('Failed to update item. Please try again.');
+      console.error('Error updating item:', error);
+    }
+  };
+
+  const handleDeleteItem = async (itemId: string) => {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+
+    try {
+      const response = await fetchWithCSRF(`/api/shopping-lists/${listId}/items/${itemId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          toast.success('Item deleted successfully!');
+          setItems(prev => prev.filter(item => item.id !== itemId));
+          fetchListDetails(); // Refresh list stats
+        } else {
+          toast.error(`Failed to delete item: ${result.error || 'Unknown error'}`);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(`Failed to delete item: ${error.error || error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      toast.error('Failed to delete item. Please try again.');
+      console.error('Error deleting item:', error);
+    }
+  };
+
+  const handleEditList = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editListData.name.trim()) return;
+
+    try {
+      const response = await fetch(`/api/shopping-lists/${listId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editListData),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          toast.success('List updated successfully!');
+          setList(prev => prev ? { ...prev, ...editListData } : null);
+          setShowEditListModal(false);
+        } else {
+          toast.error(`Failed to update list: ${result.error || 'Unknown error'}`);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(`Failed to update list: ${error.error || error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      toast.error('Failed to update list. Please try again.');
+      console.error('Error updating list:', error);
+    }
+  };
+
+  const getCompletionPercentage = () => {
+    if (items.length === 0) return 0;
+    const completed = items.filter(item => item.is_completed).length;
+    return Math.round((completed / items.length) * 100);
+  };
+
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      produce: 'bg-green-100 text-green-800',
+      dairy: 'bg-blue-100 text-blue-800',
+      meat: 'bg-red-100 text-red-800',
+      pantry: 'bg-yellow-100 text-yellow-800',
+      frozen: 'bg-purple-100 text-purple-800',
+      bakery: 'bg-orange-100 text-orange-800',
+      beverages: 'bg-cyan-100 text-cyan-800',
+      snacks: 'bg-pink-100 text-pink-800',
+      health: 'bg-indigo-100 text-indigo-800',
+      household: 'bg-gray-100 text-gray-800',
+      general: 'bg-gray-100 text-gray-800'
+    };
+    return colors[category] || colors.general;
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
+          <ShoppingCart className="h-12 w-12 animate-pulse mx-auto mb-4 text-blue-500" />
+          <p className="text-lg text-gray-600">Loading shopping list...</p>
         </div>
       </div>
     );
   }
 
-  // This should not be reached if redirect is working, but just in case
-  if (!isSignedIn) {
-    return null;
-  }
-
-  // Show error state
-  if (error) {
+  if (!list) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white shadow rounded-lg p-6 max-w-md w-full mx-4">
-          <div className="text-center">
-            <div className="text-red-500 text-6xl mb-4">⚠️</div>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Error</h1>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <div className="space-y-3">
-              <button 
-                onClick={() => {
-          if (typeof window !== 'undefined') {
-            window.location.reload();
-          }
-        }}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 mr-2"
-              >
-                Try Again
-              </button>
-              <button 
-                onClick={() => router.push('/shopping-lists')}
-                className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700"
-              >
-                Back to Lists
-              </button>
-            </div>
-          </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <ShoppingCart className="h-16 w-16 mx-auto mb-6 text-red-500" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">List Not Found</h2>
+          <p className="text-gray-600 mb-6">
+            The shopping list you're looking for doesn't exist or you don't have access to it.
+          </p>
+          <Button onClick={() => router.push('/shopping-lists')}>
+            Back to Shopping Lists
+          </Button>
         </div>
       </div>
     );
   }
-
-  const completedItems = shoppingItems.filter(item => item.completed);
-  const pendingItems = shoppingItems.filter(item => !item.completed);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <button
-            onClick={() => router.back()}
-            className="text-blue-600 hover:text-blue-700 mb-4 flex items-center font-medium"
-          >
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Lists
-          </button>
-          
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 truncate">
-                {shoppingList?.title || 'Shopping List'}
-              </h1>
-              <p className="text-sm sm:text-base text-gray-600">
-                {shoppingItems.length} items • {completedItems.length} completed
-              </p>
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={() => router.push('/shopping-lists')}
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Lists
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">{list.name}</h1>
+                {list.description && (
+                  <p className="text-gray-600 mt-2">{list.description}</p>
+                )}
+              </div>
             </div>
-            <button
-              onClick={fetchShoppingListData}
-              disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 text-sm font-medium whitespace-nowrap"
-            >
-              {loading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              )}
-              Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowEditListModal(true)}
+                className="flex items-center gap-2"
+              >
+                <Edit className="h-4 w-4" />
+                Edit List
+              </Button>
+              <Button
+                onClick={() => setShowAddItemModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Item
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Debug section */}
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-          <h3 className="text-sm font-semibold text-yellow-800 mb-2">Debug Info</h3>
-          <p className="text-sm text-yellow-700 mb-2">User ID: {user?.id}</p>
-          <button
-            onClick={() => user?.id && debugUser(user.id)}
-            className="text-xs bg-yellow-600 text-white px-2 py-1 rounded hover:bg-yellow-700"
-          >
-            Debug User in Database
-          </button>
-        </div>
-
-        {/* Add new item section */}
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6 sm:mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Add New Item</h2>
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Item Name
-              </label>
-              <input
-                type="text"
-                value={newItemName}
-                onChange={(e) => setNewItemName(e.target.value)}
-                placeholder="Enter item name..."
-                className="w-full px-4 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                onKeyPress={(e) => e.key === 'Enter' && handleAddItem()}
-              />
+        {/* Progress Card */}
+        <Card className="mb-8">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-medium">Progress</h3>
+                <p className="text-sm text-gray-600">
+                  {items.filter(item => item.is_completed).length} of {items.length} items completed
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-blue-600">{getCompletionPercentage()}%</div>
+                <div className="text-sm text-gray-500">Complete</div>
+              </div>
             </div>
-            <div className="w-full sm:w-24">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quantity
-              </label>
-              <input
-                type="text"
-                value={newItemQuantity}
-                onChange={(e) => setNewItemQuantity(e.target.value || "1")}
-                placeholder="1"
-                className="w-full px-4 py-3 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <button
-              onClick={handleAddItem}
-              disabled={!newItemName.trim() || addingItem}
-              className="px-6 py-3 sm:py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-base sm:text-sm"
-            >
-              {addingItem ? 'Adding...' : 'Add Item'}
-            </button>
-          </div>
-        </div>
+            <Progress value={getCompletionPercentage()} className="h-2" />
+          </CardContent>
+        </Card>
 
-        {/* Shopping items */}
-        <div className="space-y-6">
-          {/* Pending items */}
-          {pendingItems.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">To Buy</h2>
-              <div className="bg-white rounded-lg shadow">
-                {pendingItems.map((item) => (
+        {/* Items List */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5" />
+              Items ({items.length})
+            </CardTitle>
+            <CardDescription>
+              Manage your shopping list items
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {items.length > 0 ? (
+              <div className="space-y-3">
+                {items.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center p-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 active:bg-gray-100 touch-manipulation"
+                    className={`flex items-center gap-4 p-4 border rounded-lg ${
+                      item.is_completed ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'
+                    }`}
                   >
                     <button
-                      onClick={() => handleToggleItem(item.id)}
-                      disabled={togglingItems.has(item.id)}
-                      className="flex-shrink-0 w-8 h-8 sm:w-6 sm:h-6 border-2 border-gray-300 rounded-full mr-3 sm:mr-4 hover:border-blue-500 disabled:opacity-50 flex items-center justify-center touch-manipulation"
+                      onClick={() => handleToggleItem(item.id, !item.is_completed)}
+                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                        item.is_completed
+                          ? 'bg-green-500 border-green-500 text-white'
+                          : 'border-gray-300 hover:border-green-500'
+                      }`}
                     >
-                      {togglingItems.has(item.id) && (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
-                      )}
+                      {item.is_completed && <CheckCircle className="h-4 w-4" />}
                     </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:items-center">
-                        <span className="text-gray-900 font-medium truncate">
+                    
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h4 className={`font-medium ${item.is_completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                           {item.name}
-                        </span>
-                        {item.quantity ? <span className="text-gray-500 text-sm sm:ml-2">
-                            ({item.quantity})
-                          </span> : null}
+                        </h4>
+                        <Badge className={getCategoryColor(item.category)}>
+                          {item.category}
+                        </Badge>
+                        {item.quantity > 1 && (
+                          <span className="text-sm text-gray-600">
+                            {item.quantity} {item.unit}
+                          </span>
+                        )}
                       </div>
+                      {item.notes && (
+                        <p className="text-sm text-gray-600">{item.notes}</p>
+                      )}
                     </div>
-                    <div className="text-xs sm:text-sm text-gray-500 ml-2 hidden sm:block">
-                      {formatDate(item.created_at)}
+                    
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Completed items */}
-          {completedItems.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Completed</h2>
-              <div className="bg-white rounded-lg shadow">
-                {completedItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center p-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 active:bg-gray-100 touch-manipulation"
-                  >
-                    <button
-                      onClick={() => handleToggleItem(item.id)}
-                      disabled={togglingItems.has(item.id)}
-                      className="flex-shrink-0 w-8 h-8 sm:w-6 sm:h-6 bg-green-500 border-2 border-green-500 rounded-full mr-3 sm:mr-4 flex items-center justify-center hover:bg-green-600 disabled:opacity-50 touch-manipulation"
-                    >
-                      {togglingItems.has(item.id) ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                      ) : (
-                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:items-center">
-                        <span className="text-gray-500 line-through truncate">
-                          {item.name}
-                        </span>
-                        {item.quantity ? <span className="text-gray-400 text-sm sm:ml-2">
-                            ({item.quantity})
-                          </span> : null}
-                      </div>
-                    </div>
-                    <div className="text-xs sm:text-sm text-gray-500 ml-2 hidden sm:block">
-                      {item.completed_at ? formatDate(item.completed_at) : null}
-                    </div>
-                  </div>
-                ))}
+            ) : (
+              <div className="text-center py-12">
+                <ShoppingCart className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No items yet</h3>
+                <p className="text-gray-500 mb-6">
+                  Add your first item to get started with this shopping list
+                </p>
+                <Button
+                  onClick={() => setShowAddItemModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add First Item
+                </Button>
               </div>
-            </div>
-          )}
+            )}
+          </CardContent>
+        </Card>
 
-          {/* Empty state */}
-          {shoppingItems.length === 0 && !loading && (
-            <div className="text-center py-12">
-              <div className="text-gray-400 text-6xl mb-4">📝</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No items yet</h3>
-              <p className="text-gray-600">Add your first item to get started!</p>
+        {/* Add Item Modal */}
+        {showAddItemModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Add New Item</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAddItemModal(false)}
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              <form onSubmit={handleAddItem} className="space-y-4">
+                <div>
+                  <Label htmlFor="item-name">Item Name *</Label>
+                  <Input
+                    id="item-name"
+                    value={newItem.name}
+                    onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., Milk"
+                    className="mt-1"
+                    required
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="quantity">Quantity</Label>
+                    <Input
+                      id="quantity"
+                      type="number"
+                      min="1"
+                      value={newItem.quantity}
+                      onChange={(e) => setNewItem(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="unit">Unit</Label>
+                    <Input
+                      id="unit"
+                      value={newItem.unit}
+                      onChange={(e) => setNewItem(prev => ({ ...prev, unit: e.target.value }))}
+                      placeholder="e.g., liters"
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <Label htmlFor="category">Category</Label>
+                  <select
+                    id="category"
+                    value={newItem.category}
+                    onChange={(e) => setNewItem(prev => ({ ...prev, category: e.target.value }))}
+                    className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category.charAt(0).toUpperCase() + category.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <Label htmlFor="notes">Notes (optional)</Label>
+                  <Textarea
+                    id="notes"
+                    value={newItem.notes}
+                    onChange={(e) => setNewItem(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Any additional notes..."
+                    className="mt-1"
+                    rows={2}
+                  />
+                </div>
+                
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    type="submit"
+                    disabled={!newItem.name.trim()}
+                    className="flex-1"
+                  >
+                    Add Item
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddItemModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Edit List Modal */}
+        {showEditListModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Edit List</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowEditListModal(false)}
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              <form onSubmit={handleEditList} className="space-y-4">
+                <div>
+                  <Label htmlFor="list-name">List Name *</Label>
+                  <Input
+                    id="list-name"
+                    value={editListData.name}
+                    onChange={(e) => setEditListData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., Groceries for this week"
+                    className="mt-1"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="list-description">Description</Label>
+                  <Textarea
+                    id="list-description"
+                    value={editListData.description}
+                    onChange={(e) => setEditListData(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="e.g., Weekly grocery shopping for family of 4"
+                    className="mt-1"
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    type="submit"
+                    disabled={!editListData.name.trim()}
+                    className="flex-1"
+                  >
+                    Update List
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowEditListModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
-} 
+}

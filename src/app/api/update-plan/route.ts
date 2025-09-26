@@ -33,9 +33,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    if (!['free', 'premium'].includes(plan)) {
+    if (!['free', 'pro', 'pro_plus'].includes(plan)) {
       return NextResponse.json({ 
-        error: "Invalid plan. Must be 'free' or 'premium'" 
+        error: "Invalid plan. Must be 'free', 'pro', or 'pro_plus'" 
       }, { status: 400 });
     }
 

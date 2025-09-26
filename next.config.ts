@@ -17,12 +17,14 @@ const nextConfig: NextConfig = {
   // Experimental features for better performance
   experimental: {
     optimizePackageImports: ['@clerk/nextjs', '@supabase/supabase-js'],
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
+  },
+  
+  // Turbopack configuration (moved from experimental)
+  turbopack: {
+    rules: {
+      '*.svg': {
+        loaders: ['@svgr/webpack'],
+        as: '*.js',
       },
     },
   },
@@ -62,26 +64,60 @@ const nextConfig: NextConfig = {
         ...newConfig.optimization,
         splitChunks: {
           chunks: 'all',
+          minSize: 20000,
+          maxSize: 244000, // 244KB limit per chunk
           cacheGroups: {
+            // Core framework chunks
+            framework: {
+              test: /[\\/]node_modules[\\/](react|react-dom|next)[\\/]/,
+              name: 'framework',
+              chunks: 'all',
+              priority: 40,
+              enforce: true,
+            },
+            // UI library chunks
+            ui: {
+              test: /[\\/]node_modules[\\/](@radix-ui|@heroicons|sonner)[\\/]/,
+              name: 'ui',
+              chunks: 'all',
+              priority: 30,
+            },
+            // Clerk authentication
+            clerk: {
+              test: /[\\/]node_modules[\\/]@clerk[\\/]/,
+              name: 'clerk',
+              chunks: 'async', // Lazy load
+              priority: 25,
+              maxSize: 200000, // 200KB limit
+            },
+            // Supabase database
+            supabase: {
+              test: /[\\/]node_modules[\\/]@supabase[\\/]/,
+              name: 'supabase',
+              chunks: 'async', // Lazy load
+              priority: 25,
+              maxSize: 150000, // 150KB limit
+            },
+            // Analytics and monitoring
+            analytics: {
+              test: /[\\/]node_modules[\\/](@vercel|@sentry)[\\/]/,
+              name: 'analytics',
+              chunks: 'async',
+              priority: 20,
+            },
+            // Other vendor libraries
             vendor: {
               test: /[\\/]node_modules[\\/]/,
               name: 'vendors',
               chunks: 'all',
-            },
-            clerk: {
-              test: /[\\/]node_modules[\\/]@clerk[\\/]/,
-              name: 'clerk',
-              chunks: 'all',
               priority: 10,
-            },
-            supabase: {
-              test: /[\\/]node_modules[\\/]@supabase[\\/]/,
-              name: 'supabase',
-              chunks: 'all',
-              priority: 10,
+              maxSize: 244000, // 244KB limit
             },
           },
         },
+        // Enable tree shaking
+        usedExports: true,
+        sideEffects: false,
       };
     }
     
@@ -105,7 +141,7 @@ const pwaConfig = withPWA({
   dest: "public",
   register: true,
   skipWaiting: true,
-  disable: false, // Enable PWA in development for notifications
+  disable: process.env.NODE_ENV === 'development' && !process.env.ENABLE_PWA_DEV,
   buildExcludes: [/middleware-manifest\.json$/],
   runtimeCaching: [
     {
@@ -153,7 +189,6 @@ const pwaConfig = withPWA({
   dynamicStartUrl: false,
   reloadOnOnline: true,
   cacheOnFrontEndNav: true,
-  disable: process.env.NODE_ENV === 'development',
 })(nextConfig as any);
 
 export default withSentryConfig(pwaConfig, {

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 interface UserData {
   email: string;
   role: 'owner' | 'member';
-  plan: 'free' | 'premium';
+  plan: 'free' | 'pro' | 'pro_plus';
   xp: number;
   coins: number;
   household: {
@@ -92,8 +92,8 @@ export default function DebugPage() {
           <div className="space-y-2">
             <p><strong>Current Plan:</strong> {userData?.plan}</p>
             <p><strong>Household Plan:</strong> {userData?.household?.plan}</p>
-            <p><strong>Can Access Rewards:</strong> {userData?.plan === 'premium' ? 'Yes' : 'No'}</p>
-            <p><strong>Feature Check:</strong> {userData?.plan === 'premium' ? 'xp_rewards should be available' : 'xp_rewards not available'}</p>
+            <p><strong>Can Access Rewards:</strong> {userData?.plan === 'pro' || userData?.plan === 'pro_plus' ? 'Yes' : 'No'}</p>
+            <p><strong>Feature Check:</strong> {userData?.plan === 'pro' || userData?.plan === 'pro_plus' ? 'xp_rewards should be available' : 'xp_rewards not available'}</p>
           </div>
         </div>
 

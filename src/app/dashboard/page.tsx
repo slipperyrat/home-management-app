@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 
 import TestSyncButton from '@/components/TestSyncButton';
 import { FeatureCard } from '@/components/ui/FeatureCard';
+import TodayView from '@/components/TodayView';
 
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { DashboardSkeleton } from '@/components/ui/DashboardSkeleton';
@@ -18,7 +19,7 @@ export default function DashboardPage() {
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
 
   useEffect(() => {
-    // Start performance monitoring for dashboard
+    // Re-enable performance monitoring for dashboard
     performanceMonitor.start('dashboard-render');
     
     if (!isLoaded) return;
@@ -69,14 +70,16 @@ export default function DashboardPage() {
           
           <div className="text-center mb-6 sm:mb-8">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-              Welcome to Your Dashboard
+              Welcome back, {userData?.name || user?.firstName || 'there'}! 👋
             </h1>
             <p className="text-sm sm:text-base text-gray-600">
-              {userData?.role === 'owner' 
-                ? "👑 You have owner privileges" 
-                : "👋 You're a member of this workspace"
-              }
+              Here's your personalized overview for today. Everything you need in one place.
             </p>
+          </div>
+
+          {/* Today View - Main Content */}
+          <div className="mb-8">
+            <TodayView />
           </div>
 
           {/* Welcome back banner for recently onboarded users */}
@@ -168,39 +171,48 @@ export default function DashboardPage() {
              </div>
           </div>
 
+
           {/* Quick Actions */}
           <div className="bg-white shadow rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" role="group" aria-label="Quick action buttons">
               <button
                 onClick={() => router.push('/chores')}
-                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                aria-label="Add a new chore"
+                type="button"
               >
-                <span className="text-2xl mb-2">✅</span>
+                <span className="text-2xl mb-2" aria-hidden="true">✅</span>
                 <span className="text-sm font-medium text-gray-700">Add Chore</span>
               </button>
 
               <button
                 onClick={() => router.push('/meal-planner')}
-                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-green-300 hover:bg-green-50 transition-colors"
+                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-green-300 hover:bg-green-50 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                aria-label="Plan a meal"
+                type="button"
               >
-                <span className="text-2xl mb-2">🍽️</span>
+                <span className="text-2xl mb-2" aria-hidden="true">🍽️</span>
                 <span className="text-sm font-medium text-gray-700">Plan Meal</span>
               </button>
 
               <button
                 onClick={() => router.push('/shopping-lists')}
-                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-colors"
+                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-purple-300 hover:bg-purple-50 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                aria-label="Manage shopping lists"
+                type="button"
               >
-                <span className="text-2xl mb-2">🛒</span>
+                <span className="text-2xl mb-2" aria-hidden="true">🛒</span>
                 <span className="text-sm font-medium text-gray-700">Shopping</span>
               </button>
 
               <button
                 onClick={() => router.push('/calendar')}
-                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors"
+                className="flex flex-col items-center p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+                aria-label="View calendar"
+                type="button"
               >
-                <span className="text-2xl mb-2">📅</span>
+                <span className="text-2xl mb-2" aria-hidden="true">📅</span>
                 <span className="text-sm font-medium text-gray-700">Calendar</span>
               </button>
             </div>
@@ -258,7 +270,7 @@ export default function DashboardPage() {
           </div>
 
                      {/* Pro Features Promotion */}
-           {userData?.plan !== 'premium' && (
+           {userData?.plan === 'free' && (
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
               <div className="text-center">
                 <h3 className="text-lg font-semibold text-purple-900 mb-2">

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       return NextResponse.json({ 
         error: 'Feature access test failed',
-        requiredPlan: 'premium',
+        requiredPlan: 'pro',
         currentPlan: testPlan,
         availableFeatures
       }, { status: 403 });

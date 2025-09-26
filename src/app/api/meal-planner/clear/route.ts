@@ -1,73 +1,98 @@
-import { NextResponse } from 'next/server';
-import { sb, getUserAndHousehold } from '@/lib/server/supabaseAdmin';
-import { ClearWeekSchema, validateRequest, createValidationErrorResponse } from '@/lib/validation';
+import { NextRequest, NextResponse } from 'next/server';
+import { withAPISecurity } from '@/lib/security/apiProtection';
+import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
+import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { mealPlannerClearSchema } from '@/lib/validation/schemas';
 
-export async function POST(req: Request) {
-  try {
-    const { householdId } = await getUserAndHousehold();
-    const body = await req.json();
+export async function POST(req: NextRequest) {
+  return withAPISecurity(req, async (request, user) => {
+    try {
+      console.log('🚀 POST: Clearing meal plan for user:', user.id);
 
-    // Validate request body with Zod
-    const validation = validateRequest(ClearWeekSchema, body);
-    if (!validation.success) {
-      return createValidationErrorResponse(validation.error);
+      // Parse and validate request body using Zod schema
+      let validatedData;
+      try {
+        const body = await request.json();
+        const tempSchema = mealPlannerClearSchema.omit({ household_id: true });
+        validatedData = tempSchema.parse(body);
+      } catch (validationError: any) {
+        return createErrorResponse('Invalid input', 400, validationError.errors);
+      }
+
+      // Get user and household data
+      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      
+      if (userError || !household) {
+        return createErrorResponse('User not found or no household', 404);
+      }
+
+      const { week_start: week } = validatedData;
+
+      const supabase = getDatabaseClient();
+
+      // Check if meal plan exists for this week
+      const { data: existingPlan, error: checkError } = await supabase
+        .from('meal_plans')
+        .select('id')
+        .eq('household_id', household.id)
+        .eq('week_start_date', week)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Error checking meal plan:', checkError);
+        return createErrorResponse('Failed to check meal plan', 500);
+      }
+
+      if (!existingPlan) {
+        return createErrorResponse('No meal plan found for this week', 404);
+      }
+
+      // Clear all meals for the week (set to empty structure)
+      const emptyMeals = {
+        monday: { breakfast: null, lunch: null, dinner: null },
+        tuesday: { breakfast: null, lunch: null, dinner: null },
+        wednesday: { breakfast: null, lunch: null, dinner: null },
+        thursday: { breakfast: null, lunch: null, dinner: null },
+        friday: { breakfast: null, lunch: null, dinner: null },
+        saturday: { breakfast: null, lunch: null, dinner: null },
+        sunday: { breakfast: null, lunch: null, dinner: null },
+      };
+
+      // Update the meal plan with empty meals
+      const { data: updatedPlan, error: updateError } = await supabase
+        .from('meal_plans')
+        .update({
+          meals: emptyMeals,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingPlan.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('Error clearing meal plan:', updateError);
+        return createErrorResponse('Failed to clear meal plan', 500);
+      }
+
+      // Create audit log
+      await createAuditLog({
+        user_id: user.id,
+        household_id: household.id,
+        action: 'meal_plan_cleared',
+        details: { week_start: week }
+      });
+
+      return createSuccessResponse({
+        message: `Meal plan for week ${week} has been cleared`,
+        plan: updatedPlan
+      });
+    } catch (e: any) {
+      console.error('Error in clear week API:', e);
+      return handleApiError(e);
     }
-
-    const { week } = validation.data;
-
-    const supabase = sb();
-
-    // Check if meal plan exists for this week
-    const { data: existingPlan, error: checkError } = await supabase
-      .from('meal_plans')
-      .select('id')
-      .eq('household_id', householdId)
-      .eq('week_start_date', week)
-      .maybeSingle();
-
-    if (checkError) {
-      console.error('Error checking meal plan:', checkError);
-      return NextResponse.json({ error: 'Failed to check meal plan' }, { status: 500 });
-    }
-
-    if (!existingPlan) {
-      return NextResponse.json({ error: 'No meal plan found for this week' }, { status: 404 });
-    }
-
-    // Clear all meals for the week (set to empty structure)
-    const emptyMeals = {
-      monday: { breakfast: null, lunch: null, dinner: null },
-      tuesday: { breakfast: null, lunch: null, dinner: null },
-      wednesday: { breakfast: null, lunch: null, dinner: null },
-      thursday: { breakfast: null, lunch: null, dinner: null },
-      friday: { breakfast: null, lunch: null, dinner: null },
-      saturday: { breakfast: null, lunch: null, dinner: null },
-      sunday: { breakfast: null, lunch: null, dinner: null },
-    };
-
-    // Update the meal plan with empty meals
-    const { data: updatedPlan, error: updateError } = await supabase
-      .from('meal_plans')
-      .update({
-        meals: emptyMeals,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', existingPlan.id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Error clearing meal plan:', updateError);
-      return NextResponse.json({ error: 'Failed to clear meal plan' }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Meal plan for week ${week} has been cleared`,
-      plan: updatedPlan
-    });
-  } catch (e: any) {
-    console.error('Error in clear week API:', e);
-    return NextResponse.json({ error: e.message || 'Internal server error' }, { status: 500 });
-  }
+  }, {
+    requireAuth: true,
+    requireCSRF: true,
+    rateLimitConfig: 'api'
+  });
 }

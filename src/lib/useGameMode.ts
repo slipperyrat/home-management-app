@@ -6,10 +6,10 @@ import { useAuth, useUser } from '@clerk/nextjs';
 interface UserData {
   email: string;
   role: 'owner' | 'member';
-  plan: 'free' | 'premium';
+  plan: 'free' | 'pro' | 'pro_plus';
   household: {
     id: string;
-    plan: 'free' | 'premium';
+    plan: 'free' | 'pro' | 'pro_plus';
     game_mode: string;
     created_at: string;
   };

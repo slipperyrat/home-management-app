@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { canAccessFeature } from '@/lib/planFeatures';
 import { useUpgradeModal } from '@/hooks/useUpgradeModal';
+import { trackFeatureUsage } from '@/lib/analytics';
 import { useState } from 'react';
 
 interface FeatureGatedButtonProps {
@@ -15,6 +16,8 @@ interface FeatureGatedButtonProps {
   className?: string;
   variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
   size?: 'default' | 'sm' | 'lg' | 'icon';
+  userId?: string;
+  householdId?: string;
 }
 
 export function FeatureGatedButton({
@@ -26,6 +29,8 @@ export function FeatureGatedButton({
   className,
   variant = 'default',
   size = 'default',
+  userId,
+  householdId,
 }: FeatureGatedButtonProps) {
   const upgradeModal = useUpgradeModal();
   const [isLoading, setIsLoading] = useState(false);
@@ -36,14 +41,21 @@ export function FeatureGatedButton({
     if (disabled || isLoading) return;
     
     if (!hasAccess) {
+      // Track upgrade prompt shown
+      trackFeatureUsage(feature, 'upgrade_prompt_shown', userPlan, userId, householdId);
       upgradeModal.onOpen();
       return;
     }
+
+    // Track feature usage
+    trackFeatureUsage(feature, 'button_clicked', userPlan, userId, householdId);
 
     if (onClick) {
       setIsLoading(true);
       try {
         await onClick();
+        // Track successful feature usage
+        trackFeatureUsage(feature, 'action_completed', userPlan, userId, householdId);
       } finally {
         setIsLoading(false);
       }
@@ -62,7 +74,7 @@ export function FeatureGatedButton({
     </Button>
   );
 
-  // Show tooltip for premium features when user doesn't have access
+  // Show tooltip for Pro features when user doesn't have access
   if (!hasAccess) {
     return (
       <TooltipProvider>
@@ -71,7 +83,7 @@ export function FeatureGatedButton({
             {button}
           </TooltipTrigger>
           <TooltipContent>
-            <p>This feature requires a premium plan</p>
+            <p>This feature requires a Pro plan or higher</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

@@ -59,7 +59,7 @@ export interface UpdateRecipeData extends Partial<CreateRecipeData> {
 }
 
 // API functions
-async function fetchRecipes(): Promise<{ success: boolean; recipes: Recipe[] }> {
+async function fetchRecipes(): Promise<{ success: boolean; data: { recipes: Recipe[] } }> {
   const response = await fetch('/api/recipes');
   if (!response.ok) {
     throw new Error('Failed to fetch recipes');
@@ -75,7 +75,7 @@ async function fetchRecipe(recipeId: string): Promise<{ success: boolean; recipe
   return response.json();
 }
 
-async function fetchRecipesByTag(tag: string): Promise<{ success: boolean; recipes: Recipe[] }> {
+async function fetchRecipesByTag(tag: string): Promise<{ success: boolean; data: { recipes: Recipe[] } }> {
   const response = await fetch(`/api/recipes?tag=${encodeURIComponent(tag)}`);
   if (!response.ok) {
     throw new Error('Failed to fetch recipes by tag');
@@ -83,7 +83,7 @@ async function fetchRecipesByTag(tag: string): Promise<{ success: boolean; recip
   return response.json();
 }
 
-async function fetchFavoriteRecipes(): Promise<{ success: boolean; recipes: Recipe[] }> {
+async function fetchFavoriteRecipes(): Promise<{ success: boolean; data: { recipes: Recipe[] } }> {
   const response = await fetch('/api/recipes?favorites=true');
   if (!response.ok) {
     throw new Error('Failed to fetch favorite recipes');
@@ -185,8 +185,8 @@ export function useCreateRecipe() {
       
       // Add the new recipe to cache
       queryClient.setQueryData(
-        queryKeys.recipes.byId(data.recipe.id),
-        { success: true, recipe: data.recipe }
+        queryKeys.recipes.byId(data.data.recipe.id),
+        { success: true, recipe: data.data.recipe }
       );
     },
     onError: (error) => {
@@ -203,8 +203,8 @@ export function useUpdateRecipe() {
     onSuccess: (data) => {
       // Update the specific recipe in cache
       queryClient.setQueryData(
-        queryKeys.recipes.byId(data.recipe.id),
-        { success: true, recipe: data.recipe }
+        queryKeys.recipes.byId(data.data.recipe.id),
+        { success: true, recipe: data.data.recipe }
       );
       
       // Invalidate the list to reflect changes
@@ -287,7 +287,10 @@ export function useOptimisticRecipes() {
       queryKeys.recipes.all,
       (oldData: any) => ({
         ...oldData,
-        recipes: [optimisticRecipe, ...(oldData?.recipes || [])],
+        data: {
+          ...oldData?.data,
+          recipes: [optimisticRecipe, ...(oldData?.data?.recipes || [])],
+        },
       })
     );
     
@@ -299,7 +302,10 @@ export function useOptimisticRecipes() {
       queryKeys.recipes.all,
       (oldData: any) => ({
         ...oldData,
-        recipes: (oldData?.recipes || []).filter((r: Recipe) => r.id !== tempId),
+        data: {
+          ...oldData?.data,
+          recipes: (oldData?.data?.recipes || []).filter((r: Recipe) => r.id !== tempId),
+        },
       })
     );
   };

@@ -72,11 +72,27 @@ export async function GET(request: NextRequest) {
     // Extract data from the direct query
     const householdId = data.household_id;
     
-    // For now, use default values since we're not querying household details
-    // TODO: Add separate query for household details if needed
-    const plan = 'free';
-    const createdAt = null;
-    const gameMode = 'default';
+    // Query household details to get the actual plan
+    let plan = 'free';
+    let createdAt = null;
+    let gameMode = 'default';
+    
+    if (householdId) {
+      const { data: householdData, error: householdError } = await supabase
+        .from('households')
+        .select('plan, created_at, game_mode')
+        .eq('id', householdId)
+        .maybeSingle();
+      
+      if (householdError) {
+        console.error('❌ Household query error:', householdError);
+      } else if (householdData) {
+        plan = householdData.plan || 'free';
+        createdAt = householdData.created_at;
+        gameMode = householdData.game_mode || 'default';
+        console.log('🔍 Household data found:', { plan, createdAt, gameMode });
+      }
+    }
 
     // Auto-upgrade logic for free plans after 7 days
     if (plan === "free" && createdAt) {
@@ -85,17 +101,17 @@ export async function GET(request: NextRequest) {
       const daysSinceCreation = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
 
       if (daysSinceCreation >= 7) {
-        console.log(`Auto-upgrading household ${householdId} to premium (${daysSinceCreation} days old)`);
+        console.log(`Auto-upgrading household ${householdId} to pro (${daysSinceCreation} days old)`);
         
         const { error: updateError } = await supabase
           .from("households")
-          .update({ plan: "premium" })
+          .update({ plan: "pro" })
           .eq("id", householdId);
 
         if (updateError) {
           console.error('Error updating plan:', updateError);
         } else {
-          console.log(`Successfully auto-upgraded household ${householdId} to premium`);
+          console.log(`Successfully auto-upgraded household ${householdId} to pro`);
         }
       }
     }

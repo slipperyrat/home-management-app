@@ -199,3 +199,92 @@ export function usePerformanceMeasure(name: string, dependencies: any[] = []) {
     };
   }, dependencies);
 }
+
+// Enhanced performance monitoring for PWA
+export class PWAPerformanceMonitor {
+  private static instance: PWAPerformanceMonitor;
+  private metrics: Map<string, any> = new Map();
+
+  static getInstance(): PWAPerformanceMonitor {
+    if (!PWAPerformanceMonitor.instance) {
+      PWAPerformanceMonitor.instance = new PWAPerformanceMonitor();
+    }
+    return PWAPerformanceMonitor.instance;
+  }
+
+  // Track PWA-specific metrics
+  trackPWAInstall(outcome: 'accepted' | 'dismissed') {
+    this.metrics.set('pwa_install', {
+      outcome,
+      timestamp: Date.now(),
+    });
+    console.log(`PWA Install: ${outcome}`);
+  }
+
+  trackOfflineUsage(feature: string, duration: number) {
+    this.metrics.set(`offline_${feature}`, {
+      feature,
+      duration,
+      timestamp: Date.now(),
+    });
+    console.log(`Offline Usage: ${feature} for ${duration}ms`);
+  }
+
+  trackBundleLoadTime(bundle: string, loadTime: number) {
+    this.metrics.set(`bundle_${bundle}`, {
+      bundle,
+      loadTime,
+      timestamp: Date.now(),
+    });
+    console.log(`Bundle Load: ${bundle} in ${loadTime}ms`);
+  }
+
+  trackCacheHitRate(cache: string, hitRate: number) {
+    this.metrics.set(`cache_${cache}`, {
+      cache,
+      hitRate,
+      timestamp: Date.now(),
+    });
+    console.log(`Cache Hit Rate: ${cache} ${hitRate}%`);
+  }
+
+  // Get all metrics
+  getAllMetrics() {
+    return Object.fromEntries(this.metrics);
+  }
+
+  // Clear metrics
+  clearMetrics() {
+    this.metrics.clear();
+  }
+}
+
+// Export singleton instance
+export const pwaPerformanceMonitor = PWAPerformanceMonitor.getInstance();
+
+// Enhanced performance hooks
+export function usePWAPerformance() {
+  const trackInstall = (outcome: 'accepted' | 'dismissed') => {
+    pwaPerformanceMonitor.trackPWAInstall(outcome);
+  };
+
+  const trackOfflineUsage = (feature: string, duration: number) => {
+    pwaPerformanceMonitor.trackOfflineUsage(feature, duration);
+  };
+
+  const trackBundleLoad = (bundle: string, loadTime: number) => {
+    pwaPerformanceMonitor.trackBundleLoadTime(bundle, loadTime);
+  };
+
+  const trackCacheHit = (cache: string, hitRate: number) => {
+    pwaPerformanceMonitor.trackCacheHitRate(cache, hitRate);
+  };
+
+  return {
+    trackInstall,
+    trackOfflineUsage,
+    trackBundleLoad,
+    trackCacheHit,
+    getAllMetrics: () => pwaPerformanceMonitor.getAllMetrics(),
+  };
+}

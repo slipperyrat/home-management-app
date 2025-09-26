@@ -23,7 +23,7 @@ interface ShoppingItem {
   completed: boolean;
   completed_by?: string;
   completed_at?: string;
-  shopping_list_id: string;
+  list_id: string;
   created_at: string;
 }
 
@@ -36,12 +36,14 @@ interface AddItemData {
   name: string;
   quantity: number;
   unit: string;
-  shopping_list_id: string;
+  list_id: string;
 }
 
 // API functions
-const fetchShoppingLists = async (): Promise<{ success: boolean; shoppingLists: ShoppingList[]; plan: string }> => {
-  const response = await fetch('/api/shopping-lists');
+const fetchShoppingLists = async (): Promise<{ success: boolean; data: { shoppingLists: ShoppingList[]; plan: string } }> => {
+  const response = await fetch('/api/shopping-lists', {
+    credentials: 'include', // Ensure authentication cookies are sent
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch shopping lists');
   }
@@ -53,6 +55,7 @@ const createShoppingList = async (data: CreateShoppingListData): Promise<{ succe
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+    credentials: 'include', // Ensure authentication cookies are sent
   });
   if (!response.ok) {
     throw new Error('Failed to create shopping list');
@@ -65,6 +68,7 @@ const addShoppingItem = async (data: AddItemData): Promise<{ success: boolean; i
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
+    credentials: 'include', // Ensure authentication cookies are sent
   });
   if (!response.ok) {
     throw new Error('Failed to add shopping item');
@@ -77,6 +81,7 @@ const toggleShoppingItem = async (itemId: string): Promise<{ success: boolean; i
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ itemId }),
+    credentials: 'include', // Ensure authentication cookies are sent
   });
   if (!response.ok) {
     throw new Error('Failed to toggle shopping item');
@@ -87,6 +92,7 @@ const toggleShoppingItem = async (itemId: string): Promise<{ success: boolean; i
 const deleteShoppingList = async (id: string): Promise<{ success: boolean }> => {
   const response = await fetch(`/api/shopping-lists/${id}`, {
     method: 'DELETE',
+    credentials: 'include', // Ensure authentication cookies are sent
   });
   if (!response.ok) {
     throw new Error('Failed to delete shopping list');
@@ -115,7 +121,10 @@ export function useCreateShoppingList() {
         if (!oldData) return oldData;
         return {
           ...oldData,
-          shoppingLists: [...oldData.shoppingLists, data.shoppingList],
+          data: {
+            ...oldData.data,
+            shoppingLists: [...oldData.data.shoppingLists, data.shoppingList],
+          },
         };
       });
       
@@ -136,7 +145,7 @@ export function useAddShoppingItem() {
     onSuccess: (_, variables) => {
       // Invalidate the specific list's items
       queryClient.invalidateQueries({ 
-        queryKey: queryKeys.shoppingLists.items(variables.shopping_list_id) 
+        queryKey: queryKeys.shoppingLists.items(variables.list_id) 
       });
       
       // Also invalidate the main lists to update counts

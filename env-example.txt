@@ -18,9 +18,23 @@ VAPID_SUBJECT=mailto:your_email@example.com
 # App Configuration
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
+# Security Configuration
+CSRF_SECRET=your_csrf_secret_key_here_change_in_production
+
 # Sentry (Optional)
 SENTRY_DSN=your_sentry_dsn_here
 SENTRY_AUTH_TOKEN=your_sentry_auth_token_here
 
 # Vercel (Optional)
 VERCEL_URL=your_vercel_url_here
+
+# Google Calendar Integration (Pro Feature)
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/google-calendar/callback
+
+# Email Service (Pro Feature)
+RESEND_API_KEY=your_resend_api_key_here
+
+# Cron Jobs (Optional)
+CRON_SECRET=your_cron_secret_key_here

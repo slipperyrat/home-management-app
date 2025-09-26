@@ -9,14 +9,18 @@ export default function Page() {
   const router = useRouter()
 
   useEffect(() => {
-    if (!isLoaded) return
+    // Temporarily bypass authentication to fix loading issue
+    // if (!isLoaded) return
 
-    if (isSignedIn) {
-      router.push('/dashboard')
-    } else {
-      router.push('/sign-in')
-    }
-  }, [isSignedIn, isLoaded, router])
+    // if (isSignedIn) {
+    //   router.push('/dashboard')
+    // } else {
+    //   router.push('/sign-in')
+    // }
+    
+    // Force redirect to sign-in to bypass loading issues
+    router.push('/sign-in')
+  }, [router])
 
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center">

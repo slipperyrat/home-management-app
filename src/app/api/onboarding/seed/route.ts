@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
+import { withAPISecurity } from '@/lib/security/apiProtection';
 
 const SeedDataSchema = z.object({
   sampleRecipes: z.boolean().default(true),
@@ -75,29 +76,25 @@ const generateSamplePlans = () => [
 ];
 
 export async function POST(request: NextRequest) {
-  try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      throw new ServerError('Unauthorized', 401);
-    }
+  return withAPISecurity(request, async (req, user) => {
+    try {
 
-    const body = await request.json();
+    const body = await req.json();
     const validatedData = SeedDataSchema.parse(body);
     const { sampleRecipes, samplePlans } = validatedData;
 
     // Get user's household
-    const { data: user, error: userError } = await sb()
+    const { data: userData, error: userError } = await sb()
       .from('users')
       .select('household_id')
-      .eq('id', userId)
+      .eq('id', user.id)
       .single();
 
-    if (userError || !user?.household_id) {
+    if (userError || !userData?.household_id) {
       throw new ServerError('User not found or not in household', 400);
     }
 
-    const householdId = user.household_id;
+    const householdId = userData.household_id;
     let recipesAdded = 0;
     let plansAdded = 0;
 
@@ -162,5 +159,10 @@ export async function POST(request: NextRequest) {
     }
     console.error('Unexpected error:', error);
     return createErrorResponse(new ServerError('Internal server error', 500));
-  }
+    }
+  }, {
+    requireAuth: true,
+    requireCSRF: true,
+    rateLimitConfig: 'api'
+  });
 }

@@ -2,6 +2,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { SyncUserClient } from "@/components/SyncUserClient";
 import { Toaster } from "sonner";
 import { QueryProvider } from "@/components/QueryProvider";
+// Re-enable Vercel Analytics for usage tracking
 import { Analytics } from '@vercel/analytics/react';
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import PWAStatus from "@/components/PWAStatus";
@@ -17,13 +18,6 @@ export const metadata = {
   title: "Home Management App",
   description: "Collaborative tools for everyday life - manage your household with ease",
   manifest: "/manifest.json",
-  themeColor: "#2563eb",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -55,6 +49,14 @@ export const metadata = {
       'max-snippet': -1,
     },
   },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#2563eb",
 };
 
 // Add NavBar as a client component for auth state
@@ -97,6 +99,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Toaster position="top-right" />
               <PWAInstallPrompt />
               <PushNotificationSetup />
+              {/* Re-enable Vercel Analytics for usage tracking */}
               <Analytics />
             </QueryProvider>
           </ErrorBoundary>

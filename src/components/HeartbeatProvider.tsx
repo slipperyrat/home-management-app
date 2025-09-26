@@ -7,7 +7,7 @@ interface HeartbeatProviderProps {
 }
 
 export default function HeartbeatProvider({ children }: HeartbeatProviderProps) {
-  // Initialize heartbeat - this will run on every page load
+  // Re-enable heartbeat for user activity monitoring
   useHeartbeat();
   
   return <>{children}</>;

@@ -19,6 +19,23 @@ export function useHeartbeat() {
       return;
     }
 
+    // Define event handlers outside setTimeout so they're accessible in cleanup
+    const handleActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        // Post heartbeat when tab becomes visible
+        if (userData?.household_id && userData.household_id.trim() !== '') {
+          postEventTypes.heartbeat({ household_id: userData.household_id }).catch(error => {
+            console.warn('Failed to post visibility change heartbeat:', error);
+            // Don't let heartbeat errors crash the app
+          });
+        }
+      }
+    };
+
     // Add a small delay to ensure userData is fully loaded
     const setupTimer = setTimeout(() => {
       if (!userData?.household_id || userData.household_id.trim() === '') {
@@ -33,6 +50,7 @@ export function useHeartbeat() {
       // Post initial heartbeat only if we have a valid household_id
       postEventTypes.heartbeat({ household_id: userData.household_id }).catch(error => {
         console.warn('Failed to post initial heartbeat:', error);
+        // Don't let heartbeat errors crash the app
       });
 
       // Set up interval for periodic heartbeats
@@ -40,32 +58,16 @@ export function useHeartbeat() {
         if (userData?.household_id && userData.household_id.trim() !== '') {
           postEventTypes.heartbeat({ household_id: userData.household_id }).catch(error => {
             console.warn('Failed to post periodic heartbeat:', error);
+            // Don't let heartbeat errors crash the app
           });
         }
-      }, 15 * 60 * 1000); // 15 minutes
-
-      // Track user activity
-      const handleActivity = () => {
-        lastActivityRef.current = Date.now();
-      };
+      }, 30 * 60 * 1000); // 30 minutes
 
       // Listen for user activity events
       const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
       events.forEach(event => {
         document.addEventListener(event, handleActivity, true);
       });
-
-      // Handle visibility change
-      const handleVisibilityChange = () => {
-        if (!document.hidden) {
-          // Post heartbeat when tab becomes visible
-          if (userData?.household_id && userData.household_id.trim() !== '') {
-            postEventTypes.heartbeat({ household_id: userData.household_id }).catch(error => {
-              console.warn('Failed to post visibility change heartbeat:', error);
-            });
-          }
-        }
-      };
 
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }, 1000); // 1 second delay
@@ -77,13 +79,13 @@ export function useHeartbeat() {
         clearInterval(intervalRef.current);
       }
       
-      // Remove event listeners
+      // Remove event listeners - use the same function reference
       const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
       events.forEach(event => {
-        document.removeEventListener(event, () => {}, true);
+        document.removeEventListener(event, handleActivity, true);
       });
       
-      document.removeEventListener('visibilitychange', () => {});
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [user, userData?.household_id]);
 
@@ -92,6 +94,7 @@ export function useHeartbeat() {
     if (userData?.household_id && userData.household_id.trim() !== '') {
       postEventTypes.heartbeat({ household_id: userData.household_id }).catch(error => {
         console.warn('Failed to post manual heartbeat:', error);
+        // Don't let heartbeat errors crash the app
       });
     } else {
       console.warn('triggerHeartbeat: No valid household_id available');

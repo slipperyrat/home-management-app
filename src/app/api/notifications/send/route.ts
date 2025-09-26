@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
-import { z } from 'zod';
+import { withAPISecurity } from '@/lib/security/apiProtection';
+import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
+import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { notificationSendSchema } from '@/lib/validation/schemas';
 import webpush from 'web-push';
-import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
 
 // Configure web-push
 webpush.setVapidDetails(
@@ -11,152 +12,150 @@ webpush.setVapidDetails(
   process.env.VAPID_PRIVATE_KEY!
 );
 
-const SendNotificationSchema = z.object({
-  title: z.string().min(1).max(100),
-  body: z.string().min(1).max(300),
-  icon: z.string().optional(),
-  badge: z.string().optional(),
-  tag: z.string().optional(),
-  url: z.string().optional(),
-  recipients: z.enum(['self', 'household']).default('self'),
-});
-
 export async function POST(request: NextRequest) {
-  try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      throw new ServerError('Unauthorized', 401);
-    }
+  return withAPISecurity(request, async (req, user) => {
+    try {
+      console.log('🚀 POST: Sending notification for user:', user.id);
 
-    // Parse and validate request body
-    const rawBody = await request.json();
-    const validationResult = SendNotificationSchema.safeParse(rawBody);
-
-    if (!validationResult.success) {
-      return NextResponse.json({ 
-        error: 'Invalid request body',
-        details: validationResult.error.issues.map(err => `${err.path.join('.')}: ${err.message}`).join(', ')
-      }, { status: 400 });
-    }
-
-    const body = validationResult.data;
-
-    // Get household ID from household_members table
-    const { data: householdData, error: householdError } = await sb()
-      .from('household_members')
-      .select('household_id')
-      .eq('user_id', userId)
-      .single();
-
-    if (householdError || !householdData) {
-      throw new ServerError('Household not found', 404);
-    }
-
-    const householdId = householdData.household_id;
-    const { title, body: notificationBody, icon, badge, tag, url, recipients } = body;
-
-    // Determine who to send notifications to
-    let targetUserIds = [userId];
-    
-    if (recipients === 'household') {
-      // Get all users in the household
-      const { data: householdMembers, error } = await sb()
-        .from('household_members')
-        .select('user_id')
-        .eq('household_id', householdId);
-
-      if (error) {
-        throw new ServerError('Failed to fetch household members', 500);
-      }
-
-      targetUserIds = householdMembers.map(member => member.user_id);
-    }
-
-    // Get push subscriptions for target users
-    const { data: subscriptions, error: subscriptionsError } = await sb()
-      .from('push_subscriptions')
-      .select('*')
-      .in('user_id', targetUserIds);
-
-    if (subscriptionsError) {
-      throw new ServerError('Failed to fetch subscriptions', 500);
-    }
-
-    if (!subscriptions || subscriptions.length === 0) {
-      return NextResponse.json({
-        success: false,
-        message: 'No active subscriptions found'
-      });
-    }
-
-    // Prepare notification payload
-    const notificationPayload = {
-      title,
-      body: notificationBody,
-      icon: icon || '/icons/icon-192x192.png',
-      badge: badge || '/icons/icon-72x72.png',
-      tag: tag || 'home-management',
-      url: url || '/',
-      timestamp: Date.now(),
-      requireInteraction: false,
-      silent: false,
-    };
-
-    // Send notifications
-    const sendPromises = subscriptions.map(async (subscription) => {
+      // Parse and validate request body using Zod schema
+      let validatedData;
       try {
-        const pushSubscription = {
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: subscription.p256dh_key,
-            auth: subscription.auth_key,
-          },
-        };
+        const body = await req.json();
+        const tempSchema = notificationSendSchema.omit({ household_id: true });
+        validatedData = tempSchema.parse(body);
+      } catch (validationError: any) {
+        return createErrorResponse('Invalid input', 400, validationError.errors);
+      }
 
-        await webpush.sendNotification(
-          pushSubscription,
-          JSON.stringify(notificationPayload)
-        );
+      const { title, body: notificationBody, user_id: targetUserId } = validatedData;
 
-        console.log(`✅ Notification sent to user: ${subscription.user_id}`);
-        return { success: true, userId: subscription.user_id };
-      } catch (error) {
-        console.error(`❌ Failed to send notification to user: ${subscription.user_id}`, error);
-        
-        // If subscription is invalid, remove it from database
-        if (error instanceof Error && error.message.includes('410')) {
-          await sb()
-            .from('push_subscriptions')
-            .delete()
-            .eq('user_id', subscription.user_id);
+      // Get user and household data
+      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      
+      if (userError || !household) {
+        return createErrorResponse('User not found or no household', 404);
+      }
+
+      const householdId = household.id;
+
+      // Determine who to send notifications to
+      let targetUserIds = [user.id];
+      
+      if (targetUserId) {
+        targetUserIds = [targetUserId];
+      } else if (householdId) {
+        // Get all users in the household
+        const supabase = getDatabaseClient();
+        const { data: householdMembers, error } = await supabase
+          .from('household_members')
+          .select('user_id')
+          .eq('household_id', householdId);
+
+        if (error) {
+          return createErrorResponse('Failed to fetch household members', 500, error.message);
         }
-        
-        return { success: false, userId: subscription.user_id, error };
+
+        targetUserIds = householdMembers.map(member => member.user_id);
       }
-    });
 
-    const results = await Promise.all(sendPromises);
-    const successCount = results.filter(r => r.success).length;
-    const failureCount = results.length - successCount;
+      // Get push subscriptions for target users
+      const supabase = getDatabaseClient();
+      const { data: subscriptions, error: subscriptionsError } = await supabase
+        .from('push_subscriptions')
+        .select('*')
+        .in('user_id', targetUserIds);
 
-    console.log(`📊 Notification results: ${successCount} sent, ${failureCount} failed`);
-
-    return NextResponse.json({
-      success: true,
-      message: `Notifications sent: ${successCount} successful, ${failureCount} failed`,
-      results: {
-        total: results.length,
-        successful: successCount,
-        failed: failureCount,
+      if (subscriptionsError) {
+        return createErrorResponse('Failed to fetch subscriptions', 500, subscriptionsError.message);
       }
-    });
 
-  } catch (error) {
-    if (error instanceof ServerError) {
-      return createErrorResponse(error);
+      if (!subscriptions || subscriptions.length === 0) {
+        return createSuccessResponse({
+          success: false,
+          message: 'No active subscriptions found'
+        }, 'No subscriptions found');
+      }
+
+      // Prepare notification payload
+      const notificationPayload = {
+        title,
+        body: notificationBody,
+        icon: '/icons/icon-192x192.png', // Default icon
+        badge: '/icons/icon-72x72.png', // Default badge
+        tag: 'home-management', // Default tag
+        url: '/', // Default URL
+        timestamp: Date.now(),
+        requireInteraction: false,
+        silent: false,
+      };
+
+      // Send notifications
+      const sendPromises = subscriptions.map(async (subscription) => {
+        try {
+          const pushSubscription = {
+            endpoint: subscription.endpoint,
+            keys: {
+              p256dh: subscription.p256dh_key,
+              auth: subscription.auth_key,
+            },
+          };
+
+          await webpush.sendNotification(
+            pushSubscription,
+            JSON.stringify(notificationPayload)
+          );
+
+          console.log(`✅ Notification sent to user: ${subscription.user_id}`);
+          return { success: true, userId: subscription.user_id };
+        } catch (error) {
+          console.error(`❌ Failed to send notification to user: ${subscription.user_id}`, error);
+          
+          // If subscription is invalid, remove it from database
+          if (error instanceof Error && error.message.includes('410')) {
+            await supabase
+              .from('push_subscriptions')
+              .delete()
+              .eq('user_id', subscription.user_id);
+          }
+          
+          return { success: false, userId: subscription.user_id, error };
+        }
+      });
+
+      const results = await Promise.all(sendPromises);
+      const successCount = results.filter(r => r.success).length;
+      const failureCount = results.length - successCount;
+
+      console.log(`📊 Notification results: ${successCount} sent, ${failureCount} failed`);
+
+      // Create audit log
+      await createAuditLog({
+        user_id: user.id,
+        household_id: household.id,
+        action: 'notification_sent',
+        details: { 
+          title, 
+          body: notificationBody, 
+          target_users: targetUserIds,
+          results: { total: results.length, successful: successCount, failed: failureCount }
+        }
+      });
+
+      return createSuccessResponse({
+        message: `Notifications sent: ${successCount} successful, ${failureCount} failed`,
+        results: {
+          total: results.length,
+          successful: successCount,
+          failed: failureCount,
+        }
+      });
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      return handleApiError(error);
     }
-    console.error('Unexpected error:', error);
-    return createErrorResponse(new ServerError('Internal server error', 500));
-  }
+  }, {
+    requireAuth: true,
+    requireCSRF: true,
+    rateLimitConfig: 'api'
+  });
 }

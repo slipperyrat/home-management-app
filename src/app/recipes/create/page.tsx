@@ -10,7 +10,7 @@ export default function CreateRecipePage() {
   const router = useRouter();
   
   const [formData, setFormData] = useState({
-    name: '',
+    title: '',
     description: '',
     prep_time: 0,
     cook_time: 0,
@@ -115,15 +115,15 @@ export default function CreateRecipePage() {
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
             {/* Recipe Name */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
                 Recipe Name *
               </label>
               <input
                 type="text"
-                id="name"
-                name="name"
+                id="title"
+                name="title"
                 required
-                value={formData.name}
+                value={formData.title}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter recipe name"

@@ -1,19 +1,26 @@
 import { NextResponse } from 'next/server';
 import { sb, getUserAndHousehold } from '@/lib/server/supabaseAdmin';
-import { CopyWeekSchema, validateRequest, createValidationErrorResponse } from '@/lib/validation';
+import { mealPlannerCopySchema } from '@/lib/validation/schemas';
 
 export async function POST(req: Request) {
   try {
     const { householdId } = await getUserAndHousehold();
-    const body = await req.json();
-
-    // Validate request body with Zod
-    const validation = validateRequest(CopyWeekSchema, body);
-    if (!validation.success) {
-      return createValidationErrorResponse(validation.error);
+    
+    // Parse and validate request body using Zod schema
+    let validatedData;
+    try {
+      const body = await req.json();
+      // Create a temporary schema that doesn't require household_id since it comes from user context
+      const tempSchema = mealPlannerCopySchema.omit({ household_id: true });
+      validatedData = tempSchema.parse(body);
+    } catch (validationError: any) {
+      return NextResponse.json({ 
+        error: 'Invalid input', 
+        details: validationError.errors 
+      }, { status: 400 });
     }
 
-    const { fromWeek, toWeek } = validation.data;
+    const { from_week: fromWeek, to_week: toWeek } = validatedData;
 
     const supabase = sb();
 

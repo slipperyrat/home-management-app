@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sb, getUserAndHousehold, createErrorResponse, ServerError } from '@/lib/server/supabaseAdmin';
+import { withAPISecurity } from '@/lib/security/apiProtection';
+import { getDatabaseClient, getUserAndHouseholdData } from '@/lib/api/database';
+import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { ServerError } from '@/lib/server/supabaseAdmin';
 
 // This matches the actual data structure stored by the assign API
 interface DayMeals {
@@ -16,163 +19,152 @@ interface CreateMealPlanRequest {
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    const { householdId } = await getUserAndHousehold();
-    const { searchParams } = new URL(request.url);
-    const weekStartDate = searchParams.get('week_start_date');
+  return withAPISecurity(request, async (req, user) => {
+    try {
+      console.log('🚀 GET: Fetching meal plan for user:', user.id);
 
-    console.log('🔍 Meal Planner API Debug:', {
-      householdId,
-      weekStartDate,
-      url: request.url
-    });
+      // Get user and household data
+      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      
+      if (userError || !household) {
+        return createErrorResponse('User not found or no household', 404);
+      }
 
-    if (!weekStartDate) {
-      throw new ServerError('week_start_date parameter is required', 400);
+      const { searchParams } = new URL(req.url);
+      const weekStartDate = searchParams.get('week_start_date');
+
+      console.log('🔍 Meal Planner API Debug:', {
+        householdId: household.id,
+        weekStartDate,
+        url: req.url
+      });
+
+      if (!weekStartDate) {
+        return createErrorResponse('week_start_date parameter is required', 400);
+      }
+
+      // Validate date format (YYYY-MM-DD)
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(weekStartDate)) {
+        return createErrorResponse('week_start_date must be in YYYY-MM-DD format', 400);
+      }
+
+      // Fetch meal plan for the specified week
+      const supabase = getDatabaseClient();
+      const { data: mealPlan, error } = await supabase
+        .from('meal_plans')
+        .select('*')
+        .eq('household_id', household.id)
+        .eq('week_start_date', weekStartDate)
+        .maybeSingle();
+
+      console.log('🔍 Database Query Result:', {
+        mealPlan,
+        error,
+        query: `SELECT * FROM meal_plans WHERE household_id = '${household.id}' AND week_start_date = '${weekStartDate}'`
+      });
+
+      if (error) {
+        console.error('Error fetching meal plan:', error);
+        return createErrorResponse('Failed to fetch meal plan', 500, error.message);
+      }
+
+      return createSuccessResponse({ mealPlan }, 'Meal plan fetched successfully');
+
+    } catch (error) {
+      return handleApiError(error, { route: '/api/meal-planner', method: 'GET', userId: user.id });
     }
-
-    // Validate date format (YYYY-MM-DD)
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(weekStartDate)) {
-      throw new ServerError('week_start_date must be in YYYY-MM-DD format', 400);
-    }
-
-    // Fetch meal plan for the specified week
-    const { data: mealPlan, error } = await sb()
-      .from('meal_plans')
-      .select('*')
-      .eq('household_id', householdId)
-      .eq('week_start_date', weekStartDate)
-      .maybeSingle();
-
-    console.log('🔍 Database Query Result:', {
-      mealPlan,
-      error,
-      query: `SELECT * FROM meal_plans WHERE household_id = '${householdId}' AND week_start_date = '${weekStartDate}'`
-    });
-
-    if (error) {
-      console.error('Error fetching meal plan:', error);
-      throw new ServerError('Failed to fetch meal plan', 500);
-    }
-
-    return NextResponse.json({
-      success: true,
-      mealPlan
-    });
-
-  } catch (error) {
-    if (error instanceof ServerError) {
-      return createErrorResponse(error);
-    }
-    
-    console.error('Unexpected error in GET /api/meal-planner:', error);
-    return createErrorResponse(new ServerError('Internal server error'));
-  }
+  }, {
+    requireAuth: true,
+    requireCSRF: true,
+    rateLimitConfig: 'api'
+  });
 }
 
 export async function PUT(request: NextRequest) {
-  try {
-    const { householdId } = await getUserAndHousehold();
-    const body: CreateMealPlanRequest = await request.json();
+  return withAPISecurity(request, async (req, user) => {
+    try {
+      console.log('🚀 PUT: Updating meal plan for user:', user.id);
 
-    // Validate required fields
-    if (!body.week_start_date) {
-      throw new ServerError('week_start_date is required', 400);
-    }
-
-    // Validate date format (YYYY-MM-DD)
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(body.week_start_date)) {
-      throw new ServerError('week_start_date must be in YYYY-MM-DD format', 400);
-    }
-
-    // Validate meals object
-    if (!body.meals || typeof body.meals !== 'object') {
-      throw new ServerError('meals must be an object', 400);
-    }
-
-    // Validate meal structure
-    const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    const validMealTypes = ['breakfast', 'lunch', 'dinner'];
-
-    for (const [day, dayMeals] of Object.entries(body.meals)) {
-      if (!validDays.includes(day.toLowerCase())) {
-        throw new ServerError(`Invalid day: ${day}. Must be one of: ${validDays.join(', ')}`, 400);
+      // Get user and household data
+      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      
+      if (userError || !household) {
+        return createErrorResponse('User not found or no household', 404);
       }
 
-      if (dayMeals && typeof dayMeals === 'object') {
-        for (const [mealType, _recipeId] of Object.entries(dayMeals)) {
-          if (!validMealTypes.includes(mealType)) {
-            throw new ServerError(`Invalid meal_type: ${mealType}. Must be one of: ${validMealTypes.join(', ')}`, 400);
-          }
+      // Parse and validate request body using Zod schema
+      let validatedData;
+      try {
+        const body = await req.json();
+        const { createMealPlanSchema } = await import('@/lib/validation/schemas');
+        const tempSchema = createMealPlanSchema.omit({ household_id: true });
+        validatedData = tempSchema.parse(body);
+      } catch (validationError: any) {
+        return createErrorResponse('Invalid input', 400, validationError.errors);
+      }
+
+      // Check if meal plan already exists for this week
+      const supabase = getDatabaseClient();
+      const { data: existingPlan, error: checkError } = await supabase
+        .from('meal_plans')
+        .select('id')
+        .eq('household_id', household.id)
+        .eq('week_start_date', validatedData.week_start)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Error checking existing meal plan:', checkError);
+        return createErrorResponse('Failed to check existing meal plan', 500, checkError.message);
+      }
+
+      const mealPlanData = {
+        household_id: household.id,
+        week_start_date: validatedData.week_start,
+        meals: validatedData.meals
+      };
+
+      let result;
+
+      if (existingPlan) {
+        // Update existing meal plan
+        const { data: updatedPlan, error: updateError } = await supabase
+          .from('meal_plans')
+          .update(mealPlanData)
+          .eq('id', existingPlan.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error('Error updating meal plan:', updateError);
+          return createErrorResponse('Failed to update meal plan', 500, updateError.message);
         }
-      }
-    }
 
-    // Check if meal plan already exists for this week
-    const { data: existingPlan, error: checkError } = await sb()
-      .from('meal_plans')
-      .select('id')
-      .eq('household_id', householdId)
-      .eq('week_start_date', body.week_start_date)
-      .maybeSingle();
+        result = updatedPlan;
+      } else {
+        // Create new meal plan
+        const { data: newPlan, error: insertError } = await supabase
+          .from('meal_plans')
+          .insert(mealPlanData)
+          .select()
+          .single();
 
-    if (checkError) {
-      console.error('Error checking existing meal plan:', checkError);
-      throw new ServerError('Failed to check existing meal plan', 500);
-    }
+        if (insertError) {
+          console.error('Error creating meal plan:', insertError);
+          return createErrorResponse('Failed to create meal plan', 500, insertError.message);
+        }
 
-    const mealPlanData = {
-      household_id: householdId,
-      week_start_date: body.week_start_date,
-      meals: body.meals
-    };
-
-    let result;
-
-    if (existingPlan) {
-      // Update existing meal plan
-      const { data: updatedPlan, error: updateError } = await sb()
-        .from('meal_plans')
-        .update(mealPlanData)
-        .eq('id', existingPlan.id)
-        .select()
-        .single();
-
-      if (updateError) {
-        console.error('Error updating meal plan:', updateError);
-        throw new ServerError('Failed to update meal plan', 500);
+        result = newPlan;
       }
 
-      result = updatedPlan;
-    } else {
-      // Create new meal plan
-      const { data: newPlan, error: insertError } = await sb()
-        .from('meal_plans')
-        .insert(mealPlanData)
-        .select()
-        .single();
+      return createSuccessResponse({ mealPlan: result }, 'Meal plan updated successfully');
 
-      if (insertError) {
-        console.error('Error creating meal plan:', insertError);
-        throw new ServerError('Failed to create meal plan', 500);
-      }
-
-      result = newPlan;
+    } catch (error) {
+      return handleApiError(error, { route: '/api/meal-planner', method: 'PUT', userId: user.id });
     }
-
-    return NextResponse.json({
-      success: true,
-      mealPlan: result
-    });
-
-  } catch (error) {
-    if (error instanceof ServerError) {
-      return createErrorResponse(error);
-    }
-    
-    console.error('Unexpected error in PUT /api/meal-planner:', error);
-    return createErrorResponse(new ServerError('Internal server error'));
-  }
+  }, {
+    requireAuth: true,
+    requireCSRF: true,
+    rateLimitConfig: 'api'
+  });
 }

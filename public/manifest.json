@@ -8,9 +8,13 @@
   "theme_color": "#2563eb",
   "orientation": "portrait-primary",
   "scope": "/",
-  "categories": ["productivity", "lifestyle", "utilities"],
+  "categories": ["productivity", "lifestyle", "utilities", "household"],
   "lang": "en",
   "dir": "ltr",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
   "icons": [
     {
       "src": "/icons/icon-72x72.png",
@@ -103,6 +107,54 @@
       "short_name": "Shopping",
       "description": "View shopping lists",
       "url": "/shopping-lists",
+      "icons": [
+        {
+          "src": "/icons/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Recipes",
+      "short_name": "Recipes",
+      "description": "Browse and manage recipes",
+      "url": "/recipes",
+      "icons": [
+        {
+          "src": "/icons/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Calendar",
+      "short_name": "Calendar",
+      "description": "View household calendar",
+      "url": "/calendar",
+      "icons": [
+        {
+          "src": "/icons/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Bills",
+      "short_name": "Bills",
+      "description": "Manage household bills",
+      "url": "/bills",
+      "icons": [
+        {
+          "src": "/icons/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Rewards",
+      "short_name": "Rewards",
+      "description": "View rewards and achievements",
+      "url": "/rewards",
       "icons": [
         {
           "src": "/icons/icon-96x96.png",

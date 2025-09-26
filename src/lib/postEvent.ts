@@ -62,7 +62,7 @@ export async function postEvent(params: PostEventParams): Promise<any> {
 
     console.log('Event posted successfully:', data);
 
-    // Try to trigger automation if this is a relevant event type
+    // Re-enable automation dispatch for automated workflows
     try {
       const automationResponse = await fetch('/api/automation/dispatch', {
         method: 'POST',
@@ -70,9 +70,14 @@ export async function postEvent(params: PostEventParams): Promise<any> {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          event_type: params.type,
-          household_id: params.householdId,
-          payload: params.payload
+          event: {
+            id: data.id,
+            household_id: params.householdId,
+            type: params.type,
+            source: params.source || 'web',
+            payload: params.payload || {},
+            occurred_at: data.occurred_at
+          }
         }),
       });
 

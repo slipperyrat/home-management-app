@@ -24,6 +24,7 @@ export default function NavBarMobileMenu({ isMobileMenuOpen, setIsMobileMenuOpen
     { href: "/calendar", label: "Calendar" },
     { href: "/notifications", label: "Notifications" },
     { href: "/reminders", label: "Reminders" },
+    { href: "/digest-preferences", label: "Digest Settings" },
   ];
 
   if (!isLoaded || !isSignedIn) {
@@ -38,15 +39,17 @@ export default function NavBarMobileMenu({ isMobileMenuOpen, setIsMobileMenuOpen
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="inline-flex items-center justify-center p-2 rounded-md text-gray-600 hover:text-blue-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
           aria-expanded={isMobileMenuOpen}
-          aria-label="Toggle mobile menu"
+          aria-label={isMobileMenuOpen ? "Close mobile menu" : "Open mobile menu"}
+          aria-controls="mobile-menu"
+          type="button"
         >
-          <span className="sr-only">Open main menu</span>
+          <span className="sr-only">{isMobileMenuOpen ? "Close main menu" : "Open main menu"}</span>
           {!isMobileMenuOpen ? (
-            <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           ) : (
-            <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           )}
@@ -55,14 +58,16 @@ export default function NavBarMobileMenu({ isMobileMenuOpen, setIsMobileMenuOpen
 
       {/* Mobile menu */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden">
+        <div className="lg:hidden" id="mobile-menu" role="menu" aria-label="Main navigation">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white border-t border-gray-200">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-gray-600 hover:text-blue-600 block px-3 py-2 rounded-md text-base font-medium transition-colors"
+                className="text-gray-600 hover:text-blue-600 block px-3 py-2 rounded-md text-base font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
                 onClick={() => setIsMobileMenuOpen(false)}
+                role="menuitem"
+                tabIndex={0}
               >
                 {link.label}
               </Link>

@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 interface UserData {
   email: string;
   role: 'owner' | 'member';
-  plan: 'free' | 'premium';
+  plan: 'free' | 'pro' | 'pro_plus';
 }
 
 export default function PlanSettingsPage() {
@@ -21,6 +21,7 @@ export default function PlanSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -69,7 +70,15 @@ export default function PlanSettingsPage() {
   const handlePlanToggle = async () => {
     if (!userData || userData.role !== 'owner') return;
 
-    const newPlan = userData.plan === 'free' ? 'premium' : 'free';
+    // Cycle through plans: free -> pro -> pro_plus -> free
+    let newPlan: 'free' | 'pro' | 'pro_plus';
+    if (userData.plan === 'free') {
+      newPlan = 'pro';
+    } else if (userData.plan === 'pro') {
+      newPlan = 'pro_plus';
+    } else {
+      newPlan = 'free';
+    }
     
     try {
       setUpdating(true);
@@ -94,13 +103,43 @@ export default function PlanSettingsPage() {
 
       if (result.success) {
         setUserData(prev => prev ? { ...prev, plan: newPlan } : null);
-        setSuccessMessage(`Plan successfully updated to ${newPlan === 'premium' ? 'Premium' : 'Free'}!`);
+        const planDisplayName = newPlan === 'pro_plus' ? 'Pro+' : newPlan === 'pro' ? 'Pro' : 'Free';
+        setSuccessMessage(`Plan successfully updated to ${planDisplayName}!`);
       }
     } catch (err) {
       console.error('Exception updating plan:', err);
       setError('An unexpected error occurred while updating plan');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleBillingPortal = async () => {
+    if (!userData) return;
+
+    setBillingLoading(true);
+    
+    try {
+      const response = await fetch('/api/stripe/create-portal-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.url) {
+        window.location.href = data.url;
+      } else {
+        console.error('Failed to create portal session:', data.error);
+        alert('Failed to open billing portal. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error opening billing portal:', error);
+      alert('An error occurred. Please try again.');
+    } finally {
+      setBillingLoading(false);
     }
   };
 
@@ -201,16 +240,32 @@ export default function PlanSettingsPage() {
                   <p className="text-sm text-gray-600 mb-2">Your current plan is:</p>
                   <div className="flex items-center">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                      userData?.plan === 'premium' 
-                        ? 'bg-yellow-100 text-yellow-800' 
+                      userData?.plan === 'pro_plus' 
+                        ? 'bg-purple-100 text-purple-800' 
+                        : userData?.plan === 'pro'
+                        ? 'bg-blue-100 text-blue-800'
                         : 'bg-gray-100 text-gray-800'
                     }`}>
-                      {userData?.plan === 'premium' ? '⭐ Premium' : '🆓 Free'}
+                      {userData?.plan === 'pro_plus' ? '⭐ Pro+' : userData?.plan === 'pro' ? '⭐ Pro' : '🆓 Free'}
                     </span>
                   </div>
                 </div>
 
-                <div className="pt-4">
+                <div className="pt-4 space-y-3">
+                  {userData?.plan !== 'free' && (
+                    <button
+                      onClick={handleBillingPortal}
+                      disabled={billingLoading}
+                      className={`w-full px-4 py-2 rounded-md font-medium transition-colors ${
+                        billingLoading
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-green-600 text-white hover:bg-green-700'
+                      }`}
+                    >
+                      {billingLoading ? 'Loading...' : 'Manage Billing'}
+                    </button>
+                  )}
+                  
                   <button
                     onClick={handlePlanToggle}
                     disabled={updating}
@@ -220,7 +275,7 @@ export default function PlanSettingsPage() {
                         : 'bg-blue-600 text-white hover:bg-blue-700'
                     }`}
                   >
-                    {updating ? 'Updating...' : `Switch to ${userData?.plan === 'free' ? 'Premium' : 'Free'}`}
+                    {updating ? 'Updating...' : `Switch to ${userData?.plan === 'free' ? 'Pro' : userData?.plan === 'pro' ? 'Pro+' : 'Free'}`}
                   </button>
                 </div>
               </div>
@@ -229,7 +284,7 @@ export default function PlanSettingsPage() {
             {/* Plan Comparison */}
             <div className="bg-gray-50 rounded-lg p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Plan Features</h2>
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div>
                   <h3 className="font-medium text-gray-900 mb-2">Free Plan</h3>
                   <ul className="text-sm text-gray-600 space-y-1">
@@ -239,37 +294,83 @@ export default function PlanSettingsPage() {
                     </li>
                     <li className="flex items-center">
                       <span className="text-green-500 mr-2">✓</span>
-                      Calendar
+                      Calendar & Events
                     </li>
                     <li className="flex items-center">
-                      <span className="text-red-500 mr-2">✗</span>
-                      Games
+                      <span className="text-green-500 mr-2">✓</span>
+                      Chores
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Basic Reminders
                     </li>
                     <li className="flex items-center">
                       <span className="text-red-500 mr-2">✗</span>
                       Finance Tracking
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-red-500 mr-2">✗</span>
+                      Advanced Analytics
                     </li>
                   </ul>
                 </div>
 
                 <div>
-                  <h3 className="font-medium text-gray-900 mb-2">Premium Plan</h3>
+                  <h3 className="font-medium text-gray-900 mb-2">Pro Plan</h3>
                   <ul className="text-sm text-gray-600 space-y-1">
                     <li className="flex items-center">
                       <span className="text-green-500 mr-2">✓</span>
-                      Shopping List
-                    </li>
-                    <li className="flex items-center">
-                      <span className="text-green-500 mr-2">✓</span>
-                      Calendar
-                    </li>
-                    <li className="flex items-center">
-                      <span className="text-green-500 mr-2">✓</span>
-                      Games
+                      Everything in Free
                     </li>
                     <li className="flex items-center">
                       <span className="text-green-500 mr-2">✓</span>
                       Finance Tracking
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Advanced Analytics
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      AI Features
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Google Calendar Read
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-red-500 mr-2">✗</span>
+                      Multi-household
+                    </li>
+                  </ul>
+                </div>
+
+                <div>
+                  <h3 className="font-medium text-gray-900 mb-2">Pro+ Plan</h3>
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Everything in Pro
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Two-way Google Calendar Sync
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Multi-household (up to 3)
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Admin Tools
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Unlimited Automations
+                    </li>
+                    <li className="flex items-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Priority Support
                     </li>
                   </ul>
                 </div>

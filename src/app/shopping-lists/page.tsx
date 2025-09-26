@@ -30,6 +30,128 @@ import {
   useCreateShoppingList, 
   useOptimisticShoppingLists 
 } from '@/hooks/useShoppingLists';
+import { useShoppingListItems } from '@/hooks/useShoppingListItems';
+import { AutoAddedItemsConfirmation } from '@/components/shopping/AutoAddedItemsConfirmation';
+import { toast } from 'sonner';
+
+// Shopping List Card Component
+function ShoppingListCard({ list }: { list: ShoppingList }) {
+  const { data: itemsData, isLoading: itemsLoading } = useShoppingListItems(list.id);
+  const items = itemsData?.items || [];
+
+  // Debug logging
+  console.log(`🔍 ShoppingListCard for ${list.name}:`, {
+    listId: list.id,
+    itemsData,
+    items,
+    itemsLoading,
+    totalItems: list.total_items
+  });
+  
+  // More detailed items logging
+  if (items && items.length > 0) {
+    console.log(`🔍 Items details for ${list.name}:`, items.map(item => ({
+      id: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      is_complete: item.is_complete,
+      auto_added: item.auto_added
+    })));
+  }
+
+  const getCompletionPercentage = (list: ShoppingList) => {
+    if (list.total_items === 0) return 0;
+    return Math.round((list.completed_items / list.total_items) * 100);
+  };
+
+  const getAIConfidenceColor = (confidence: number) => {
+    if (confidence >= 80) return 'text-green-600';
+    if (confidence >= 60) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  return (
+    <div className="p-4 border rounded-lg bg-white">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <h4 className="font-medium text-lg">{list.name}</h4>
+          {list.ai_suggestions_count > 0 && (
+            <Badge variant="secondary" className="bg-purple-100 text-purple-800 text-xs">
+              <Sparkles className="h-3 w-3 mr-1" />
+              {list.ai_suggestions_count} AI suggestions
+            </Badge>
+          )}
+        </div>
+        <div className="text-right">
+          <div className="text-sm text-gray-600 mb-1">Progress</div>
+          <Progress value={getCompletionPercentage(list)} className="w-20" />
+          <div className="text-xs text-gray-500 mt-1">
+            {getCompletionPercentage(list)}%
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+        <span>{list.total_items} items</span>
+        <span>{list.completed_items} completed</span>
+        <span className={getAIConfidenceColor(list.ai_confidence)}>
+          AI Confidence: {list.ai_confidence}%
+        </span>
+      </div>
+
+      {/* Items List */}
+      {(() => {
+        console.log(`🔍 Render check for ${list.name}:`, {
+          itemsLoading,
+          itemsLength: items.length,
+          items: items
+        });
+        return null;
+      })()}
+      {itemsLoading ? (
+        <div className="flex items-center justify-center py-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+          <span className="ml-2 text-sm text-gray-600">Loading items...</span>
+        </div>
+      ) : items.length > 0 ? (
+        <div className="space-y-2">
+          <h5 className="text-sm font-medium text-gray-700 mb-2">Items:</h5>
+          <div className="space-y-1">
+            {items.slice(0, 5).map((item) => (
+              <div key={item.id} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${item.is_complete ? 'bg-green-500' : 'bg-gray-300'}`} />
+                  <span className={item.is_complete ? 'line-through text-gray-500' : 'text-gray-900'}>
+                    {item.name}
+                  </span>
+                  {item.quantity && (
+                    <Badge variant="outline" className="text-xs">
+                      {item.quantity}
+                    </Badge>
+                  )}
+                  {item.auto_added && (
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
+                      AI
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            ))}
+            {items.length > 5 && (
+              <div className="text-xs text-gray-500">
+                +{items.length - 5} more items
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="text-sm text-gray-500 italic">
+          No items in this list yet
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ShoppingList {
   id: string;
@@ -61,6 +183,37 @@ export default function ShoppingListsPage() {
   const [aiInsights] = useState<AIShoppingInsights | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+
+  // Cleanup function to merge duplicate items
+  const handleCleanupDuplicates = async (listId: string) => {
+    setIsCleaningUp(true);
+    try {
+      const response = await fetch('/api/shopping-lists/merge-duplicates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ listId }),
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success(`✅ Cleaned up ${data.mergedItems} duplicate items! Total items: ${data.totalItems}`);
+        // Refresh the page to show updated data
+        window.location.reload();
+      } else {
+        toast.error(`❌ Cleanup failed: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      toast.error('❌ Cleanup failed. Please try again.');
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
   const [newListName, setNewListName] = useState('');
   const [newListDescription, setNewListDescription] = useState('');
 
@@ -75,7 +228,7 @@ export default function ShoppingListsPage() {
   const { addOptimisticList, removeOptimisticList } = useOptimisticShoppingLists();
 
   // Extract data from React Query
-  const shoppingLists = shoppingListsData?.shoppingLists || [];
+  const shoppingLists = shoppingListsData?.data?.shoppingLists || [];
 
 
 
@@ -184,6 +337,9 @@ export default function ShoppingListsPage() {
         </p>
       </div>
 
+      {/* Auto-Added Items Confirmation */}
+      <AutoAddedItemsConfirmation className="mb-8" />
+
       {/* AI Insights Summary */}
       {aiInsights && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -291,37 +447,11 @@ export default function ShoppingListsPage() {
               {shoppingLists.slice(0, 3).length > 0 ? (
                 <div className="space-y-4">
                   {shoppingLists.slice(0, 3).map((list) => (
-                    <div key={list.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-medium">{list.name}</h4>
-                          {list.ai_suggestions_count > 0 && (
-                            <Badge variant="secondary" className="bg-purple-100 text-purple-800 text-xs">
-                              <Sparkles className="h-3 w-3 mr-1" />
-                              {list.ai_suggestions_count} AI suggestions
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-600">
-                          <span>{list.total_items} items</span>
-                          <span>{list.completed_items} completed</span>
-                          <span className={getAIConfidenceColor(list.ai_confidence)}>
-                            AI Confidence: {list.ai_confidence}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-gray-600 mb-1">Progress</div>
-                        <Progress value={getCompletionPercentage(list)} className="w-20" />
-                        <div className="text-xs text-gray-500 mt-1">
-                          {getCompletionPercentage(list)}%
-                        </div>
-                      </div>
-                    </div>
+                    <ShoppingListCard key={list.id} list={list} />
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500 text-center py-8">
+                <p className="text-gray-600 text-center py-8">
                   No shopping lists yet. Create your first one to get started!
                 </p>
               )}
@@ -333,13 +463,40 @@ export default function ShoppingListsPage() {
         <TabsContent value="all-lists" className="space-y-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">All Shopping Lists</h2>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={() => setShowCreateModal(true)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New List
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  const groceriesList = shoppingLists.find(list => list.name === 'Groceries');
+                  if (groceriesList) {
+                    handleCleanupDuplicates(groceriesList.id);
+                  } else {
+                    toast.error('Groceries list not found');
+                  }
+                }}
+                disabled={isCleaningUp}
+                className="text-orange-600 border-orange-200 hover:bg-orange-50"
+              >
+                {isCleaningUp ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600 mr-2" />
+                    Cleaning...
+                  </>
+                ) : (
+                  <>
+                    <X className="h-4 w-4 mr-2" />
+                    Clean Duplicates
+                  </>
+                )}
+              </Button>
+              <Button 
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => setShowCreateModal(true)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New List
+              </Button>
+            </div>
           </div>
 
           {shoppingLists.length > 0 ? (

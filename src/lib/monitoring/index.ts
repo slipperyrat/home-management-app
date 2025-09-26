@@ -46,6 +46,7 @@ export class MonitoringService {
   private readonly maxErrors = 500;
 
   private constructor() {
+    // Re-enable periodic flush for performance monitoring
     this.setupPeriodicFlush();
   }
 
