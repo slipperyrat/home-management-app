@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
 
 const DispatchSchema = z.object({
   event: z.object({
@@ -35,6 +36,11 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (membershipError || !membership) {
+      logger.warn('Automation dispatch access denied', {
+        userId,
+        householdId: event.household_id,
+        error: membershipError?.message,
+      });
       throw new ServerError('Access denied to household', 403);
     }
 
@@ -47,11 +53,19 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      console.error('Automation dispatcher error:', error);
+      logger.error('Automation dispatcher error', error, {
+        userId,
+        householdId: event.household_id,
+        eventId: event.id,
+      });
       throw new ServerError('Failed to trigger automation', 500);
     }
 
-    console.log('✅ Automation dispatcher triggered successfully:', data);
+    logger.info('Automation dispatcher triggered', {
+      userId,
+      householdId: event.household_id,
+      eventId: event.id,
+    });
 
     return NextResponse.json({
       success: true,
@@ -63,7 +77,9 @@ export async function POST(request: NextRequest) {
     if (error instanceof ServerError) {
       return createErrorResponse(error);
     }
-    console.error('Unexpected error:', error);
+    logger.error('Unexpected automation dispatch error', error as Error, {
+      route: '/api/automation/dispatch',
+    });
     return createErrorResponse(new ServerError('Internal server error', 500));
   }
 }

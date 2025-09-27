@@ -415,6 +415,29 @@ export const calendarEventSchema = z.object({
   dtstart: dateStringSchema.optional(),
 });
 
+export const createCalendarEventInputSchema = z.object({
+  title: nonEmptyStringSchema.max(100),
+  description: z.string().max(500).optional(),
+  start_time: z.string().min(1),
+  end_time: z.string().min(1),
+  event_type: z.string().max(50),
+  priority: z.string().max(50),
+});
+
+export const createCalendarTemplateSchema = z.object({
+  name: nonEmptyStringSchema.max(100),
+  description: z.string().max(500).optional(),
+  template_type: z.enum(['custom', 'school_term', 'sports_training']),
+  rrule: z.string().min(1),
+  events: z.array(z.object({
+    title: nonEmptyStringSchema.max(100),
+    start: z.string().min(1),
+    end: z.string().min(1),
+    color: z.string().regex(/^#([0-9A-F]{3}){1,2}$/i, 'Invalid color'),
+    recurring: z.boolean().optional(),
+  })).min(1),
+});
+
 export const calendarEventUpdateSchema = z.object({
   id: uuidSchema,
   title: nonEmptyStringSchema.max(100).optional(),
@@ -493,6 +516,7 @@ export const schemas = {
   // Calendar
   calendarEvent: calendarEventSchema,
   calendarEventUpdate: calendarEventUpdateSchema,
+  createCalendarEventInput: createCalendarEventInputSchema,
   
   // Generic
   pagination: paginationSchema,

@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logging/logger';
+
 /**
  * Entitlements system for MVP pricing structure
  * Manages feature access per household based on subscription tier
@@ -187,14 +189,22 @@ export async function canPerformAction(householdId: string): Promise<boolean> {
     });
     
     if (!response.ok) {
-      console.error('Failed to check quota:', response.statusText);
+      logger.error('Failed to check quota', new Error(response.statusText), {
+        userId,
+        householdId,
+        route: '/entitlements/check'
+      });
       return false;
     }
     
     const data = await response.json();
     return data.canPerform;
   } catch (error) {
-    console.error('Error checking quota:', error);
+    logger.error('Error checking quota', error as Error, {
+      userId,
+      householdId,
+      route: '/entitlements/check'
+    });
     return false;
   }
 }
@@ -211,28 +221,86 @@ export async function incrementQuotaUsage(householdId: string): Promise<void> {
       },
     });
   } catch (error) {
-    console.error('Error incrementing quota:', error);
+    logger.error('Error incrementing quota', error as Error, {
+      userId,
+      householdId,
+      route: '/entitlements/incrementQuota'
+    });
   }
 }
 
-/**
- * Get entitlements for a household
- */
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+const entitlementsCache = new Map<string, { data: Entitlements | null; expires: number }>();
+const calendarTemplateCache = new Map<string, { data: CalendarTemplate[]; expires: number }>();
+const quietHoursCache = new Map<string, { data: QuietHours | null; expires: number }>();
+
+function isServer() {
+  return typeof window === 'undefined';
+}
+
+async function safeFetch(input: RequestInfo, init?: RequestInit) {
+  return fetch(input, init);
+}
+
 export async function getEntitlements(householdId: string): Promise<Entitlements | null> {
-  try {
-    const response = await fetch(`/api/entitlements/${householdId}`);
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        return null;
-      }
-      throw new Error(`Failed to fetch entitlements: ${response.statusText}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching entitlements:', error);
+  if (isServer()) {
     return null;
+  }
+  const cached = getCache(entitlementsCache, householdId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  try {
+    const response = await safeFetch(`/api/entitlements?householdId=${householdId}`);
+
+    if (!response.ok) {
+      logger.error('Error fetching entitlements', new Error(response.statusText), {
+        householdId,
+        route: '/entitlements'
+      });
+      setCache(entitlementsCache, householdId, null);
+      return null;
+    }
+
+    const data = await response.json();
+    setCache(entitlementsCache, householdId, data);
+    return data;
+  } catch (error) {
+    logger.error('Error fetching entitlements', error as Error, {
+      householdId,
+      route: '/entitlements'
+    });
+    return null;
+  }
+}
+
+export async function updateEntitlements(householdId: string, entitlements: Partial<Entitlements>): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/entitlements?householdId=${householdId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(entitlements),
+    });
+
+    if (!response.ok) {
+      logger.error('Error updating entitlements', new Error(response.statusText), {
+        householdId,
+        route: '/entitlements'
+      });
+      return false;
+    }
+
+    entitlementsCache.delete(householdId);
+    return true;
+  } catch (error) {
+    logger.error('Error updating entitlements', error as Error, {
+      householdId,
+      route: '/entitlements'
+    });
+    return false;
   }
 }
 
@@ -256,47 +324,103 @@ export async function updateEntitlementsForSubscription(
       }),
     });
   } catch (error) {
-    console.error('Error updating entitlements:', error);
+    logger.error('Error updating entitlements', error as Error, {
+      householdId,
+      route: '/entitlements/updateSubscription'
+    });
     throw error;
   }
 }
 
-/**
- * Get calendar templates for a household
- */
 export async function getCalendarTemplates(householdId: string): Promise<CalendarTemplate[]> {
+  if (isServer()) {
+    return [];
+  }
+  const cached = getCache(calendarTemplateCache, householdId);
+  if (cached) {
+    return cached;
+  }
   try {
-    const response = await fetch(`/api/calendar-templates?household_id=${householdId}`);
-    
+    const response = await fetch(`/api/calendar-templates?householdId=${householdId}`);
+
     if (!response.ok) {
-      throw new Error(`Failed to fetch templates: ${response.statusText}`);
+      logger.error('Error fetching calendar templates', new Error(response.statusText), {
+        householdId,
+        route: '/calendar-templates'
+      });
+      return [];
     }
-    
-    return await response.json();
+
+    const data = await response.json();
+    setCache(calendarTemplateCache, householdId, data);
+    return data;
   } catch (error) {
-    console.error('Error fetching calendar templates:', error);
+    logger.error('Error fetching calendar templates', error as Error, {
+      householdId,
+      route: '/calendar-templates'
+    });
     return [];
   }
 }
 
-/**
- * Get quiet hours for a household
- */
 export async function getQuietHours(householdId: string): Promise<QuietHours | null> {
-  try {
-    const response = await fetch(`/api/quiet-hours?household_id=${householdId}`);
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        return null;
-      }
-      throw new Error(`Failed to fetch quiet hours: ${response.statusText}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching quiet hours:', error);
+  if (isServer()) {
     return null;
+  }
+  const cached = getCache(quietHoursCache, householdId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  try {
+    const response = await safeFetch(`/api/quiet-hours?householdId=${householdId}`);
+
+    if (!response.ok) {
+      logger.error('Error fetching quiet hours', new Error(response.statusText), {
+        householdId,
+        route: '/quiet-hours'
+      });
+      setCache(quietHoursCache, householdId, null);
+      return null;
+    }
+
+    const data = await response.json();
+    setCache(quietHoursCache, householdId, data);
+    return data;
+  } catch (error) {
+    logger.error('Error fetching quiet hours', error as Error, {
+      householdId,
+      route: '/quiet-hours'
+    });
+    return null;
+  }
+}
+
+export async function createQuietHours(householdId: string, quietHours: Partial<QuietHours>): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/quiet-hours?householdId=${householdId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(quietHours),
+    });
+
+    if (!response.ok) {
+      logger.error('Error creating quiet hours', new Error(response.statusText), {
+        householdId,
+        route: '/quiet-hours'
+      });
+      return false;
+    }
+
+    quietHoursCache.delete(householdId);
+    return true;
+  } catch (error) {
+    logger.error('Error creating quiet hours', error as Error, {
+      householdId,
+      route: '/quiet-hours'
+    });
+    return false;
   }
 }
 
@@ -321,7 +445,10 @@ export async function updateQuietHours(
       }),
     });
   } catch (error) {
-    console.error('Error updating quiet hours:', error);
+    logger.error('Error updating quiet hours', error as Error, {
+      householdId,
+      route: '/updateQuietHours'
+    });
     throw error;
   }
 }
@@ -334,12 +461,19 @@ export async function getCalendarConflicts(householdId: string): Promise<Calenda
     const response = await fetch(`/api/calendar-conflicts?household_id=${householdId}`);
     
     if (!response.ok) {
+      logger.error('Error fetching calendar conflicts', new Error(response.statusText), {
+        householdId,
+        route: '/calendarConflicts'
+      });
       throw new Error(`Failed to fetch conflicts: ${response.statusText}`);
     }
     
     return await response.json();
   } catch (error) {
-    console.error('Error fetching calendar conflicts:', error);
+    logger.error('Error fetching calendar conflicts', error as Error, {
+      householdId,
+      route: '/calendarConflicts'
+    });
     return [];
   }
 }
@@ -362,7 +496,10 @@ export async function resolveCalendarConflict(
       }),
     });
   } catch (error) {
-    console.error('Error resolving conflict:', error);
+    logger.error('Error resolving conflict', error as Error, {
+      conflictId,
+      route: '/resolveConflict'
+    });
     throw error;
   }
 }
@@ -375,12 +512,19 @@ export async function getGoogleCalendarImports(householdId: string): Promise<Goo
     const response = await fetch(`/api/google-calendar-imports?household_id=${householdId}`);
     
     if (!response.ok) {
+      logger.error('Error fetching Google Calendar imports', new Error(response.statusText), {
+        householdId,
+        route: '/googleCalendarImports'
+      });
       throw new Error(`Failed to fetch imports: ${response.statusText}`);
     }
     
     return await response.json();
   } catch (error) {
-    console.error('Error fetching Google Calendar imports:', error);
+    logger.error('Error fetching Google Calendar imports', error as Error, {
+      householdId,
+      route: '/googleCalendarImports'
+    });
     return [];
   }
 }
@@ -393,12 +537,19 @@ export async function getDailyDigests(householdId: string): Promise<DailyDigest[
     const response = await fetch(`/api/daily-digests?household_id=${householdId}`);
     
     if (!response.ok) {
+      logger.error('Error fetching daily digests', new Error(response.statusText), {
+        householdId,
+        route: '/dailyDigests'
+      });
       throw new Error(`Failed to fetch digests: ${response.statusText}`);
     }
     
     return await response.json();
   } catch (error) {
-    console.error('Error fetching daily digests:', error);
+    logger.error('Error fetching daily digests', error as Error, {
+      householdId,
+      route: '/dailyDigests'
+    });
     return [];
   }
 }

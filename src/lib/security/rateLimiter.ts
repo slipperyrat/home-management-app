@@ -14,10 +14,16 @@ export class RateLimiter {
   private supabase: any;
 
   constructor() {
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
+      logger.warn('Rate limiter disabled: Supabase credentials missing');
+      this.supabase = null;
+      return;
+    }
+
+    this.supabase = createClient(url, key);
   }
 
   /**
@@ -28,6 +34,9 @@ export class RateLimiter {
     config: RateLimitConfig
   ): Promise<{ allowed: boolean; remaining: number; resetTime: Date }> {
     try {
+      if (!this.supabase) {
+        return { allowed: true, remaining: config.maxRequests, resetTime: new Date() };
+      }
       const windowStart = this.getWindowStart(config.windowMinutes);
       
       // Check current request count for this user/endpoint/window
@@ -117,6 +126,7 @@ export class RateLimiter {
 export const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
   'auth': { maxRequests: 10, windowMinutes: 15, endpoint: 'auth' },
   'api': { maxRequests: 100, windowMinutes: 60, endpoint: 'api' },
+  'analytics': { maxRequests: 120, windowMinutes: 10, endpoint: 'analytics' },
   'shopping': { maxRequests: 50, windowMinutes: 60, endpoint: 'shopping' },
   'chores': { maxRequests: 30, windowMinutes: 60, endpoint: 'chores' },
   'bills': { maxRequests: 20, windowMinutes: 60, endpoint: 'bills' },
@@ -125,12 +135,22 @@ export const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
 };
 
 // Helper function to get rate limit config for an endpoint
-export function getRateLimitConfig(pathname: string): RateLimitConfig {
-  if (pathname.includes('/auth')) return RATE_LIMIT_CONFIGS.auth;
-  if (pathname.includes('/shopping')) return RATE_LIMIT_CONFIGS.shopping;
-  if (pathname.includes('/chores')) return RATE_LIMIT_CONFIGS.chores;
-  if (pathname.includes('/bills')) return RATE_LIMIT_CONFIGS.bills;
-  if (pathname.includes('/meal-planner')) return RATE_LIMIT_CONFIGS['meal-planner'];
-  if (pathname.includes('/api')) return RATE_LIMIT_CONFIGS.api;
+export function getRateLimitConfig(pathnameOrKey: string): RateLimitConfig {
+  const normalizedKey = pathnameOrKey.trim().toLowerCase();
+
+  if (RATE_LIMIT_CONFIGS[normalizedKey]) {
+    return RATE_LIMIT_CONFIGS[normalizedKey];
+  }
+
+  if (normalizedKey.startsWith('/')) {
+    if (normalizedKey.includes('/auth')) return RATE_LIMIT_CONFIGS.auth;
+    if (normalizedKey.includes('/shopping')) return RATE_LIMIT_CONFIGS.shopping;
+    if (normalizedKey.includes('/chores')) return RATE_LIMIT_CONFIGS.chores;
+    if (normalizedKey.includes('/bills')) return RATE_LIMIT_CONFIGS.bills;
+    if (normalizedKey.includes('/meal-planner')) return RATE_LIMIT_CONFIGS['meal-planner'];
+    if (normalizedKey.includes('/analytics')) return RATE_LIMIT_CONFIGS.analytics;
+    if (normalizedKey.includes('/api')) return RATE_LIMIT_CONFIGS.api;
+  }
+
   return RATE_LIMIT_CONFIGS.default;
 }

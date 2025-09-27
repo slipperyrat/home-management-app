@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDatabaseClient } from '@/lib/api/database';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,7 +53,10 @@ export async function GET(request: NextRequest) {
     const { data: attachments, error: fetchError } = await query;
 
     if (fetchError) {
-      console.error('❌ Error fetching attachments:', fetchError);
+      logger.error('Error fetching attachments', fetchError, {
+        userId,
+        householdId: userData.household_id,
+      });
       return NextResponse.json({ error: 'Failed to fetch attachments' }, { status: 500 });
     }
 
@@ -63,7 +67,9 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error in attachments GET API:', error);
+    logger.error('Attachments GET unexpected error', error as Error, {
+      route: '/api/attachments',
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -102,7 +108,10 @@ export async function DELETE(request: NextRequest) {
       .remove([attachment.storage_path]);
 
     if (storageError) {
-      console.error('❌ Error deleting from storage:', storageError);
+      logger.error('Error deleting attachment from storage', storageError, {
+        userId,
+        attachmentId: attachment_id,
+      });
       // Continue with database deletion even if storage deletion fails
     }
 
@@ -113,7 +122,10 @@ export async function DELETE(request: NextRequest) {
       .eq('id', attachment_id);
 
     if (deleteError) {
-      console.error('❌ Error deleting attachment:', deleteError);
+      logger.error('Error deleting attachment record', deleteError, {
+        userId,
+        attachmentId: attachment_id,
+      });
       return NextResponse.json({ error: 'Failed to delete attachment' }, { status: 500 });
     }
 
@@ -123,7 +135,9 @@ export async function DELETE(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error in attachments DELETE API:', error);
+    logger.error('Attachments DELETE unexpected error', error as Error, {
+      route: '/api/attachments',
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

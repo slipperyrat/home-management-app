@@ -1,6 +1,8 @@
 // Unified Logging Service for Home Management App
 // Replaces scattered console.log statements with structured, contextual logging
 
+import * as Sentry from "@sentry/nextjs";
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogContext {
@@ -52,8 +54,13 @@ class Logger {
     };
   }
 
-  // Output log to appropriate destination
-  private output(entry: LogEntry): void {
+  private output(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: any): void {
+    const entry = this.formatLog(level, message, context, error, data);
+
+    if (this.isProduction) {
+      this.forwardToSentry(level, message, context, error, data);
+    }
+
     if (this.isDevelopment) {
       // Development: Pretty console output with emojis
       const emoji = {
@@ -80,30 +87,56 @@ class Logger {
       // Production: Structured JSON for log aggregation
       console.log(JSON.stringify(entry));
     }
+  }
 
-    // TODO: In production, also send to external logging service
-    // if (this.isProduction && entry.level === 'error') {
-    //   // Send to Sentry, LogRocket, etc.
-    // }
+  private forwardToSentry(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: any) {
+    try {
+      const extra = { ...context, data };
+      const severity = context.severity as ('low' | 'medium' | 'high' | undefined);
+
+      if (level === 'error') {
+        if (error) {
+          Sentry.captureException(error, { extra });
+        } else {
+          Sentry.captureMessage(message, { level: 'error', extra });
+        }
+        return;
+      }
+
+      if (level === 'warn') {
+        Sentry.captureMessage(message, { level: 'warning', extra });
+        return;
+      }
+
+      if (context.securityEvent) {
+        const sentryLevel: Sentry.SeverityLevel = severity === 'high' ? 'error' : 'warning';
+        Sentry.captureMessage(message, { level: sentryLevel, extra });
+        return;
+      }
+    } catch (sentryError) {
+      if (this.isDevelopment) {
+        console.warn('Failed to forward log to Sentry:', sentryError);
+      }
+    }
   }
 
   // Main logging methods
   debug(message: string, context: LogContext = {}, data?: any): void {
     if (this.isDevelopment) {
-      this.output(this.formatLog('debug', message, context, undefined, data));
+      this.output('debug', message, context, undefined, data);
     }
   }
 
   info(message: string, context: LogContext = {}, data?: any): void {
-    this.output(this.formatLog('info', message, context, undefined, data));
+    this.output('info', message, context, undefined, data);
   }
 
   warn(message: string, context: LogContext = {}, data?: any): void {
-    this.output(this.formatLog('warn', message, context, undefined, data));
+    this.output('warn', message, context, undefined, data);
   }
 
   error(message: string, error?: Error, context: LogContext = {}, data?: any): void {
-    this.output(this.formatLog('error', message, context, error, data));
+    this.output('error', message, context, error, data);
   }
 
   // Convenience methods for common logging patterns
@@ -143,7 +176,7 @@ class Logger {
   // Security logging
   securityEvent(event: string, severity: 'low' | 'medium' | 'high', context: LogContext = {}): void {
     const emoji = { low: '🔒', medium: '⚠️', high: '🚨' }[severity];
-    this.warn(`${emoji} Security: ${event}`, { ...context, event, severity });
+    this.warn(`${emoji} Security: ${event}`, { ...context, event, severity, securityEvent: true });
   }
 
   // AI/ML logging

@@ -166,28 +166,28 @@ ALTER TABLE store_profiles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view attachments in their household" ON attachments
   FOR SELECT USING (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
     )
   );
 
 CREATE POLICY "Users can insert attachments to their household" ON attachments
   FOR INSERT WITH CHECK (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
-    ) AND uploaded_by = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
+    ) AND uploaded_by = auth.uid()::text
   );
 
 CREATE POLICY "Users can update attachments in their household" ON attachments
   FOR UPDATE USING (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
     )
   );
 
 CREATE POLICY "Users can delete attachments in their household" ON attachments
   FOR DELETE USING (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
     )
   );
 
@@ -195,35 +195,35 @@ CREATE POLICY "Users can delete attachments in their household" ON attachments
 CREATE POLICY "Users can view OCR queue in their household" ON ocr_processing_queue
   FOR SELECT USING (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
     )
   );
 
 CREATE POLICY "Users can view receipt items in their household" ON receipt_items
   FOR SELECT USING (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
     )
   );
 
 CREATE POLICY "Users can update receipt items in their household" ON receipt_items
   FOR UPDATE USING (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
     )
   );
 
 CREATE POLICY "Users can view price history in their household" ON price_history
   FOR SELECT USING (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
     )
   );
 
 CREATE POLICY "Users can insert price history in their household" ON price_history
   FOR INSERT WITH CHECK (
     household_id IN (
-      SELECT household_id FROM users WHERE id = auth.uid()
+      SELECT household_id FROM users WHERE id = auth.uid()::text
     )
   );
 
@@ -236,7 +236,9 @@ COMMENT ON TABLE ocr_patterns IS 'Learned patterns for better OCR extraction';
 COMMENT ON TABLE store_profiles IS 'Store-specific information and patterns';
 
 -- Create Supabase Storage bucket for attachments
-INSERT INTO storage.buckets (id, name, public) VALUES ('attachments', 'attachments', false);
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('attachments', 'attachments', false)
+ON CONFLICT (id) DO NOTHING;
 
 -- Storage policies for attachments bucket
 CREATE POLICY "Users can upload attachments to their household folder" ON storage.objects

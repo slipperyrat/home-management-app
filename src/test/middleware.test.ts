@@ -1,158 +1,73 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { NextRequest } from 'next/server';
 
-// Mock Next.js and Clerk
+const mockAuthState = vi.hoisted(() => ({ userId: 'user-123' as string | null }));
+
 vi.mock('@clerk/nextjs/server', () => ({
-  clerkMiddleware: vi.fn((handler) => handler),
-  createRouteMatcher: vi.fn(() => () => false)
-}))
+  clerkMiddleware: (handler: any) => (req: NextRequest) =>
+    handler(async () => mockAuthState, req),
+}));
 
-vi.mock('next/server', () => ({
-  NextResponse: {
-    next: vi.fn(() => ({
-      headers: {
-        set: vi.fn()
-      }
-    })),
-    redirect: vi.fn()
-  }
-}))
+import middleware from '@/middleware';
 
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          single: vi.fn(() => Promise.resolve({ data: { has_onboarded: true }, error: null }))
-        }))
-      }))
-    }))
-  }))
-}))
+vi.mock('@/lib/api/database', () => ({
+  getUserHouseholdId: vi.fn(),
+  getUserOnboardingStatus: vi.fn()
+}));
 
-describe('Middleware Security Functions', () => {
+import { getUserHouseholdId, getUserOnboardingStatus } from '@/lib/api/database';
+
+describe('middleware onboarding checks', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-  })
+    vi.resetAllMocks();
+    mockAuthState.userId = 'user-123';
+  });
 
-  describe('Rate Limiting Logic', () => {
-    it('should implement sliding window rate limiting', () => {
-      // Test the rate limiting logic
-      const mockBucket = {
-        count: 0,
-        resetTime: Date.now() + 900000 // 15 minutes
-      }
-      
-      // Simulate rate limiting logic
-      const currentTime = Date.now()
-      const windowSize = 15 * 60 * 1000 // 15 minutes
-      const maxRequests = 100
-      
-      // Reset if window expired
-      if (currentTime > mockBucket.resetTime) {
-        mockBucket.count = 0
-        mockBucket.resetTime = currentTime + windowSize
-      }
-      
-      // Check if under limit
-      const isAllowed = mockBucket.count < maxRequests
-      expect(isAllowed).toBe(true)
-      
-      // Increment count
-      mockBucket.count++
-      expect(mockBucket.count).toBe(1)
-    })
+  it('redirects to onboarding when household missing', async () => {
+    (getUserHouseholdId as vi.Mock).mockResolvedValue(null);
+    (getUserOnboardingStatus as vi.Mock).mockResolvedValue(false);
 
-    it('should block requests when rate limit exceeded', () => {
-      const mockBucket = {
-        count: 100, // At limit
-        resetTime: Date.now() + 900000
-      }
-      
-      const maxRequests = 100
-      const isAllowed = mockBucket.count < maxRequests
-      
-      expect(isAllowed).toBe(false)
-    })
-  })
+    const request = new NextRequest('https://example.com/dashboard');
+    const response = await middleware(request as any);
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toContain('/onboarding');
+  });
 
-  describe('CSRF Protection', () => {
-    it('should validate origin headers', () => {
-      const allowedOrigins = ['http://localhost:3000', 'https://yourdomain.com']
-      const testOrigin = 'http://localhost:3000'
-      
-      const isValidOrigin = allowedOrigins.includes(testOrigin)
-      expect(isValidOrigin).toBe(true)
-    })
+  it('allows access when onboarding complete', async () => {
+    (getUserHouseholdId as vi.Mock).mockResolvedValue('household-1');
+    (getUserOnboardingStatus as vi.Mock).mockResolvedValue(true);
 
-    it('should reject invalid origins', () => {
-      const allowedOrigins = ['http://localhost:3000', 'https://yourdomain.com']
-      const maliciousOrigin = 'https://evil.com'
-      
-      const isValidOrigin = allowedOrigins.includes(maliciousOrigin)
-      expect(isValidOrigin).toBe(false)
-    })
-  })
+    const request = new NextRequest('https://example.com/dashboard');
+    const response = await middleware(request as any);
+    expect(response.headers.get('location')).toBeNull();
+  });
 
-  describe('Security Headers', () => {
-    it('should set proper security headers', () => {
-      const mockResponse = {
-        headers: new Map()
-      }
-      
-      // Mock the header setting logic
-      const setSecurityHeaders = (response: any) => {
-        response.headers.set('X-Content-Type-Options', 'nosniff')
-        response.headers.set('X-Frame-Options', 'DENY')
-        response.headers.set('X-XSS-Protection', '1; mode=block')
-        response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
-        response.headers.set('Content-Security-Policy', "default-src 'self'")
-      }
-      
-      setSecurityHeaders(mockResponse)
-      
-      expect(mockResponse.headers.get('X-Content-Type-Options')).toBe('nosniff')
-      expect(mockResponse.headers.get('X-Frame-Options')).toBe('DENY')
-      expect(mockResponse.headers.get('X-XSS-Protection')).toBe('1; mode=block')
-    })
-  })
+  it('does not redirect static asset requests', async () => {
+    mockAuthState.userId = 'user-123';
+    (getUserHouseholdId as vi.Mock).mockResolvedValue('household-1');
+    (getUserOnboardingStatus as vi.Mock).mockResolvedValue(false);
 
-  describe('Onboarding Cache', () => {
-    it('should cache onboarding status', () => {
-      const cache = new Map()
-      const userId = 'test-user'
-      const cacheKey = userId
-      const cacheValue = {
-        hasOnboarded: true,
-        timestamp: Date.now()
-      }
-      
-      // Set cache
-      cache.set(cacheKey, cacheValue)
-      
-      // Get from cache
-      const cached = cache.get(cacheKey)
-      expect(cached).toEqual(cacheValue)
-      expect(cached?.hasOnboarded).toBe(true)
-    })
+    const assetPaths = [
+      'https://example.com/fonts/font.woff2',
+      'https://example.com/images/icon.png',
+      'https://example.com/favicon.ico',
+      'https://example.com/styles/site.css',
+    ];
 
-    it('should expire cache after duration', () => {
-      const cache = new Map()
-      const userId = 'test-user'
-      const cacheDuration = 5 * 60 * 1000 // 5 minutes
-      
-      const oldTimestamp = Date.now() - cacheDuration - 1000 // Expired
-      const cacheValue = {
-        hasOnboarded: true,
-        timestamp: oldTimestamp
-      }
-      
-      cache.set(userId, cacheValue)
-      
-      // Check if cache is expired
-      const cached = cache.get(userId)
-      const isExpired = cached && (Date.now() - cached.timestamp) > cacheDuration
-      
-      expect(isExpired).toBe(true)
-    })
-  })
-})
+    for (const path of assetPaths) {
+      const request = new NextRequest(path);
+      const response = await middleware(request as any);
+      expect(response.headers.get('location')).toBeNull();
+    }
+  });
+
+  it('allows onboarding page when user unfinished', async () => {
+    mockAuthState.userId = 'user-123';
+    (getUserHouseholdId as vi.Mock).mockResolvedValue(null);
+    (getUserOnboardingStatus as vi.Mock).mockResolvedValue(false);
+
+    const request = new NextRequest('https://example.com/onboarding');
+    const response = await middleware(request as any);
+    expect(response.headers.get('location')).toBeNull();
+  });
+});

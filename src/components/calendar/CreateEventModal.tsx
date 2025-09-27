@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { X, Calendar, Clock, Tag, AlertCircle } from 'lucide-react';
+import { useFormState } from '@/hooks/useFormValidation';
+import { createCalendarEventInputSchema } from '@/lib/validation/schemas';
 
 interface CreateEventModalProps {
   isOpen: boolean;
@@ -14,16 +16,22 @@ interface CreateEventModalProps {
 }
 
 function CreateEventModal({ isOpen, onClose, onEventCreated }: CreateEventModalProps) {
-  const [formData, setFormData] = useState({
+  const {
+    values: formData,
+    setValue,
+    reset,
+    validate,
+    errors,
+  } = useFormState({
     title: '',
     description: '',
     start_time: '',
     end_time: '',
     event_type: 'general',
-    priority: 'medium'
-  });
+    priority: 'medium',
+  }, createCalendarEventInputSchema);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const eventTypes = [
     { value: 'general', label: 'General', color: 'bg-gray-100 text-gray-800' },
@@ -45,6 +53,13 @@ function CreateEventModal({ isOpen, onClose, onEventCreated }: CreateEventModalP
     setIsSubmitting(true);
 
     try {
+      const isValid = validate();
+      if (!isValid) {
+        setIsSubmitting(false);
+        toast.error('Please fix the highlighted fields');
+        return;
+      }
+
       const response = await fetch('/api/calendar', {
         method: 'POST',
         headers: {
@@ -59,14 +74,7 @@ function CreateEventModal({ isOpen, onClose, onEventCreated }: CreateEventModalP
           toast.success('Event created successfully!');
           onEventCreated();
           onClose();
-          setFormData({
-            title: '',
-            description: '',
-            start_time: '',
-            end_time: '',
-            event_type: 'general',
-            priority: 'medium'
-          });
+          reset();
         } else {
           toast.error(`Failed to create event: ${result.error || 'Unknown error'}`);
         }
@@ -84,10 +92,7 @@ function CreateEventModal({ isOpen, onClose, onEventCreated }: CreateEventModalP
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setValue(name as keyof typeof formData, value);
   };
 
   if (!isOpen) return null;

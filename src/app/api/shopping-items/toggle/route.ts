@@ -3,27 +3,27 @@ import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { toggleShoppingItemSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
 
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Toggling shopping item for user:', user.id);
-
       // Parse and validate input using Zod schema
       let validatedData;
       try {
         const body = await req.json();
-        console.log('📥 Received request body:', body);
         
         // Validate the input using our schema
         validatedData = toggleShoppingItemSchema.parse(body);
       } catch (validationError: any) {
+        logger.warn('Shopping item toggle validation failed', {
+          userId: user.id,
+          errors: validationError.errors,
+        });
         return createErrorResponse('Invalid input', 400, validationError.errors);
       }
 
       const { id: itemId, is_complete } = validatedData;
-
-      console.log(`🔄 API: Toggling shopping item ${itemId} for user ${user.id} to ${is_complete}`);
 
       // Get user and household data
       const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
@@ -44,11 +44,12 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (fetchError) {
-        console.error('❌ Error fetching shopping item:', fetchError);
+        logger.error('Error fetching shopping item before toggle', fetchError, {
+          userId: user.id,
+          itemId,
+        });
         return createErrorResponse('Failed to fetch shopping item', 500, fetchError.message);
       }
-
-      console.log(`📦 Current item completion status:`, currentItem);
 
       // Check if item was previously incomplete (to award rewards only once)
       const wasIncomplete = !currentItem.is_complete;
@@ -56,7 +57,10 @@ export async function POST(request: NextRequest) {
       const itemHouseholdId = (currentItem.shopping_lists as any)?.household_id;
 
       if (!itemHouseholdId) {
-        console.error('❌ No household_id found for shopping item');
+        logger.error('Shopping item missing household_id', new Error('household_id missing'), {
+          userId: user.id,
+          itemId,
+        });
         return createErrorResponse('Shopping item not associated with a household', 400);
       }
 
@@ -65,32 +69,31 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Access denied to shopping item', 403);
       }
 
-      console.log(`🔄 Item was incomplete: ${wasIncomplete}, household: ${itemHouseholdId}`);
-
       if (is_complete && wasIncomplete) {
         // Complete the item and award rewards
-        console.log(`🎁 Awarding rewards for completing item`);
-        
         // First, get the current user's XP and coins
         const { data: userData, error: userError } = await supabase
           .from('users')
           .select('xp, coins')
           .eq('id', user.id);
 
-        console.log(`👤 User data query result:`, { userData, userError });
-
         if (userError) {
-          console.error(`❌ Error fetching user data:`, userError);
+          logger.error('Error fetching user rewards before toggle', userError, {
+            userId: user.id,
+            itemId,
+          });
           return createErrorResponse('Failed to fetch user data', 500, userError.message);
         }
 
         if (!userData || userData.length === 0) {
-          console.error(`❌ No user data found for id: ${user.id}`);
+          logger.warn('No user data found during shopping item toggle', {
+            userId: user.id,
+            itemId,
+          });
           return createErrorResponse('User not found', 404);
         }
 
         const userDataRecord = userData[0];
-        console.log(`✅ Found user:`, userDataRecord);
 
         // Update the shopping item completion status
         const { data: updatedItem, error: itemError } = await supabase
@@ -105,7 +108,10 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (itemError) {
-          console.error(`❌ Error updating shopping item:`, itemError);
+          logger.error('Error updating shopping item completion', itemError, {
+            userId: user.id,
+            itemId,
+          });
           return createErrorResponse('Failed to update shopping item', 500, itemError.message);
         }
 
@@ -114,9 +120,7 @@ export async function POST(request: NextRequest) {
         const currentCoins = userDataRecord?.coins ?? 0;
         const newXp = currentXp + 10;
         const newCoins = currentCoins + 1;
-        
-        console.log(`💰 Updating user rewards: XP ${currentXp} → ${newXp}, Coins ${currentCoins} → ${newCoins}`);
-      
+
         const { error: updateError } = await supabase
           .from('users')
           .update({
@@ -126,7 +130,12 @@ export async function POST(request: NextRequest) {
           .eq('id', user.id);
 
         if (updateError) {
-          console.error(`❌ Error updating user rewards:`, updateError);
+          logger.error('Error updating user rewards after shopping completion', updateError, {
+            userId: user.id,
+            itemId,
+            newXp,
+            newCoins,
+          });
           return createErrorResponse('Failed to update user rewards', 500, updateError.message);
         }
 
@@ -144,7 +153,13 @@ export async function POST(request: NextRequest) {
           }
         });
 
-        console.log(`✅ Successfully completed shopping item and awarded rewards`);
+        logger.info('Shopping item completed with rewards', {
+          userId: user.id,
+          householdId: household.id,
+          itemId,
+          xpAwarded: 10,
+          coinsAwarded: 1,
+        });
         return createSuccessResponse({ 
           item: updatedItem,
           rewards: { xp: 10, coins: 1 }
@@ -163,7 +178,11 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (itemError) {
-          console.error(`❌ Error updating shopping item:`, itemError);
+          logger.error('Error updating shopping item toggle state', itemError, {
+            userId: user.id,
+            itemId,
+            newState: is_complete,
+          });
           return createErrorResponse('Failed to update shopping item', 500, itemError.message);
         }
 
@@ -180,16 +199,25 @@ export async function POST(request: NextRequest) {
           }
         });
 
-        console.log(`✅ Successfully ${is_complete ? 'completed' : 'uncompleted'} shopping item`);
+        logger.info('Shopping item toggled', {
+          userId: user.id,
+          householdId: household.id,
+          itemId,
+          newState: is_complete,
+        });
         return createSuccessResponse({ item: updatedItem }, 'Shopping item toggled successfully');
       }
 
     } catch (error) {
+      logger.error('Shopping item toggle failed', error as Error, {
+        userId: user.id,
+        route: '/api/shopping-items/toggle',
+      });
       return handleApiError(error, { route: '/api/shopping-items/toggle', method: 'POST', userId: user.id });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'shopping'
   });
 } 

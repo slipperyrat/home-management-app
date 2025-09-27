@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { sb } from '@/lib/server/supabaseAdmin';
 import { updateShoppingListCounts } from '@/lib/server/updateShoppingListCounts';
+import { logger } from '@/lib/logging/logger';
+
+const confirmItemsSchema = z.object({
+  itemIds: z.array(z.string().uuid()).min(1),
+});
 
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🔍 Confirm-items API called with userId:', user?.id);
-      const { itemIds } = await req.json();
-      console.log('🔍 Item IDs received:', itemIds);
-
-      if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
-        console.log('❌ No item IDs provided');
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Item IDs are required' 
-        }, { status: 400 });
-      }
+      const payload = await req.json();
+      const { itemIds } = confirmItemsSchema.parse(payload);
 
       // Get user's household
       const supabase = sb();
@@ -36,7 +33,6 @@ export async function POST(request: NextRequest) {
       const householdId = userData.household_id;
 
     // Get the "Groceries" list for this household
-    console.log('🔍 Looking for groceries list for household:', householdId);
     const { data: groceriesList, error: listError } = await supabase
       .from('shopping_lists')
       .select('id, title')
@@ -44,10 +40,12 @@ export async function POST(request: NextRequest) {
       .eq('title', 'Groceries')
       .single();
 
-    console.log('🔍 Groceries list query result:', { groceriesList, listError });
-
     if (listError || !groceriesList) {
-      console.error('❌ Groceries list not found:', listError);
+      logger.warn('Groceries list not found during confirm-items', {
+        userId: user.id,
+        householdId,
+        error: listError?.message,
+      });
       return NextResponse.json({ 
         success: false, 
         error: 'Groceries list not found' 
@@ -55,7 +53,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the items to confirm
-    console.log('🔍 Looking for items to confirm:', itemIds);
     const { data: itemsToConfirm, error: fetchError } = await supabase
       .from('shopping_items')
       .select('*')
@@ -63,10 +60,12 @@ export async function POST(request: NextRequest) {
       .eq('pending_confirmation', true)
       .eq('auto_added', true);
 
-    console.log('🔍 Items to confirm query result:', { itemsToConfirm, fetchError });
-
     if (fetchError) {
-      console.error('❌ Failed to fetch items:', fetchError);
+      logger.error('Failed to fetch items for confirmation', fetchError, {
+        userId: user.id,
+        householdId,
+        itemCount: itemIds.length,
+      });
       return NextResponse.json({ 
         success: false, 
         error: 'Failed to fetch items' 
@@ -74,7 +73,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!itemsToConfirm || itemsToConfirm.length === 0) {
-      console.log('❌ No items found to confirm');
+      logger.warn('No pending items found to confirm', {
+        userId: user.id,
+        householdId,
+        itemCount: itemIds.length,
+      });
       return NextResponse.json({ 
         success: false, 
         error: 'No items found to confirm' 
@@ -87,8 +90,6 @@ export async function POST(request: NextRequest) {
     // Process each item
     for (const item of itemsToConfirm) {
       try {
-        console.log(`🔍 Processing item: ${item.name} (${item.quantity})`);
-        
         // Check if there's already an item with the same name in the groceries list
         const { data: existingItem, error: checkError } = await supabase
           .from('shopping_items')
@@ -97,8 +98,6 @@ export async function POST(request: NextRequest) {
           .eq('name', item.name)
           .eq('pending_confirmation', false)
           .single();
-
-        console.log(`🔍 Existing item check for ${item.name}:`, { existingItem, checkError });
 
         if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
           errors.push(`Error checking existing item ${item.name}: ${checkError.message}`);
@@ -130,8 +129,6 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          console.log(`🔍 Updating existing item ${item.name}: ${existingItem.quantity} + ${item.quantity} = ${newQuantity}`);
-
           const { error: updateError } = await supabase
             .from('shopping_items')
             .update({ 
@@ -141,8 +138,6 @@ export async function POST(request: NextRequest) {
               source_recipe_id: item.source_recipe_id
             })
             .eq('id', existingItem.id);
-
-          console.log(`🔍 Update result for ${item.name}:`, { updateError });
 
           if (updateError) {
             errors.push(`Error updating existing item ${item.name}: ${updateError.message}`);
@@ -168,8 +163,6 @@ export async function POST(request: NextRequest) {
           });
         } else {
           // Create new item in groceries list
-          console.log(`🔍 Creating new item ${item.name} in groceries list:`, groceriesList.id);
-          
           const { data: newItem, error: createError } = await supabase
             .from('shopping_items')
             .insert({
@@ -184,8 +177,6 @@ export async function POST(request: NextRequest) {
             })
             .select()
             .single();
-
-          console.log(`🔍 Create result for ${item.name}:`, { newItem, createError });
 
           if (createError) {
             errors.push(`Error creating item ${item.name}: ${createError.message}`);
@@ -215,20 +206,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-      console.log(`✅ Confirmation complete: ${confirmedItems.length} items processed, ${errors.length} errors`);
-      console.log('✅ Confirmed items:', confirmedItems);
-      if (errors.length > 0) {
-        console.log('❌ Errors:', errors);
-      }
-
-      // Update the shopping list item counts
-      console.log('🔍 Updating shopping list counts for groceries list:', groceriesList.id);
       const countUpdate = await updateShoppingListCounts(groceriesList.id);
-      if (countUpdate.ok) {
-        console.log(`✅ Updated counts: ${countUpdate.totalItems} total, ${countUpdate.completedItems} completed`);
-      } else {
-        console.error('❌ Failed to update counts:', countUpdate.error);
-      }
+
+    logger.info('Confirm-items completed', {
+      userId: user.id,
+      householdId,
+      listId: groceriesList.id,
+      confirmedCount: confirmedItems.length,
+      errorCount: errors.length,
+      updatedCounts: countUpdate.ok ? {
+        totalItems: countUpdate.totalItems,
+        completedItems: countUpdate.completedItems,
+      } : undefined,
+    });
 
       return NextResponse.json({
         success: true,
@@ -250,7 +240,7 @@ export async function POST(request: NextRequest) {
     }
   }, {
     requireAuth: true,
-    requireCSRF: false, // Temporarily disabled for testing
-    rateLimitConfig: 'api'
+    requireCSRF: true,
+    rateLimitConfig: 'shopping'
   });
 }

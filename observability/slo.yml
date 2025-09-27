@@ -1,0 +1,44 @@
+service: home-management-app
+owner: platform
+review: quarterly
+
+slos:
+  - name: api-success-rate
+    description: Successful authenticated API responses
+    target: 99.95
+    window: 30d
+    metric: metrics_api_success_total / metrics_api_total
+    alerting:
+      - condition: burn_rate > 2 over 6h
+        action: pager
+      - condition: burn_rate > 1 over 24h
+        action: email
+
+  - name: api-p95-latency
+    description: P95 latency for authenticated routes
+    target: 250ms
+    window: 30d
+    metric: metrics_api_latency_p95
+    alerting:
+      - condition: value > 300ms for 15m
+        action: pager
+
+  - name: job-success-rate
+    description: Background automation job completion
+    target: 99.5
+    window: 30d
+    metric: metrics_job_success_total / metrics_job_total
+    alerting:
+      - condition: burn_rate > 3 over 1h
+        action: pager
+      - condition: burn_rate > 1 over 24h
+        action: email
+
+  - name: job-queue-depth
+    description: Automation queue backlog
+    target: < 5 pending jobs
+    window: 1h
+    metric: metrics_job_queue_depth
+    alerting:
+      - condition: value > 10 for 15m
+        action: pager

@@ -50,9 +50,9 @@ export async function withAPISecurity(
   try {
     // 1. Method validation
     if (!securityConfig.allowedMethods?.includes(request.method)) {
-      logger.warn('Method not allowed', { 
-        method: request.method, 
-        url: request.url 
+      await logger.warn('Method not allowed', {
+        method: request.method,
+        url: request.url,
       });
       return NextResponse.json(
         { error: 'Method not allowed' }, 
@@ -64,12 +64,10 @@ export async function withAPISecurity(
     let user = null;
     if (securityConfig.requireAuth) {
       user = await currentUser();
-      console.log('Auth check for', request.nextUrl.pathname, 'user:', user?.id || 'null');
       if (!user) {
         const ip = request.headers.get('x-forwarded-for') || 'unknown';
         const userAgent = request.headers.get('user-agent') || 'unknown';
         
-        console.log('❌ Unauthorized access to', request.nextUrl.pathname, 'from', ip);
         logUnauthorizedAccess(request.nextUrl.pathname, ip, userAgent);
         
         return NextResponse.json(
@@ -79,42 +77,43 @@ export async function withAPISecurity(
       }
     }
 
-    // 3. Rate limiting check - Temporarily disabled to fix database errors
-    // if (user && securityConfig.rateLimitConfig) {
-    //   try {
-    //     const rateLimiter = new RateLimiter();
-    //     const rateLimitConfig = getRateLimitConfig(request.nextUrl.pathname);
-    //     
-    //     const { allowed, remaining, resetTime } = await rateLimiter.checkRateLimit(
-    //       user.id, 
-    //       rateLimitConfig
-    //     );
-    //     
-    //     if (!allowed) {
-    //       const ip = request.headers.get('x-forwarded-for') || 'unknown';
-    //       const userAgent = request.headers.get('user-agent') || 'unknown';
-    //       
-    //       logRateLimitExceeded(user.id, request.nextUrl.pathname, ip, userAgent);
-    //       
-    //       return NextResponse.json(
-    //         { 
-    //           error: 'Rate limit exceeded',
-    //           retryAfter: Math.ceil((resetTime.getTime() - Date.now()) / 1000)
-    //         },
-    //         { 
-    //           status: 429,
-    //           headers: rateLimiter.getRateLimitHeaders(remaining, resetTime, rateLimitConfig.maxRequests)
-    //         }
-    //       );
-    //     }
-    //   } catch (rateLimitError) {
-    //     // Fallback: Allow request if rate limiting fails
-    //     logger.warn('Rate limiting failed, allowing request', rateLimitError as Error, {
-    //       userId: user.id,
-    //       endpoint: request.nextUrl.pathname
-    //     });
-    //   }
-    // }
+    // 3. Rate limiting check
+    if (user && securityConfig.rateLimitConfig) {
+      try {
+        const rateLimitConfig = getRateLimitConfig(securityConfig.rateLimitConfig ?? request.nextUrl.pathname);
+        const rateLimiter = new RateLimiter();
+        const { allowed, remaining, resetTime } = await rateLimiter.checkRateLimit(
+          user.id,
+          rateLimitConfig
+        );
+
+        if (!allowed) {
+          const ip = request.headers.get('x-forwarded-for') || 'unknown';
+          const userAgent = request.headers.get('user-agent') || 'unknown';
+
+          logRateLimitExceeded(user.id, request.nextUrl.pathname, ip, userAgent);
+
+          return NextResponse.json(
+            {
+              error: 'Rate limit exceeded',
+              retryAfter: Math.ceil((resetTime.getTime() - Date.now()) / 1000)
+            },
+            {
+              status: 429,
+              headers: rateLimiter.getRateLimitHeaders(remaining, resetTime, rateLimitConfig.maxRequests)
+            }
+          );
+        }
+      } catch (rateLimitError) {
+        await logger.warn('Rate limiting failed, allowing request', {
+          userId: user.id,
+          endpoint: request.nextUrl.pathname,
+          error: (rateLimitError as Error).message,
+          securityEvent: true,
+          severity: 'medium',
+        });
+      }
+    }
 
     // 4. CSRF protection check
     if (user && securityConfig.requireCSRF) {
@@ -136,9 +135,11 @@ export async function withAPISecurity(
     return await handler(request, user);
     
   } catch (error) {
-    logger.error('API security error', error as Error, { 
+    await logger.error('API security error', error as Error, {
       url: request.url,
-      method: request.method 
+      method: request.method,
+      securityEvent: true,
+      severity: 'high',
     });
     
     return NextResponse.json(

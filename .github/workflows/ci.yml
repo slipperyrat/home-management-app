@@ -29,21 +29,30 @@ jobs:
       
     - name: Run linting
       run: npm run lint
+      env:
+        NEXT_TELEMETRY_DISABLED: 1
       
-    - name: Run tests
+    - name: Run unit tests
       run: npm run test:run
       env:
-        # Mock environment variables for testing
         NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co'
         NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key'
         SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key'
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'test-clerk-key'
         CLERK_SECRET_KEY: 'test-clerk-secret'
-        
-    - name: Run E2E tests
+
+    - name: Run integration tests
+      run: npm run test
+      env:
+        NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co'
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key'
+        SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key'
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'test-clerk-key'
+        CLERK_SECRET_KEY: 'test-clerk-secret'
+
+    - name: Run Playwright tests
       run: npm run test:e2e
       env:
-        # Mock environment variables for E2E testing
         NEXT_PUBLIC_SUPABASE_URL: 'https://test.supabase.co'
         NEXT_PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key'
         SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key'

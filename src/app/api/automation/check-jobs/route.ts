@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,9 +27,15 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (membershipError || !membership) {
+      logger.warn('Automation job check access denied', {
+        userId,
+        householdId,
+        error: membershipError?.message,
+      });
       throw new ServerError('Access denied to household', 403);
     }
 
+    const start = performance.now();
     // Get automation jobs using admin client (bypasses RLS)
     const { data: jobs, error: jobsError } = await sb()
       .from('automation_jobs')
@@ -38,11 +45,31 @@ export async function GET(request: NextRequest) {
       .limit(10);
 
     if (jobsError) {
-      console.error('Error fetching automation jobs:', jobsError);
+      logger.error('Error fetching automation jobs', jobsError, {
+        userId,
+        householdId,
+      });
       throw new ServerError('Failed to fetch automation jobs', 500);
     }
 
-    console.log(`✅ Found ${jobs?.length || 0} automation jobs for household: ${householdId}`);
+    const duration = performance.now() - start;
+    logger.performance('automation.check-jobs.fetch', duration, {
+      userId,
+      householdId,
+    });
+
+    logger.info('Automation jobs retrieved', {
+      userId,
+      householdId,
+      count: jobs?.length || 0,
+      duration,
+    });
+
+    const duration = performance.now() - start;
+    logger.performance('automation.check-jobs.fetch', duration, {
+      userId,
+      householdId,
+    });
 
     return NextResponse.json({
       success: true,
@@ -55,7 +82,9 @@ export async function GET(request: NextRequest) {
     if (error instanceof ServerError) {
       return createErrorResponse(error);
     }
-    console.error('Unexpected error:', error);
+    logger.error('Unexpected automation job check error', error as Error, {
+      route: '/api/automation/check-jobs',
+    });
     return createErrorResponse(new ServerError('Internal server error', 500));
   }
 }

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { getDatabaseClient } from '@/lib/api/database';
-import { ReceiptOCRService } from '@/lib/ocr/receiptOCRService';
 import { z } from 'zod';
+import { getDatabaseClient } from '@/lib/api/database';
+import { logger } from '@/lib/logging/logger';
+import { ReceiptOCRService } from '@/lib/ocr/receiptOCRService';
 
 const uploadSchema = z.object({
   file_name: z.string().min(1).max(255),
@@ -12,13 +13,17 @@ const uploadSchema = z.object({
   storage_path: z.string().min(1),
 });
 
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf'];
+
+function isAllowedMimeType(mime: string) {
+  return ALLOWED_MIME_PREFIXES.some((prefix) => mime.toLowerCase().startsWith(prefix));
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
-    console.log('🔍 Upload API - Auth check:', { userId, hasUserId: !!userId });
-    
     if (!userId) {
-      console.log('❌ Upload API - No userId found, returning 401');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -32,6 +37,14 @@ export async function POST(request: NextRequest) {
       
       if (!file) {
         return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      }
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json({ error: 'File too large' }, { status: 413 });
+      }
+
+      if (!isAllowedMimeType(file.type)) {
+        return NextResponse.json({ error: 'Unsupported file type' }, { status: 415 });
       }
 
       const supabase = getDatabaseClient();
@@ -53,10 +66,14 @@ export async function POST(request: NextRequest) {
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('attachments')
-        .upload(fileName, file);
+        .upload(fileName, file, {
+          contentType: file.type,
+          cacheControl: '3600',
+          upsert: false,
+        });
 
       if (uploadError) {
-        console.error('❌ Storage upload error:', uploadError);
+        logger.error('Storage upload error', uploadError, { userId });
         return NextResponse.json({ error: 'Failed to upload file to storage' }, { status: 500 });
       }
 
@@ -78,7 +95,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (attachmentError) {
-        console.error('❌ Error creating attachment:', attachmentError);
+        logger.error('Error creating attachment record', attachmentError, { userId });
         return NextResponse.json({ error: 'Failed to create attachment record' }, { status: 500 });
       }
 
@@ -95,10 +112,16 @@ export async function POST(request: NextRequest) {
           }]);
 
         if (queueError) {
-          console.error('❌ Error queueing OCR processing:', queueError);
+          logger.error('Error queueing OCR processing', queueError, {
+            userId,
+            attachmentId: attachment.id,
+          });
           // Don't fail the upload if OCR queuing fails
         } else {
-          console.log(`📋 Queued attachment ${attachment.id} for OCR processing`);
+          logger.info('Attachment queued for OCR', {
+            userId,
+            attachmentId: attachment.id,
+          });
         }
       }
 
@@ -118,6 +141,14 @@ export async function POST(request: NextRequest) {
       const body = await request.json();
       const validatedData = uploadSchema.parse(body);
       const { file_name, file_size, file_type, file_extension, storage_path } = validatedData;
+
+      if (file_size > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json({ error: 'File too large' }, { status: 413 });
+      }
+
+      if (!isAllowedMimeType(file_type)) {
+        return NextResponse.json({ error: 'Unsupported file type' }, { status: 415 });
+      }
 
       const supabase = getDatabaseClient();
       
@@ -150,7 +181,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (attachmentError) {
-        console.error('❌ Error creating attachment:', attachmentError);
+        logger.error('Error creating attachment record', attachmentError, { userId });
         return NextResponse.json({ error: 'Failed to create attachment record' }, { status: 500 });
       }
 
@@ -167,10 +198,16 @@ export async function POST(request: NextRequest) {
           }]);
 
         if (queueError) {
-          console.error('❌ Error queueing OCR processing:', queueError);
+          logger.error('Error queueing OCR processing', queueError, {
+            userId,
+            attachmentId: attachment.id,
+          });
           // Don't fail the upload if OCR queuing fails
         } else {
-          console.log(`📋 Queued attachment ${attachment.id} for OCR processing`);
+          logger.info('Attachment queued for OCR', {
+            userId,
+            attachmentId: attachment.id,
+          });
         }
       }
 
@@ -188,7 +225,7 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('❌ Error in upload API:', error);
+    logger.error('Upload API unexpected error', error as Error, { route: '/api/attachments/upload' });
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid input', details: error.errors }, { status: 400 });
     }
@@ -248,9 +285,15 @@ export async function PUT(request: NextRequest) {
         );
 
         if (result.success) {
-          console.log(`✅ OCR processing completed for attachment ${attachment_id}`);
+          logger.info('OCR processing completed', {
+            userId,
+            attachmentId: attachment_id,
+          });
         } else {
-          console.error(`❌ OCR processing failed for attachment ${attachment_id}:`, result.error);
+          logger.error('OCR processing failed', new Error(result.error || 'Unknown error'), {
+            userId,
+            attachmentId: attachment_id,
+          });
           
           // Update status to failed
           await supabase
@@ -264,7 +307,10 @@ export async function PUT(request: NextRequest) {
         }
 
       } catch (ocrError) {
-        console.error(`❌ OCR processing error for attachment ${attachment_id}:`, ocrError);
+        logger.error('OCR processing error', ocrError as Error, {
+          userId,
+          attachmentId: attachment_id,
+        });
         
         // Update status to failed
         await supabase

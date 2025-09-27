@@ -250,3 +250,20 @@ export async function getUserPlan(userId: string): Promise<{
 
   return { plan, features };
 }
+
+export async function getUserOnboardingStatus(userId: string): Promise<boolean> {
+  const { data, error } = await executeQuery(
+    (client) => client
+      .from('users')
+      .select('has_onboarded')
+      .eq('id', userId)
+      .single(),
+    { operation: 'getUserOnboardingStatus', table: 'users', userId }
+  );
+
+  if (error || !data) {
+    return false;
+  }
+
+  return Boolean(data.has_onboarded);
+}

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
+import { jobSuccessCounter, jobFailureCounter, jobDurationHistogram } from '@/app/metrics/router';
 
 export async function GET(request: NextRequest) {
+  const start = performance.now();
   try {
     const { userId } = await auth();
     
@@ -26,6 +29,11 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (membershipError || !membership) {
+      logger.warn('Automation worker access denied', {
+        userId,
+        householdId,
+        error: membershipError?.message,
+      });
       throw new ServerError('Access denied to household', 403);
     }
 
@@ -37,11 +45,27 @@ export async function GET(request: NextRequest) {
     });
 
     if (error) {
-      console.error('Automation worker error:', error);
+      logger.error('Automation worker execution failed', error, {
+        userId,
+        householdId,
+      });
       throw new ServerError('Failed to run automation worker', 500);
     }
 
-    console.log('✅ Automation worker executed successfully:', data);
+    const duration = performance.now() - start;
+    logger.performance('automation.worker.invoke', duration, {
+      userId,
+      householdId,
+    });
+
+    logger.info('Automation worker executed', {
+      userId,
+      householdId,
+      duration,
+    });
+
+    jobSuccessCounter.inc({ job: 'automation-worker' });
+    jobDurationHistogram.observe({ job: 'automation-worker' }, duration);
 
     return NextResponse.json({
       success: true,
@@ -50,10 +74,14 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
+    jobFailureCounter.inc({ job: 'automation-worker' });
+    jobDurationHistogram.observe({ job: 'automation-worker' }, performance.now() - start);
     if (error instanceof ServerError) {
       return createErrorResponse(error);
     }
-    console.error('Unexpected error:', error);
+    logger.error('Unexpected automation worker error', error as Error, {
+      route: '/api/automation/run-worker',
+    });
     return createErrorResponse(new ServerError('Internal server error', 500));
   }
 }

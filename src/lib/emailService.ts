@@ -1,5 +1,7 @@
 import { Resend } from 'resend';
 
+import { logger } from '@/lib/logging/logger';
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export interface DigestData {
@@ -114,7 +116,10 @@ export class EmailService {
         messageId: result.data?.id,
       };
     } catch (error) {
-      console.error('Error sending daily digest:', error);
+      logger.error('Error sending daily digest', error as Error, {
+        userId: data.user_id,
+        householdId: data.household_id,
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -143,7 +148,10 @@ export class EmailService {
         messageId: result.data?.id,
       };
     } catch (error) {
-      console.error('Error sending weekly digest:', error);
+      logger.error('Error sending weekly digest', error as Error, {
+        userId: data.user_id,
+        householdId: data.household_id,
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',

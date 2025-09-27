@@ -11,6 +11,9 @@ import { Calendar, Clock, Users, Plus, Trash2, Edit, Star } from 'lucide-react';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import CreateTemplateForm from '@/components/CreateTemplateForm';
+import { logger } from '@/lib/logging/logger';
+import { toast } from 'react-toastify';
+import { useCallback } from 'react';
 
 interface CalendarTemplatesProps {
   householdId: string;
@@ -86,8 +89,10 @@ export default function CalendarTemplates({ householdId, entitlements }: Calenda
       setTemplates(prev => [newTemplate, ...prev]);
       setShowCreateForm(false);
     } catch (err) {
-      console.error('Error creating template:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create template');
+      logger.error('Error creating calendar template', err as Error, {
+        route: 'CalendarTemplates:create',
+      });
+      toast.error('Failed to create template');
     }
   };
 
@@ -112,8 +117,11 @@ export default function CalendarTemplates({ householdId, entitlements }: Calenda
       setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? updatedTemplate : t));
       setEditingTemplate(null);
     } catch (err) {
-      console.error('Error updating template:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update template');
+      logger.error('Error updating calendar template', err as Error, {
+        templateId: editingTemplate?.id,
+        route: 'CalendarTemplates:update',
+      });
+      toast.error('Failed to update template');
     }
   };
 
@@ -135,8 +143,11 @@ export default function CalendarTemplates({ householdId, entitlements }: Calenda
         setSelectedTemplate(null);
       }
     } catch (err) {
-      console.error('Error deleting template:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete template');
+      logger.error('Error deleting calendar template', err as Error, {
+        templateId,
+        route: 'CalendarTemplates:delete',
+      });
+      toast.error('Failed to delete template');
     }
   };
 

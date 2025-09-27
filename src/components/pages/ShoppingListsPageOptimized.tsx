@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FormInput } from '@/components/ui/FormInput';
 import { useFocusManagement } from '@/hooks/useFocusManagement';
 import { useErrorHandler } from '@/hooks/useErrorHandler';
-import { useFormValidation } from '@/hooks/useFormValidation';
+import { useFormState } from '@/hooks/useFormValidation';
+import { createShoppingListSchema } from '@/lib/validation/schemas';
 import { 
   Plus, 
   ShoppingCart, 
@@ -159,28 +160,34 @@ const CreateListModal = React.memo(({
   onCreate: (data: { name: string; description: string }) => void;
 }) => {
   const { modalRef } = useFocusManagement({ isOpen, onClose });
-  const [formData, setFormData] = useState({ name: '', description: '' });
-  const { errors, isValid, validateForm, clearErrors } = useFormValidation();
+  const {
+    values: formData,
+    setValue,
+    reset,
+    validate,
+    errors,
+    clearErrors,
+  } = useFormState({ name: '', description: '' }, createShoppingListSchema.omit({ household_id: true }));
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     
-    // Simple validation
-    if (!formData.name.trim()) {
+    const isValid = validate();
+    if (!isValid) {
       return;
     }
     
     onCreate(formData);
-    setFormData({ name: '', description: '' });
+    reset();
     clearErrors();
     onClose();
-  }, [formData, onCreate, onClose, clearErrors]);
+  }, [formData, onCreate, onClose, clearErrors, reset, validate]);
 
   const handleClose = useCallback(() => {
-    setFormData({ name: '', description: '' });
+    reset();
     clearErrors();
     onClose();
-  }, [onClose, clearErrors]);
+  }, [onClose, clearErrors, reset]);
 
   if (!isOpen) return null;
 
@@ -208,7 +215,7 @@ const CreateListModal = React.memo(({
           <FormInput
             label="List Name"
             value={formData.name}
-            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+            onChange={(e) => setValue('name', e.target.value)}
             placeholder="e.g., Groceries for this week"
             required
             error={errors.find(e => e.field === 'name')?.message}
@@ -217,7 +224,7 @@ const CreateListModal = React.memo(({
           <FormInput
             label="Description (optional)"
             value={formData.description}
-            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+            onChange={(e) => setValue('description', e.target.value)}
             placeholder="e.g., Weekly grocery shopping for family of 4"
             multiline
             rows={3}

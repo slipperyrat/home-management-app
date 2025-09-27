@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Trash2, Calendar, Clock } from 'lucide-react';
 import { CalendarTemplate } from '@/lib/entitlements';
+import { useFormState } from '@/hooks/useFormValidation';
+import { createCalendarTemplateSchema } from '@/lib/validation/schemas';
 
 interface CreateTemplateFormProps {
   householdId: string;
@@ -39,13 +41,24 @@ const DEFAULT_COLORS = [
 
 export default function CreateTemplateForm({ householdId, template, onCreateTemplate, onEditTemplate, onCancel }: CreateTemplateFormProps) {
   const isEditing = !!template;
-  
-  const [formData, setFormData] = useState({
+
+  const {
+    values: formData,
+    setValue,
+    reset,
+    validate,
+    errors,
+  } = useFormState({
     name: template?.name || '',
     description: template?.description || '',
-    template_type: template?.template_type || 'custom' as 'school_term' | 'sports_training' | 'custom',
+    template_type: (template?.template_type || 'custom') as 'school_term' | 'sports_training' | 'custom',
     rrule: template?.rrule || 'FREQ=WEEKLY;BYDAY=MO',
-  });
+  }, createCalendarTemplateSchema.pick({
+    name: true,
+    description: true,
+    template_type: true,
+    rrule: true,
+  }));
 
   const [events, setEvents] = useState<TemplateEvent[]>(
     template?.events || [
@@ -62,8 +75,8 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = (field: keyof typeof formData, value: string) => {
+    setValue(field, value);
   };
 
   const handleEventChange = (index: number, field: keyof TemplateEvent, value: string | boolean) => {
@@ -92,13 +105,14 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.name.trim()) {
-      setError('Template name is required');
+
+    const isValid = validate();
+    if (!isValid) {
+      setError('Please fix the highlighted fields');
       return;
     }
 
-    const validEvents = events.filter(event => event.title.trim());
+    const validEvents = events.filter(event => event.title.trim() && event.start && event.end);
     if (validEvents.length === 0) {
       setError('At least one event is required');
       return;
@@ -124,13 +138,7 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
         await onCreateTemplate(templateData);
       }
 
-      // Reset form
-      setFormData({
-        name: '',
-        description: '',
-        template_type: 'custom',
-        rrule: 'FREQ=WEEKLY;BYDAY=MO',
-      });
+      reset();
       setEvents([{
         title: '',
         start: '09:00',
@@ -159,9 +167,9 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
+          {(error || errors.length > 0) && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-800 text-sm">{error}</p>
+              <p className="text-red-800 text-sm">{error || errors[0].message}</p>
             </div>
           )}
 
@@ -174,9 +182,12 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="e.g., Weekly Team Meeting"
                 required
+                aria-invalid={!!errors.find(err => err.field === 'name')}
               />
+              {errors.find(err => err.field === 'name') && (
+                <p className="text-sm text-red-600 mt-1">{errors.find(err => err.field === 'name')?.message}</p>
+              )}
             </div>
-
             <div>
               <Label htmlFor="template_type">Template Type</Label>
               <Select
@@ -201,9 +212,12 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
               id="description"
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
-              placeholder="Optional description of this template"
-              rows={3}
+              placeholder="Describe the template's purpose"
+              aria-invalid={!!errors.find(err => err.field === 'description')}
             />
+            {errors.find(err => err.field === 'description') && (
+              <p className="text-sm text-red-600 mt-1">{errors.find(err => err.field === 'description')?.message}</p>
+            )}
           </div>
 
           <div>
@@ -214,9 +228,6 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
               onChange={(e) => handleInputChange('rrule', e.target.value)}
               placeholder="FREQ=WEEKLY;BYDAY=MO"
             />
-            <p className="text-sm text-gray-600 mt-1">
-              Use RRULE format for recurring events (e.g., FREQ=WEEKLY;BYDAY=MO,TU)
-            </p>
           </div>
 
           <div>

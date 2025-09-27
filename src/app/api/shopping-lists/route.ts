@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
-import { getAuthenticatedUser, getUserEmail, getUserFullName } from '@/lib/api/auth';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { canAccessFeature } from '@/lib/server/canAccessFeature';
+import { logger } from '@/lib/logging/logger';
 import { z } from 'zod';
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 GET: Fetching shopping lists for user:', user.id);
-
       // Get user and household data
       const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
       
@@ -27,7 +25,10 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false });
 
       if (listsError) {
-        console.error('❌ GET: Error fetching shopping lists:', listsError);
+        logger.error('Failed to fetch shopping lists', listsError, {
+          userId: user.id,
+          route: '/api/shopping-lists',
+        });
         return createErrorResponse('Failed to fetch shopping lists', 500, listsError.message);
       }
 
@@ -54,7 +55,9 @@ export async function GET(request: NextRequest) {
             .eq('list_id', list.id)
             .eq('ai_suggested', true);
 
-          console.log(`🔍 Counts for list ${list.title || list.name} (${list.id}):`, {
+          logger.info('Counts for list fetched', {
+            userId: user.id,
+            listId: list.id,
             totalItems,
             completedItems,
             aiSuggestions
@@ -75,7 +78,11 @@ export async function GET(request: NextRequest) {
         }) || []
       );
 
-      console.log('✅ GET: Returning transformed lists:', listsWithCounts);
+      logger.info('Shopping lists fetched successfully', {
+        userId: user.id,
+        householdId: household.id,
+        totalLists: shoppingLists?.length || 0,
+      });
 
       return createSuccessResponse({
         shoppingLists: listsWithCounts,
@@ -83,6 +90,10 @@ export async function GET(request: NextRequest) {
       }, 'Shopping lists fetched successfully');
 
     } catch (error) {
+      logger.error('Failed to fetch shopping lists', error as Error, {
+        userId: user.id,
+        route: '/api/shopping-lists',
+      });
       return handleApiError(error, { route: '/api/shopping-lists', method: 'GET', userId: user.id });
     }
   }, {
@@ -95,8 +106,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Creating shopping list for user:', user.id);
-
       // Validate input using Zod
       let validatedData;
       try {
@@ -105,6 +114,10 @@ export async function POST(request: NextRequest) {
         const tempSchema = createShoppingListSchema.omit({ household_id: true });
         validatedData = tempSchema.parse(body);
       } catch (validationError: any) {
+        logger.warn('Shopping list create validation failed', {
+          userId: user.id,
+          errors: validationError.errors,
+        });
         return createErrorResponse('Invalid input', 400, validationError.errors);
       }
 
@@ -134,9 +147,7 @@ export async function POST(request: NextRequest) {
         household_id: household.id,
         created_by: user.id
       };
-      
-      console.log('Creating shopping list with data:', insertData);
-      
+
       const { data: newList, error: createError } = await supabase
         .from('shopping_lists')
         .insert(insertData)
@@ -144,7 +155,10 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (createError) {
-        console.error('Error creating shopping list:', createError);
+        logger.error('Error creating shopping list', createError, {
+          userId: user.id,
+          householdId: household.id,
+        });
         return createErrorResponse('Failed to create shopping list', 500, createError.message);
       }
 
@@ -175,12 +189,22 @@ export async function POST(request: NextRequest) {
         ai_confidence: 75
       };
 
+      logger.info('Shopping list created', {
+        userId: user.id,
+        householdId: household.id,
+        listId: newList.id,
+      });
+
       return createSuccessResponse({
         shoppingList: transformedList,
         plan: household.plan || 'free'
       }, 'Shopping list created successfully');
 
     } catch (error) {
+      logger.error('Failed to create shopping list', error as Error, {
+        userId: user.id,
+        route: '/api/shopping-lists',
+      });
       return handleApiError(error, { route: '/api/shopping-lists', method: 'POST', userId: user.id });
     }
   }, {

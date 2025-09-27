@@ -1,5 +1,6 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { getUserHouseholdId, getUserOnboardingStatus } from "@/lib/api/database";
 
 export default clerkMiddleware(async (auth, req) => {
   const url = new URL(req.url);
@@ -35,6 +36,7 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
   
   // Skip onboarding check for specific routes
+  const staticAssetPattern = /\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|xml|json|map)$/i;
   const skipOnboardingCheck = 
     url.pathname.startsWith('/dev/') ||
     url.pathname === '/onboarding' ||
@@ -42,10 +44,10 @@ export default clerkMiddleware(async (auth, req) => {
     url.pathname.startsWith('/sign-in') ||
     url.pathname.startsWith('/sign-up') ||
     url.pathname.startsWith('/_next/') ||
-    url.pathname.startsWith('/favicon') ||
-    url.pathname.includes('.') ||  // Static files
-    url.pathname === '/' ||  // Allow home page access
-    url.pathname.startsWith('/user-button')  // Clerk user button routes
+    url.pathname === '/favicon.ico' ||
+    staticAssetPattern.test(url.pathname) ||
+    url.pathname === '/' ||
+    url.pathname.startsWith('/user-button');
 
   // Protected routes that require authentication
   const protectedRoutes = [
@@ -80,11 +82,18 @@ export default clerkMiddleware(async (auth, req) => {
   // Check onboarding status for signed-in users on app routes (but NOT API routes)
   if (userId && !skipOnboardingCheck) {
     try {
-      // For now, skip onboarding check to get the server running
-      console.log(`User ${userId} accessing ${url.pathname}`);
+      const [hasHousehold, hasOnboarded] = await Promise.all([
+        getUserHouseholdId(userId),
+        getUserOnboardingStatus(userId)
+      ]);
+
+      if ((!hasHousehold || !hasOnboarded) && !url.pathname.startsWith('/onboarding')) {
+        const onboardingUrl = new URL('/onboarding', req.url);
+        onboardingUrl.searchParams.set('redirect', url.pathname);
+        return NextResponse.redirect(onboardingUrl);
+      }
     } catch (error) {
       console.error('Error in onboarding check middleware:', error);
-      // Continue without redirect on error to avoid blocking the app
     }
   }
   
