@@ -24,30 +24,30 @@ export const defaultAIConfig: FeatureConfig = {
   shoppingSuggestions: {
     enabled: true,
     provider: 'openai',
-    model: 'gpt-3.5-turbo',
-    apiKey: process.env.OPENAI_API_KEY,
+    model: 'gpt-4o-mini',
+    ...(process.env.OPENAI_API_KEY ? { apiKey: process.env.OPENAI_API_KEY } : {}),
     fallbackToMock: true,
     timeout: 10000,
     retryAttempts: 2
-  },
+  } as AIConfig,
   mealPlanning: {
     enabled: true,
     provider: 'openai',
-    model: 'gpt-3.5-turbo',
-    apiKey: process.env.OPENAI_API_KEY,
+    model: 'gpt-4o-mini',
+    ...(process.env.OPENAI_API_KEY ? { apiKey: process.env.OPENAI_API_KEY } : {}),
     fallbackToMock: true,
     timeout: 10000,
     retryAttempts: 2
-  },
+  } as AIConfig,
   emailProcessing: {
     enabled: true,
     provider: 'openai',
-    model: 'gpt-3.5-turbo',
-    apiKey: process.env.OPENAI_API_KEY,
+    model: 'gpt-4o-mini',
+    ...(process.env.OPENAI_API_KEY ? { apiKey: process.env.OPENAI_API_KEY } : {}),
     fallbackToMock: false,
     timeout: 15000,
     retryAttempts: 3
-  },
+  } as AIConfig,
   choreAssignment: {
     enabled: true,
     provider: 'mock', // Uses existing algorithm-based approach
@@ -95,6 +95,17 @@ export class AIConfigManager {
     }
     if (process.env.AI_EMAIL_PROCESSING_ENABLED === 'false') {
       config.emailProcessing.enabled = false;
+    }
+
+    // Per-feature model overrides
+    if (process.env.AI_MODEL_SHOPPING) {
+      config.shoppingSuggestions.model = process.env.AI_MODEL_SHOPPING;
+    }
+    if (process.env.AI_MODEL_MEAL) {
+      config.mealPlanning.model = process.env.AI_MODEL_MEAL;
+    }
+    if (process.env.AI_MODEL_EMAIL) {
+      config.emailProcessing.model = process.env.AI_MODEL_EMAIL;
     }
 
     // Override provider if specified

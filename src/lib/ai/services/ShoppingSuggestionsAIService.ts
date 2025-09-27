@@ -69,8 +69,9 @@ export class ShoppingSuggestionsAIService extends BaseAIService {
     const response = await this.openai.chat.completions.create({
       model: this.config.model,
       messages: this.createOpenAIPrompt(systemPrompt, userPrompt),
-      temperature: 0.3, // Lower temperature for more consistent results
-      max_tokens: 2000,
+      temperature: 0.2,
+      max_tokens: 900,
+      response_format: { type: 'json_object' }
     });
 
     const aiContent = response.choices[0]?.message?.content;
