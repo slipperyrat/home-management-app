@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
+import { withAPISecurity } from '@/lib/security/apiProtection';
 import { createClient } from '@supabase/supabase-js';
 import { AIEmailProcessor, EmailData } from '@/lib/ai/emailProcessor';
+import { getAIConfig } from '@/lib/ai/config/aiConfig';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,7 +11,8 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
-  try {
+  return withAPISecurity(request, async (req, _user) => {
+    try {
     const { userId } = await auth();
     
     if (!userId) {
@@ -30,7 +33,7 @@ export async function POST(request: NextRequest) {
     const householdId = userHousehold.household_id;
 
     // Parse request body
-    const body = await request.json();
+    const body = await req.json();
     const { emailData }: { emailData: EmailData } = body;
 
     if (!emailData || !emailData.subject || !emailData.body) {
@@ -70,7 +73,7 @@ export async function POST(request: NextRequest) {
         queueEntry.id,
         householdId,
         result.parsedItems,
-        'gpt-3.5-turbo',
+        getAIConfig('emailProcessing').model,
         result.processingTime
       );
 
@@ -122,12 +125,17 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-  } catch (error) {
-    console.error('Error processing email:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error' 
-    }, { status: 500 });
-  }
+    } catch (error) {
+      console.error('Error processing email:', error);
+      return NextResponse.json({ 
+        error: 'Internal server error' 
+      }, { status: 500 });
+    }
+  }, {
+    requireAuth: true,
+    requireCSRF: false,
+    rateLimitConfig: 'ai_heavy'
+  });
 }
 
 /**
@@ -249,7 +257,7 @@ export async function GET(request: NextRequest) {
       const { data: suggs } = await supabase
         .from('ai_suggestions')
         .select('*')
-        .eq('parsed_item_id', items?.map(i => i.id) || []);
+        .eq('parsed_item_id', (items || []).map((item: { id: string }) => item.id));
 
       parsedItems = items || [];
       suggestions = suggs || [];

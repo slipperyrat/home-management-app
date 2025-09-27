@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
+import { getAIConfig } from '@/lib/ai/config/aiConfig';
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
       correction_type: correctionType,
       correction_data: correctionData || null,
       user_notes: userNotes,
-      ai_model_version: 'gpt-3.5-turbo', // Default model version
+      ai_model_version: getAIConfig('emailProcessing').model,
       confidence_score_before: suggestion.parsed_item?.[0]?.confidence_score || null
     };
 

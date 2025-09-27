@@ -77,7 +77,7 @@ async function testAIEmailProcessing() {
     console.log('🔍 Test 3: OpenAI API...');
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: process.env.AI_MODEL_EMAIL || 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -89,6 +89,7 @@ async function testAIEmailProcessing() {
           }
         ],
         max_tokens: 10,
+        response_format: { type: 'json_object' }
       });
 
       const content = response.choices[0]?.message?.content;
