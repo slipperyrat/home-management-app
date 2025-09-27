@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
+import { getAIConfig } from './config/aiConfig';
 import { AISuggestionProcessor } from './suggestionProcessor';
 
 // Types for AI email processing
@@ -244,8 +245,10 @@ export class AIEmailProcessor {
   }
 
   constructor() {
+    const emailAIConfig = getAIConfig('emailProcessing');
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: emailAIConfig.apiKey,
+      timeout: emailAIConfig.timeout
     });
     
     this.supabase = createClient(
@@ -274,8 +277,9 @@ export class AIEmailProcessor {
       const prompt = this.createAnalysisPrompt(emailData);
       
       // Process with OpenAI
+      const emailAIConfig = getAIConfig('emailProcessing');
       const aiResponse = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: emailAIConfig.model,
         messages: [
           {
             role: 'system',
@@ -287,8 +291,9 @@ export class AIEmailProcessor {
             content: prompt
           }
         ],
-        temperature: 0.1, // Low temperature for consistent, accurate results
-        max_tokens: 2000,
+        temperature: 0.1,
+        max_tokens: 1000,
+        response_format: { type: 'json_object' }
       });
 
       const aiContent = aiResponse.choices[0]?.message?.content;
@@ -398,15 +403,8 @@ Only include fields that are relevant to the item type. Be as accurate as possib
    */
   private parseAIResponse(aiContent: string): ParsedItem[] {
     try {
-      console.log('🤖 Raw AI response:', aiContent);
-      
-      // Clean the response (remove markdown if present)
-      const cleanContent = aiContent.replace(/```json\n?|\n?```/g, '').trim();
-      console.log('🧹 Cleaned AI response:', cleanContent);
-      
-      // Parse JSON
-      const parsed = JSON.parse(cleanContent);
-      console.log('📊 Parsed AI response:', parsed);
+      // Parse JSON (responses constrained to JSON)
+      const parsed = JSON.parse(aiContent);
       
       if (!Array.isArray(parsed)) {
         throw new Error('AI response is not an array');
@@ -477,11 +475,9 @@ Only include fields that are relevant to the item type. Be as accurate as possib
    * Generate AI suggestions based on parsed data
    */
   private async generateSuggestions(parsedItems: ParsedItem[], _householdId: string): Promise<any[]> {
-    console.log('🔍 Generating suggestions for parsed items:', parsedItems);
     const suggestions = [];
 
     for (const item of parsedItems) {
-      console.log(`🔍 Processing item type: ${item.itemType}`, item);
       switch (item.itemType) {
         case 'bill':
           suggestions.push({
@@ -577,7 +573,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
     emailQueueId: string,
     householdId: string,
     parsedItems: ParsedItem[],
-    aiModelUsed: string = 'gpt-3.5-turbo',
+    aiModelUsed: string = getAIConfig('emailProcessing').model,
     processingTimeMs: number
   ): Promise<string[]> {
     const itemIds: string[] = [];

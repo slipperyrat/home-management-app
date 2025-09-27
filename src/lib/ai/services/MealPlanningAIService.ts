@@ -93,8 +93,9 @@ export class MealPlanningAIService extends BaseAIService {
     const response = await this.openai.chat.completions.create({
       model: this.config.model,
       messages: this.createOpenAIPrompt(systemPrompt, userPrompt),
-      temperature: 0.4, // Slightly higher for more creative suggestions
-      max_tokens: 3000,
+      temperature: 0.3,
+      max_tokens: 1200,
+      response_format: { type: 'json_object' }
     });
 
     const aiContent = response.choices[0]?.message?.content;
