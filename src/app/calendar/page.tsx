@@ -21,14 +21,15 @@ import {
 
 export const runtime = "nodejs";
 
-export default async function CalendarPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+type CalendarPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function CalendarPage({ searchParams }: CalendarPageProps) {
   const timezone = await detectTimezone();
-  const monthParam = typeof searchParams?.month === "string" ? searchParams.month : undefined;
-  const dateParam = typeof searchParams?.date === "string" ? searchParams.date : undefined;
+  const resolvedSearchParams = await searchParams;
+  const monthParam = typeof resolvedSearchParams?.month === "string" ? resolvedSearchParams.month : undefined;
+  const dateParam = typeof resolvedSearchParams?.date === "string" ? resolvedSearchParams.date : undefined;
 
   const reference = parseMonthParam(monthParam, timezone);
   const selectedDate = parseDateParam(dateParam, timezone);
