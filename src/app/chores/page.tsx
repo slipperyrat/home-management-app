@@ -9,7 +9,11 @@ import { ChoreList } from "./_components/ChoreList";
 import { ChoreListSkeleton } from "./_components/ChoreListSkeleton";
 import { FiltersSkeleton } from "./_components/FiltersSkeleton";
 
-export default async function ChoresPage({ searchParams }: { searchParams: ChoreFilters }) {
+type ChoresPageProps = {
+  searchParams: Promise<ChoreFilters>;
+};
+
+export default async function ChoresPage({ searchParams }: ChoresPageProps) {
   const household = await getCurrentHousehold();
   if (!household) {
     return (
@@ -21,11 +25,13 @@ export default async function ChoresPage({ searchParams }: { searchParams: Chore
     );
   }
 
+  const resolvedFilters = await searchParams;
+
   const filters = {
-    view: searchParams.view ?? "all",
-    status: searchParams.status,
-    assignee: searchParams.assignee,
-    tag: searchParams.tag,
+    view: resolvedFilters.view ?? "all",
+    status: resolvedFilters.status,
+    assignee: resolvedFilters.assignee,
+    tag: resolvedFilters.tag,
   } satisfies ChoreFilters;
 
   const choresPromise = listChores(filters);
