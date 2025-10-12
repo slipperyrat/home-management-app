@@ -28,6 +28,9 @@ interface BatchRequestBody {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
+      if (!user) {
+        return createErrorResponse('Unauthorized', 401);
+      }
       logger.info('Batch processing POST received', { userId: user.id });
 
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
@@ -115,6 +118,9 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
+      if (!user) {
+        return createErrorResponse('Unauthorized', 401);
+      }
       logger.info('Batch processing GET received', { userId: user.id });
 
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
