@@ -108,7 +108,13 @@ export async function POST(request: NextRequest) {
       }
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/ai/batch', method: 'POST', userId: user?.id });
+      const context = {
+        route: '/api/ai/batch',
+        method: 'POST',
+        ...(user ? { userId: user.id } : {}),
+      } as const;
+
+      return handleApiError(error, context);
     }
   }, {
     requireAuth: true,
@@ -191,7 +197,13 @@ export async function GET(request: NextRequest) {
       }
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/ai/batch', method: 'GET', userId: user?.id });
+      const context = {
+        route: '/api/ai/batch',
+        method: 'GET',
+        ...(user ? { userId: user.id } : {}),
+      } as const;
+
+      return handleApiError(error, context);
     }
   }, {
     requireAuth: true,
