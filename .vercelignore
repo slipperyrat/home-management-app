@@ -4,6 +4,8 @@ supabase/functions/
 # Development and test files
 *.test.ts
 *.test.tsx
+!src/lib/ai/test/testMealPlanningAI.ts
+!src/lib/ai/test/testShoppingAI.ts
 *.spec.ts
 *.spec.tsx
 test/
