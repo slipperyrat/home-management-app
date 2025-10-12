@@ -7,8 +7,13 @@ import { ListView } from "../_components/ListView";
 
 export const dynamic = "force-dynamic";
 
-export default async function ShoppingListDetailPage({ params }: { params: { id: string } }) {
-  const listId = params.id;
+type ShoppingListDetailPageProps = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function ShoppingListDetailPage({ params }: ShoppingListDetailPageProps) {
+  const resolvedParams = await params;
+  const listId = resolvedParams.id;
 
   const [lists, activeList] = await Promise.all([listAll(), getList({ id: listId })]);
 
