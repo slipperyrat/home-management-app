@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 import type { RecipeSummary } from "../_lib/types";
 import { RecipeCard } from "./RecipeCard";
