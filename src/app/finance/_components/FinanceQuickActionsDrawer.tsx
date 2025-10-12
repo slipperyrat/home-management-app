@@ -14,11 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-interface FinanceQuickActionsDrawerProps {
-  householdId: string;
-}
-
-export function FinanceQuickActionsDrawer({ householdId }: FinanceQuickActionsDrawerProps) {
+export function FinanceQuickActionsDrawer() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 

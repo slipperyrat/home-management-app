@@ -1,37 +1,20 @@
 // Standardized Database Access Helper
 // Provides consistent database access across all API routes
 
-import { createClient, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
+import { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import { logger } from '@/lib/logging/logger';
 import type { AuditLogInput, Household, User } from '@/types/database';
+import { getSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
 
 type DBClient = SupabaseClient<Database>;
 type QueryResult<T> = { data: T | null; error: PostgrestError | null };
-
-let supabaseClient: DBClient | null = null;
 
 /**
  * Get standardized Supabase client
  * @returns Supabase client instance
  */
 export function getDatabaseClient(): DBClient {
-  if (!supabaseClient) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing Supabase configuration');
-    }
-
-    supabaseClient = createClient<Database>(supabaseUrl, supabaseKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    });
-  }
-
-  return supabaseClient;
+  return getSupabaseAdminClient();
 }
 
 /**

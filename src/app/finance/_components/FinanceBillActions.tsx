@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 interface FinanceBillActionsProps {
-  householdId: string;
   onMarkAllPaid?: () => Promise<void>;
   onResetFilters?: () => void;
 }
 
-export function FinanceBillActions({ householdId, onMarkAllPaid, onResetFilters }: FinanceBillActionsProps) {
+export function FinanceBillActions({ onMarkAllPaid, onResetFilters }: FinanceBillActionsProps) {
   const router = useRouter();
   const [refreshing, startTransition] = useTransition();
 

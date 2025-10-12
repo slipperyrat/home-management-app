@@ -23,11 +23,9 @@ const updateBillSchema = z.object({
   external_id: z.string().optional(),
 });
 
-interface RouteParams {
-  params: { id: string };
-}
+export const runtime = 'nodejs';
 
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);
@@ -74,7 +72,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   });
 }
 
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);
@@ -186,7 +184,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   });
 }
 
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);

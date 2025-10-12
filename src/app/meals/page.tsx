@@ -5,8 +5,8 @@ import { DateTime } from "luxon";
 import { getWeekPlans, listRecipes, type WeekPlanEntry } from "./_lib/api";
 import { mapPlanEntriesToGridMeals } from "./_lib/types";
 import WeekGrid from "./_components/WeekGrid";
-import WeekActions from "./_components/WeekActions";
-import RecipesPanel from "./_components/RecipesPanel";
+import { WeekActions } from "./_components/WeekActions";
+import { RecipesPanel } from "./_components/RecipesPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +55,7 @@ export default async function MealsPage({
         <aside className="space-y-6">
           <section className="rounded-3xl border border-white/5 bg-[#101522] p-6 shadow-lg shadow-black/20">
             <Suspense fallback={<RecipesSkeleton />}>
-              <RecipesPanelSection recipesPromise={recipesPromise} weekStart={weekStart} />
+              <RecipesPanelSection recipesPromise={recipesPromise} />
             </Suspense>
           </section>
         </aside>
@@ -115,13 +115,11 @@ async function WeekGridSection({
 
 async function RecipesPanelSection({
   recipesPromise,
-  weekStart,
 }: {
   recipesPromise: ReturnType<typeof listRecipes>;
-  weekStart: string;
 }) {
   const recipes = await recipesPromise;
-  return <RecipesPanel initialRecipes={recipes} weekStart={weekStart} />;
+  return <RecipesPanel initialRecipes={recipes} />;
 }
 
 function WeekSwitcherSkeleton() {
