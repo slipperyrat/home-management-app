@@ -1,5 +1,3 @@
-"use server";
-
 import { createClient } from '@supabase/supabase-js';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
@@ -17,7 +15,7 @@ if (!supabaseServiceKey) {
   throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is required');
 }
 
-export function createSupabaseAdminClient() {
+export function getSupabaseAdminClient() {
   return createClient<Database>(supabaseUrl, supabaseServiceKey);
 }
 
@@ -36,7 +34,7 @@ export async function getUserAndHousehold(): Promise<{ userId: string; household
       throw new ServerError('Unauthorized', 403);
     }
 
-    const supabase = createSupabaseAdminClient();
+    const supabase = getSupabaseAdminClient();
 
     const { data: userData, error: userError } = await supabase
       .from('household_members')
