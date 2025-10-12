@@ -190,7 +190,7 @@ function generateAIRecommendations(
   // Category-based recommendations
   if (topCategories.length > 0) {
     const topCategory = topCategories[0];
-    if (topCategory.percentage > 50) {
+    if (topCategory && topCategory.percentage > 50) {
       recommendations.push(`${topCategory.category} represents over 50% of your spending. Consider if this is necessary.`);
     }
   }
