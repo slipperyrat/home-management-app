@@ -1,3 +1,5 @@
+"use server";
+
 import { createClient } from '@supabase/supabase-js';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';

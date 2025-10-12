@@ -1,5 +1,6 @@
 import { logger } from '@/lib/logging/logger';
 
+
 export type Tier = 'free' | 'pro';
 
 export interface Entitlements {

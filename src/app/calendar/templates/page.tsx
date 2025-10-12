@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { Calendar, ArrowLeft } from 'lucide-react';
 
 import { useUserData } from '@/hooks/useUserData';
-import { getEntitlements, type Entitlements } from '@/lib/entitlements';
+import type { Entitlements } from '@/lib/entitlements';
+import { fetchEntitlements } from '@/lib/entitlements-client';
 import CalendarTemplates from '@/components/CalendarTemplates';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -24,7 +25,7 @@ export default function CalendarTemplatesPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await getEntitlements(userData.household_id);
+      const data = await fetchEntitlements(userData.household_id);
       setEntitlements(data);
     } catch (err) {
       console.error('Error loading entitlements:', err);
