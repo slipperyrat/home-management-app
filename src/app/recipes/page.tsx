@@ -8,13 +8,14 @@ import { RecipeListSkeleton } from "./_components/RecipeListSkeleton";
 
 export const dynamic = "force-dynamic";
 
-export default async function RecipesPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
-  const query = typeof searchParams?.q === "string" ? searchParams?.q : "";
-  const tag = typeof searchParams?.tag === "string" ? searchParams?.tag : undefined;
+type RecipesPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function RecipesPage({ searchParams }: RecipesPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const query = typeof resolvedSearchParams?.q === "string" ? resolvedSearchParams.q : "";
+  const tag = typeof resolvedSearchParams?.tag === "string" ? resolvedSearchParams.tag : undefined;
 
   const recipesPromise = listRecipes({ query, tag });
 

@@ -10,12 +10,13 @@ import { RecipesPanel } from "./_components/RecipesPanel";
 
 export const dynamic = "force-dynamic";
 
-export default async function MealsPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
-  const weekParam = typeof searchParams?.week === "string" ? searchParams.week : undefined;
+type MealsPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function MealsPage({ searchParams }: MealsPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const weekParam = typeof resolvedSearchParams?.week === "string" ? resolvedSearchParams.week : undefined;
   const weekStart = getWeekStart(weekParam);
 
   const plannerPromise = getWeekPlans({ weekStart });
