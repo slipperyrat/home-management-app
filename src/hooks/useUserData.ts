@@ -18,6 +18,7 @@ export interface UserData {
     game_mode: string;
     created_at: string;
   };
+  entitlements?: import('@/lib/entitlements').Entitlements | null;
 }
 
 export interface PowerUp {

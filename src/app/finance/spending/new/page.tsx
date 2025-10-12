@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { useUserData } from '@/hooks/useUserData';
-import { canAccessFeature } from '@/lib/server/canAccessFeature';
+import { canAccessFeature } from '@/lib/entitlements';
 import { fetchWithCSRF } from '@/lib/csrf-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,15 +61,15 @@ export default function NewSpendingPage() {
     }
 
     if (userData?.household) {
-      const householdPlan = userData.household.plan || 'free';
+      const entitlements = userData.entitlements ?? null;
       
-      if (!canAccessFeature(householdPlan, 'spending_tracking')) {
+      if (!canAccessFeature(entitlements, 'spending_tracking')) {
         router.push('/upgrade');
         return;
       }
 
       // Fetch budget envelopes if user has access
-      if (canAccessFeature(householdPlan, 'budget_envelopes')) {
+      if (canAccessFeature(entitlements, 'budget_envelopes')) {
         void fetchEnvelopes();
       }
     }

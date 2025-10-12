@@ -1,6 +1,8 @@
 // Server-side feature gating utility for MVP pricing structure
 // This ensures features are properly gated at the API level
 
+import "server-only";
+
 import type { Entitlements } from '@/lib/entitlements';
 
 export type UserPlan = 'free' | 'pro';
