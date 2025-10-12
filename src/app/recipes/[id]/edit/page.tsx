@@ -6,8 +6,14 @@ import { analyzeRecipe } from "../../_lib/nutrition";
 
 export const dynamic = "force-dynamic";
 
-export default async function EditRecipePage({ params }: { params: { id: string } }) {
-  const recipe = await getRecipe({ id: params.id }).catch((error) => {
+type EditRecipePageProps = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function EditRecipePage({ params }: EditRecipePageProps) {
+  const resolvedParams = await params;
+
+  const recipe = await getRecipe({ id: resolvedParams.id }).catch((error) => {
     if ((error as { status?: number }).status === 404) {
       notFound();
     }
