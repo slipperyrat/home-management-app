@@ -5,12 +5,14 @@ import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { batchProcessor, type BatchRequest } from '@/lib/ai/services/BatchProcessor';
+import { batchProcessor, type BatchRequest, type BatchRequestContextMap } from '@/lib/ai/services/BatchProcessor';
 import { logger } from '@/lib/logging/logger';
 
-interface BatchRequestPayload {
-  type: keyof BatchRequest;
-  context: unknown;
+type BatchRequestType = keyof BatchRequestContextMap;
+
+interface BatchRequestPayload<TType extends BatchRequestType = BatchRequestType> {
+  type: TType;
+  context: BatchRequestContextMap[TType];
   priority?: BatchRequest['priority'];
   scheduledFor?: string;
   maxRetries?: number;
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
             householdId: household.id,
             scheduledFor: requestItem.scheduledFor ? new Date(requestItem.scheduledFor) : undefined,
             maxRetries: requestItem.maxRetries ?? batchProcessor.getConfig().maxRetries,
-          }));
+          })) as Omit<BatchRequest, 'id' | 'createdAt' | 'retryCount' | 'maxRetries'>[];
 
           const batchJob = await batchProcessor.createBatchJob(name, description ?? '', batchRequests);
 
