@@ -15,9 +15,17 @@ if (!supabaseServiceKey) {
   throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is required');
 }
 
-export function getSupabaseAdminClient() {
-  return createClient<Database>(supabaseUrl, supabaseServiceKey);
+const supabaseAdminClient = createClient<Database>(supabaseUrl, supabaseServiceKey);
+
+export function createSupabaseAdminClient() {
+  return supabaseAdminClient;
 }
+
+export function getSupabaseAdminClient() {
+  return supabaseAdminClient;
+}
+
+export const sb = () => supabaseAdminClient;
 
 export class ServerError extends Error {
   constructor(message: string, public status: number = 500) {

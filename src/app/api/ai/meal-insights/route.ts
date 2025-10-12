@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sb, getUserAndHousehold, createErrorResponse, ServerError } from '@/lib/server/supabaseAdmin';
+import { getSupabaseAdminClient, getUserAndHousehold, createErrorResponse, ServerError } from '@/lib/server/supabaseAdmin';
 import { logger } from '@/lib/logging/logger';
 import type { Database } from '@/types/database.types';
 
@@ -8,20 +8,22 @@ export async function GET(_request: NextRequest) {
     const { householdId } = await getUserAndHousehold();
 
     // Fetch meal planning data for AI analysis
+    const supabase = getSupabaseAdminClient();
+
     const [mealPlansResponse, recipesResponse, householdResponse] = await Promise.all([
-      sb()
+      supabase
         .from('meal_plans')
         .select('*')
         .eq('household_id', householdId)
         .order('week_start_date', { ascending: false })
         .limit(12), // Last 12 weeks
       
-      sb()
+      supabase
         .from('recipes')
         .select('*')
         .eq('household_id', householdId),
       
-      sb()
+      supabase
         .from('households')
         .select('*')
         .eq('id', householdId)
