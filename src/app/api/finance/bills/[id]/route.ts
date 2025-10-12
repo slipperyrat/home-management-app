@@ -26,8 +26,18 @@ const updateBillSchema = z.object({
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
-  const { params } = context;
+type RouteContext = { params: Promise<{ id: string }> };
+
+async function resolveParams(context: RouteContext): Promise<{ id: string }> {
+  const params = context.params ? await context.params : { id: '' };
+  if (!params.id) {
+    throw new Error('Missing bill id');
+  }
+  return { id: params.id };
+}
+
+export async function GET(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const { id: billId } = await resolveParams(context);
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);
@@ -45,7 +55,6 @@ export async function GET(request: NextRequest, context: { params: { id: string 
       }
 
       const db = getDatabaseClient();
-      const billId = params.id;
 
       const { data: bill, error } = await db
         .from('bills')
@@ -74,8 +83,8 @@ export async function GET(request: NextRequest, context: { params: { id: string 
   });
 }
 
-export async function PUT(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
-  const { params } = context;
+export async function PUT(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const { id: billId } = await resolveParams(context);
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);
@@ -94,7 +103,6 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 
       const body = await request.json();
       const validatedData = updateBillSchema.parse(body);
-      const billId = params.id;
 
       const db = getDatabaseClient();
 
@@ -187,8 +195,8 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
   });
 }
 
-export async function DELETE(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
-  const { params } = context;
+export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  const { id: billId } = await resolveParams(context);
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);
@@ -206,7 +214,6 @@ export async function DELETE(request: NextRequest, context: { params: { id: stri
       }
 
       const db = getDatabaseClient();
-      const billId = params.id;
 
       // First, get the bill details for audit logging
       const { data: existingBill, error: fetchError } = await db
