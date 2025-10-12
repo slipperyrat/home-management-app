@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useCallback } from 'react';
+import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { z } from 'zod';
 import { cn } from '@/lib/utils';
@@ -9,12 +9,14 @@ interface FormContextValue {
   errors: Array<{ field: string; message: string }>;
   isValid: boolean;
   touched: Set<string>;
-  validateField: (field: string, value: any, schema: z.ZodSchema) => boolean;
-  validateForm: (data: any, schema: z.ZodSchema) => boolean;
+  validateField: (field: string, value: unknown, schema: z.AnyZodObject) => boolean;
+  validateForm: (data: Record<string, unknown>, schema: z.AnyZodObject) => boolean;
   setFieldTouched: (field: string) => void;
   clearErrors: () => void;
   getFieldError: (field: string) => string | undefined;
   hasFieldError: (field: string) => boolean;
+  setValue: (field: string, value: unknown) => void;
+  getValue: (field: string) => unknown;
 }
 
 const FormContext = createContext<FormContextValue | null>(null);
@@ -27,48 +29,58 @@ export function useFormContext() {
   return context;
 }
 
-interface FormProps {
+interface FormProps<TValues extends Record<string, unknown>> {
   children: React.ReactNode;
-  onSubmit: (data: any) => void;
-  validationSchema?: z.ZodSchema;
+  onSubmit: (data: TValues) => void;
+  validationSchema?: z.AnyZodObject;
   className?: string;
-  initialValues?: Record<string, any>;
+  initialValues?: TValues;
 }
 
-export function Form({ 
-  children, 
-  onSubmit, 
+export function Form<TValues extends Record<string, unknown>>({
+  children,
+  onSubmit,
   validationSchema,
   className,
-  initialValues = {}
-}: FormProps) {
+  initialValues = {} as TValues,
+}: FormProps<TValues>) {
   const validation = useFormValidation();
-  const [values, setValues] = React.useState(initialValues);
+  const [values, setValues] = React.useState<TValues>(initialValues);
 
-  const handleSubmit = useCallback((e: React.FormEvent) => {
+  const handleSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     if (validationSchema) {
       const isValid = validation.validateForm(values, validationSchema);
       if (!isValid) return;
     }
-    
+
     onSubmit(values);
   }, [values, validationSchema, validation, onSubmit]);
 
-  const setValue = useCallback((field: string, value: any) => {
+  const setValue = useCallback((field: string, value: unknown) => {
     setValues(prev => ({ ...prev, [field]: value }));
-    
-    // Auto-validate if schema is provided
+
     if (validationSchema) {
       validation.validateField(field, value, validationSchema);
     }
   }, [validationSchema, validation]);
 
-  const contextValue: FormContextValue = {
-    ...validation,
-    setValue: (field: string, value: any) => setValue(field, value)
-  } as FormContextValue;
+  const getValue = useCallback((field: string) => values[field as keyof TValues], [values]);
+
+  const contextValue = useMemo<FormContextValue>(() => ({
+    errors: validation.errors,
+    isValid: validation.isValid,
+    touched: validation.touched,
+    validateField: validation.validateField,
+    validateForm: validation.validateForm,
+    setFieldTouched: validation.setFieldTouched,
+    clearErrors: validation.clearErrors,
+    getFieldError: validation.getFieldError,
+    hasFieldError: validation.hasFieldError,
+    setValue,
+    getValue,
+  }), [validation, setValue, getValue]);
 
   return (
     <FormContext.Provider value={contextValue}>
@@ -84,8 +96,8 @@ interface FormFieldProps {
   label?: string;
   required?: boolean;
   children: (props: {
-    value: any;
-    onChange: (value: any) => void;
+    value: unknown;
+    onChange: (value: unknown) => void;
     error?: string;
     hasError: boolean;
     touched: boolean;
@@ -94,12 +106,11 @@ interface FormFieldProps {
 }
 
 export function FormField({ name, label, required, children }: FormFieldProps) {
-  const { getFieldError, hasFieldError, setFieldTouched, touched } = useFormContext();
-  const [value, setValue] = React.useState('');
+  const { getFieldError, hasFieldError, setFieldTouched, touched, setValue, getValue } = useFormContext();
 
-  const handleChange = useCallback((newValue: any) => {
-    setValue(newValue);
-  }, []);
+  const handleChange = useCallback((newValue: unknown) => {
+    setValue(name, newValue);
+  }, [name, setValue]);
 
   const handleSetTouched = useCallback(() => {
     setFieldTouched(name);
@@ -108,11 +119,12 @@ export function FormField({ name, label, required, children }: FormFieldProps) {
   const error = getFieldError(name);
   const hasError = hasFieldError(name);
   const isTouched = touched.has(name);
+  const value = getValue(name);
 
   return (
     <div className="space-y-1">
       {label && (
-        <label className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-gray-700" htmlFor={name}>
           {label}
           {required && (
             <span className="text-red-500 ml-1" aria-label="required">*</span>
@@ -125,7 +137,7 @@ export function FormField({ name, label, required, children }: FormFieldProps) {
         error,
         hasError,
         touched: isTouched,
-        setTouched: handleSetTouched
+        setTouched: handleSetTouched,
       })}
       {error && isTouched && (
         <p className="text-sm text-red-600" role="alert">

@@ -9,7 +9,7 @@ export interface SecurityEvent {
   ip?: string;
   userAgent?: string;
   endpoint?: string;
-  details?: any;
+  details?: Record<string, unknown>;
   severity: 'low' | 'medium' | 'high' | 'critical';
   timestamp: Date;
 }
@@ -32,9 +32,6 @@ export class SecurityMonitor {
    * Log a security event
    */
   public logEvent(event: Omit<SecurityEvent, 'timestamp'>): void {
-    // Temporarily disabled to prevent infinite recursion
-    return;
-    
     const securityEvent: SecurityEvent = {
       ...event,
       timestamp: new Date()
@@ -51,16 +48,14 @@ export class SecurityMonitor {
     // Log based on severity
     switch (securityEvent.severity) {
       case 'critical':
-        logger.error('CRITICAL SECURITY EVENT', securityEvent);
+        logger.error('Critical security event', new Error(securityEvent.type), securityEvent);
         break;
       case 'high':
-        logger.warn('HIGH SECURITY EVENT', securityEvent);
-        break;
       case 'medium':
-        logger.warn('MEDIUM SECURITY EVENT', securityEvent);
+        logger.warn('Security event', securityEvent);
         break;
       case 'low':
-        logger.info('LOW SECURITY EVENT', securityEvent);
+        logger.info('Security event', securityEvent);
         break;
     }
 
@@ -116,7 +111,7 @@ export class SecurityMonitor {
     endpoint: string, 
     ip: string, 
     userAgent?: string,
-    details?: any
+    details?: Record<string, unknown>
   ): void {
     this.logEvent({
       type: 'unauthorized_access',
@@ -136,7 +131,7 @@ export class SecurityMonitor {
     activity: string, 
     ip: string, 
     userAgent?: string,
-    details?: any
+    details?: Record<string, unknown>
   ): void {
     this.logEvent({
       type: 'suspicious_activity',
@@ -155,7 +150,7 @@ export class SecurityMonitor {
     endpoint: string, 
     ip: string, 
     userAgent?: string,
-    details?: any
+    details?: Record<string, unknown>
   ): void {
     this.logEvent({
       type: 'authentication_failure',
@@ -311,11 +306,11 @@ export const logRateLimitExceeded = (userId: string, endpoint: string, ip: strin
 export const logCSRFFailure = (userId: string, endpoint: string, ip: string, userAgent?: string) => 
   securityMonitor.logCSRFFailure(userId, endpoint, ip, userAgent);
 
-export const logUnauthorizedAccess = (endpoint: string, ip: string, userAgent?: string, details?: any) => 
+export const logUnauthorizedAccess = (endpoint: string, ip: string, userAgent?: string, details?: Record<string, unknown>) => 
   securityMonitor.logUnauthorizedAccess(endpoint, ip, userAgent, details);
 
-export const logSuspiciousActivity = (userId: string, activity: string, ip: string, userAgent?: string, details?: any) => 
+export const logSuspiciousActivity = (userId: string, activity: string, ip: string, userAgent?: string, details?: Record<string, unknown>) => 
   securityMonitor.logSuspiciousActivity(userId, activity, ip, userAgent, details);
 
-export const logAuthenticationFailure = (endpoint: string, ip: string, userAgent?: string, details?: any) => 
+export const logAuthenticationFailure = (endpoint: string, ip: string, userAgent?: string, details?: Record<string, unknown>) => 
   securityMonitor.logAuthenticationFailure(endpoint, ip, userAgent, details);

@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   try {
@@ -57,14 +63,16 @@ export async function GET(request: NextRequest) {
       .limit(100);
 
     if (error) {
-      console.error('Error fetching AI suggestions:', error);
+      logger.error('Error fetching AI suggestions', error, { householdId, status });
       return NextResponse.json({ error: 'Failed to fetch AI suggestions' }, { status: 500 });
     }
 
-    console.log(`🔍 API: Fetched ${suggestions?.length || 0} suggestions with status=${status}`);
-    if (suggestions && suggestions.length > 0) {
-      console.log('🔍 API: Sample suggestion user_feedback:', suggestions[0].user_feedback);
-    }
+    logger.info('Fetched AI suggestions', {
+      householdId,
+      status,
+      count: suggestions?.length ?? 0,
+      sampleFeedback: suggestions?.[0]?.user_feedback,
+    });
 
     return NextResponse.json({
       success: true,
@@ -72,7 +80,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in AI suggestions API:', error);
+    logger.error('Error in AI suggestions API', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ 
       error: 'Internal server error' 
     }, { status: 500 });

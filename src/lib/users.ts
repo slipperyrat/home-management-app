@@ -1,18 +1,34 @@
-export async function getLeaderboard(householdId: string) {
+import { logger } from '@/lib/logging/logger';
+
+interface LeaderboardEntry {
+  userId: string;
+  displayName: string;
+  xp: number;
+  rank: number;
+}
+
+interface LeaderboardResponse {
+  data?: LeaderboardEntry[];
+  error?: string;
+}
+
+export async function getLeaderboard(householdId: string): Promise<LeaderboardEntry[]> {
   try {
-    console.log('Fetching leaderboard for household:', householdId);
+    logger.info('Fetching leaderboard for household', { householdId });
     const response = await fetch(`/api/leaderboard?householdId=${householdId}`);
-    const result = await response.json();
-    
+    const result = (await response.json()) as LeaderboardResponse;
+
     if (!response.ok) {
-      console.error('Error fetching leaderboard:', result.error);
-      throw new Error(result.error || 'Failed to fetch leaderboard');
+      const errorMessage = result.error || 'Failed to fetch leaderboard';
+      logger.error('Error fetching leaderboard', new Error(errorMessage), { householdId });
+      throw new Error(errorMessage);
     }
-    
-    console.log('Successfully fetched leaderboard:', result.data);
-    return result.data;
+
+    const leaderboard = result.data ?? [];
+    logger.info('Successfully fetched leaderboard', { householdId, entries: leaderboard.length });
+    return leaderboard;
   } catch (err) {
-    console.error('Exception in getLeaderboard:', err);
+    logger.error('Exception in getLeaderboard', err as Error, { householdId });
     throw err;
   }
-} 
+}

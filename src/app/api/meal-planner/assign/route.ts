@@ -1,31 +1,38 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { addRecipeIngredientsToGroceries } from '@/lib/server/addRecipeIngredients'
-import { mealPlannerAssignSchema } from '@/lib/validation/schemas'
+import { mealPlannerAssignSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
+import { z } from 'zod';
 
 export async function POST(req: NextRequest) {
   return withAPISecurity(req, async (request, user) => {
     try {
-      console.log('🚀 POST: Assigning meal for user:', user.id);
+      logger.info('Assigning meal slot', { userId: user.id });
 
-      // Parse and validate request body using Zod schema
-      let validatedData;
+      const tempSchema = mealPlannerAssignSchema.omit({ household_id: true });
+      let validatedData: z.infer<typeof tempSchema>;
       try {
         const body = await request.json();
-        console.log('🔍 Meal Assignment Request Body:', body);
-        const tempSchema = mealPlannerAssignSchema.omit({ household_id: true });
         validatedData = tempSchema.parse(body);
-        console.log('✅ Validation passed:', validatedData);
-      } catch (validationError: any) {
-        console.log('❌ Validation failed:', validationError.errors);
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+      } catch (validationError: unknown) {
+        if (validationError instanceof z.ZodError) {
+          logger.warn('Meal assignment validation failed', {
+            userId: user.id,
+            errors: validationError.errors,
+          });
+          return createErrorResponse('Invalid input', 400, validationError.errors);
+        }
+        logger.error('Meal assignment validation error', validationError instanceof Error ? validationError : new Error(String(validationError)), {
+          userId: user.id,
+        });
+        return createErrorResponse('Invalid input', 400);
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
@@ -36,56 +43,78 @@ export async function POST(req: NextRequest) {
       // const clean = sanitizeDeep(body, { notes: 'rich' });
       // const notes = clean.notes || null;
 
-      const supabase = getDatabaseClient()
+      const supabase = getDatabaseClient();
 
       // fetch or create the meal_plan row
       const { data: existing, error: selErr } = await supabase
-        .from('meal_plans').select('*')
-        .eq('household_id', household.id).eq('week_start_date', week).maybeSingle()
+        .from('meal_plans')
+        .select('*')
+        .eq('household_id', household.id)
+        .eq('week_start_date', week)
+        .maybeSingle();
       if (selErr) {
         return createErrorResponse('Failed to fetch meal plan', 500, selErr.message);
       }
 
-      const meals = existing?.meals ?? {}
-      meals[day] = meals[day] || { breakfast: null, lunch: null, dinner: null }
-      meals[day][slot] = recipe_id ?? null
+      type MealSlotKey = 'breakfast' | 'lunch' | 'dinner';
+      type MealDay = Record<MealSlotKey, string | null>;
+
+      const meals = (existing?.meals ?? {}) as Record<string, MealDay | null>;
+      const dayMeals = meals[day] ?? { breakfast: null, lunch: null, dinner: null };
+      meals[day] = dayMeals;
+      dayMeals[slot as MealSlotKey] = recipe_id ?? null;
 
       // upsert the plan
+      const serialisedMeals = Object.fromEntries(
+        Object.entries(meals).map(([dayKey, value]) => {
+          if (value && typeof value === 'object') {
+            return [dayKey, {
+              breakfast: value.breakfast ?? null,
+              lunch: value.lunch ?? null,
+              dinner: value.dinner ?? null,
+            }]
+          }
+          return [dayKey, value]
+        })
+      )
+
       const { data: plan, error: upErr } = await supabase
         .from('meal_plans')
-        .upsert([{ household_id: household.id, week_start_date: week, meals }], { onConflict: 'household_id,week_start_date' })
-        .select('*').single()
+        .upsert([{ household_id: household.id, week_start_date: week, meals: serialisedMeals }], { onConflict: 'household_id,week_start_date' })
+        .select('*')
+        .single();
       if (upErr) {
         return createErrorResponse('Failed to update meal plan', 500, upErr.message);
       }
 
       // optionally add ingredients to grocery list with auto-confirmation
-      let ingredientResult = null
+      let ingredientResult: {
+        ok: boolean;
+        added: number;
+        updated: number;
+        autoAdded?: number;
+        pendingConfirmations?: number;
+        error?: string;
+      } | null = null;
       if (alsoAddToList && recipe_id) {
-        console.log('🔍 About to call addRecipeIngredientsToGroceriesAuto with:', {
-          userId: user.id,
-          householdId: household.id,
-          recipeId: recipe_id,
-          autoConfirm: autoConfirm ?? false,
-          sourceMealPlan: { week, day, slot }
-        });
-        
         // Always use the enhanced auto-version for meal planner assignments
         // Default to autoConfirm: false to require confirmation
         const { addRecipeIngredientsToGroceriesAuto } = await import('@/lib/server/addRecipeIngredientsAuto');
-        console.log('🔍 Import successful, calling function...');
-        
         ingredientResult = await addRecipeIngredientsToGroceriesAuto(
-          user.id, 
-          household.id, 
+          user.id,
+          household.id,
           recipe_id,
-          autoConfirm ?? false, // Default to false to require confirmation
+          autoConfirm ?? false,
           { week, day, slot }
         );
         
-        console.log('🔍 addRecipeIngredientsToGroceriesAuto result:', ingredientResult);
-        
         if (!ingredientResult.ok) {
+          logger.warn('Meal assigned but failed to add ingredients automatically', {
+            userId: user.id,
+            householdId: household.id,
+            recipeId: recipe_id,
+            error: ingredientResult.error,
+          });
           return createErrorResponse('Assigned but failed to add ingredients', 207, ingredientResult.error);
         }
       }
@@ -97,7 +126,7 @@ export async function POST(req: NextRequest) {
         targetId: plan.id,
         userId: user.id,
         metadata: { 
-          week_start: week,
+          week_start_date: week,
           day,
           meal_type: slot,
           recipe_id,

@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@clerk/nextjs';
+import { toast } from 'sonner';
+import { logger } from '@/lib/logging/logger';
 
 interface NotificationSettings {
   choreReminders: boolean;
@@ -11,93 +13,107 @@ interface NotificationSettings {
   householdUpdates: boolean;
 }
 
+const DEFAULT_SETTINGS: NotificationSettings = {
+  choreReminders: true,
+  mealPlanningReminders: true,
+  shoppingListUpdates: true,
+  achievementNotifications: true,
+  householdUpdates: true,
+};
+
 export default function NotificationSettings() {
-  const [settings, setSettings] = useState<NotificationSettings>({
-    choreReminders: true,
-    mealPlanningReminders: true,
-    shoppingListUpdates: true,
-    achievementNotifications: true,
-    householdUpdates: true,
-  });
+  const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const { userId } = useAuth();
 
-  useEffect(() => {
-    checkNotificationStatus();
-    loadSettings();
-  }, [userId]);
-
-  const checkNotificationStatus = () => {
+  const checkNotificationStatus = useCallback(() => {
     if ('Notification' in window) {
-      setPermission(Notification.permission);
-      setIsSubscribed(Notification.permission === 'granted');
+      const currentPermission = Notification.permission;
+      setPermission(currentPermission);
+      setIsSubscribed(currentPermission === 'granted');
     }
-  };
+  }, []);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     if (!userId) return;
-
     try {
       const response = await fetch('/api/notifications/settings');
       if (response.ok) {
         const data = await response.json();
         if (data.settings) {
-          setSettings(data.settings);
+          setSettings(data.settings as NotificationSettings);
         }
       }
     } catch (error) {
-      console.error('Error loading notification settings:', error);
+      logger.error('Error loading notification settings', error as Error);
+      toast.error('Unable to load notification settings');
     }
-  };
+  }, [userId]);
 
-  const saveSettings = async (newSettings: NotificationSettings) => {
-    if (!userId) return;
+  useEffect(() => {
+    checkNotificationStatus();
+    void loadSettings();
+  }, [checkNotificationStatus, loadSettings]);
 
-    try {
-      const response = await fetch('/api/notifications/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ settings: newSettings }),
-      });
-
-      if (response.ok) {
+  const saveSettings = useCallback(
+    async (newSettings: NotificationSettings) => {
+      if (!userId) return;
+      try {
+        const response = await fetch('/api/notifications/settings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ settings: newSettings }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to save settings');
+        }
         setSettings(newSettings);
+        toast.success('Notification preferences updated');
+      } catch (error) {
+        logger.error('Error saving notification settings', error as Error);
+        toast.error('Unable to save notification settings');
       }
-    } catch (error) {
-      console.error('Error saving notification settings:', error);
-    }
-  };
+    },
+    [userId],
+  );
 
-  const handleSettingChange = (key: keyof NotificationSettings, value: boolean) => {
-    const newSettings = { ...settings, [key]: value };
-    saveSettings(newSettings);
-  };
+  const handleSettingChange = useCallback(
+    (key: keyof NotificationSettings, value: boolean) => {
+      saveSettings({ ...settings, [key]: value });
+    },
+    [saveSettings, settings],
+  );
 
-  const requestPermission = async () => {
+  const requestPermission = useCallback(async () => {
     if ('Notification' in window) {
-      const permission = await Notification.requestPermission();
-      setPermission(permission);
-      setIsSubscribed(permission === 'granted');
+      const newPermission = await Notification.requestPermission();
+      setPermission(newPermission);
+      setIsSubscribed(newPermission === 'granted');
+      if (newPermission === 'granted') {
+        toast.success('Notifications enabled');
+      } else {
+        toast.warning('Notifications were not enabled');
+      }
     }
-  };
+  }, []);
 
-  const testNotification = async () => {
+  const testNotification = useCallback(async () => {
     try {
       const response = await fetch('/api/notifications/test', {
         method: 'POST',
       });
-      
-      if (response.ok) {
-        // Show success message
-        console.log('Test notification sent!');
+      if (!response.ok) {
+        throw new Error('Failed to send test notification');
       }
+      toast.success('Test notification sent');
     } catch (error) {
-      console.error('Error sending test notification:', error);
+      logger.error('Error sending test notification', error as Error);
+      toast.error('Unable to send test notification');
     }
-  };
+  }, []);
 
   if (permission === 'denied') {
     return (
@@ -107,11 +123,9 @@ export default function NotificationSettings() {
             <span className="text-yellow-400 text-xl">⚠️</span>
           </div>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-yellow-800">
-              Notifications Blocked
-            </h3>
+            <h3 className="text-sm font-medium text-yellow-800">Notifications Blocked</h3>
             <p className="text-sm text-yellow-700 mt-1">
-              You've blocked notifications for this site. To enable them, click the notification icon in your browser's address bar and allow notifications.
+              Notifications are blocked. Update your browser settings to allow notifications.
             </p>
           </div>
         </div>
@@ -121,18 +135,14 @@ export default function NotificationSettings() {
 
   return (
     <div className="space-y-6">
-      {/* Permission Status */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-medium text-gray-900">
-              Push Notifications
-            </h3>
+            <h3 className="text-lg font-medium text-gray-900">Push Notifications</h3>
             <p className="text-sm text-gray-500 mt-1">
-              {isSubscribed 
-                ? 'You\'ll receive notifications for household activities'
-                : 'Enable notifications to stay updated on household activities'
-              }
+              {isSubscribed
+                ? 'You&apos;ll receive notifications for household activities'
+                : 'Enable notifications to stay updated on household activities'}
             </p>
           </div>
           {!isSubscribed ? (
@@ -158,54 +168,17 @@ export default function NotificationSettings() {
         </div>
       </div>
 
-      {/* Notification Settings */}
-      {isSubscribed ? <div className="bg-white border border-gray-200 rounded-lg p-4">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">
-            Notification Preferences
-          </h3>
+      {isSubscribed ? (
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Notification Preferences</h3>
           <div className="space-y-4">
-            {[
-              {
-                key: 'choreReminders' as keyof NotificationSettings,
-                label: 'Chore Reminders',
-                description: 'Get notified about upcoming and overdue chores',
-                icon: '✅'
-              },
-              {
-                key: 'mealPlanningReminders' as keyof NotificationSettings,
-                label: 'Meal Planning',
-                description: 'Reminders to plan meals and prep ingredients',
-                icon: '🍽️'
-              },
-              {
-                key: 'shoppingListUpdates' as keyof NotificationSettings,
-                label: 'Shopping Lists',
-                description: 'Updates when items are added to shopping lists',
-                icon: '🛒'
-              },
-              {
-                key: 'achievementNotifications' as keyof NotificationSettings,
-                label: 'Achievements',
-                description: 'Celebrate when you complete goals and earn rewards',
-                icon: '🎉'
-              },
-              {
-                key: 'householdUpdates' as keyof NotificationSettings,
-                label: 'Household Updates',
-                description: 'Important updates from other household members',
-                icon: '🏠'
-              }
-            ].map((item) => (
+            {PREFERENCE_OPTIONS.map((item) => (
               <div key={item.key} className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <span className="text-xl">{item.icon}</span>
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {item.label}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {item.description}
-                    </p>
+                    <p className="text-sm font-medium text-gray-900">{item.label}</p>
+                    <p className="text-xs text-gray-500">{item.description}</p>
                   </div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -213,14 +186,53 @@ export default function NotificationSettings() {
                     type="checkbox"
                     className="sr-only peer"
                     checked={settings[item.key]}
-                    onChange={(e) => handleSettingChange(item.key, e.target.checked)}
+                    onChange={(event) => handleSettingChange(item.key, event.target.checked)}
                   />
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600" />
                 </label>
               </div>
             ))}
           </div>
-        </div> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
+
+const PREFERENCE_OPTIONS: Array<{
+  key: keyof NotificationSettings;
+  label: string;
+  description: string;
+  icon: string;
+}> = [
+  {
+    key: 'choreReminders',
+    label: 'Chore Reminders',
+    description: 'Get notified about upcoming and overdue chores',
+    icon: '✅',
+  },
+  {
+    key: 'mealPlanningReminders',
+    label: 'Meal Planning',
+    description: 'Reminders to plan meals and prep ingredients',
+    icon: '🍽️',
+  },
+  {
+    key: 'shoppingListUpdates',
+    label: 'Shopping Lists',
+    description: 'Updates when items are added to shopping lists',
+    icon: '🛒',
+  },
+  {
+    key: 'achievementNotifications',
+    label: 'Achievements',
+    description: 'Celebrate when you complete goals and earn rewards',
+    icon: '🎉',
+  },
+  {
+    key: 'householdUpdates',
+    label: 'Household Updates',
+    description: 'Important updates from other household members',
+    icon: '🏠',
+  },
+];

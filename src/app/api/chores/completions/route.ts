@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getUserPowerUps } from '@/lib/supabase/rewards';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 // Create a Supabase client with service role key for server-side operations
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase: SupabaseClient<Database> = createClient(supabaseUrl, supabaseServiceKey);
 
 interface ChoreCompletion {
   id: string;
@@ -45,7 +47,7 @@ export async function GET(request: NextRequest) {
       .order('completed_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching chore completions:', error);
+      logger.error('Error fetching chore completions', error, { householdId });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -56,7 +58,7 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ data: filteredData });
   } catch (error) {
-    console.error('Exception in GET /api/chores/completions:', error);
+    logger.error('Exception in GET /api/chores/completions', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -70,8 +72,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Chore ID and user ID are required' }, { status: 400 });
     }
 
-    console.log('Completing chore:', { choreId, userId, xp });
-
     // Check for active xp_boost power-up
     let finalXp = xp;
     try {
@@ -81,12 +81,12 @@ export async function POST(request: NextRequest) {
       if (hasXpBoost) {
         // Apply 1.5x multiplier and round down
         finalXp = Math.floor(xp * 1.5);
-        console.log(`🎯 User ${userId} has active xp_boost power-up - applying 1.5x multiplier: ${xp} → ${finalXp}`);
+        logger.info('Applying XP boost', { userId, baseXp: xp, finalXp });
       } else {
-        console.log(`🎯 User ${userId} has no active xp_boost power-up - using base XP: ${xp}`);
+        logger.info('No XP boost active', { userId, baseXp: xp });
       }
     } catch (error) {
-      console.error('Error checking power-ups, using base XP:', error);
+      logger.error('Error checking power-ups, using base XP', error instanceof Error ? error : new Error(String(error)), { userId });
       // Continue with base XP if power-up check fails
     }
 
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error('Error completing chore:', error);
+      logger.error('Error completing chore', error, { choreId, userId });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -112,14 +112,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (xpError) {
-      console.error('Error awarding XP:', xpError);
+      logger.error('Error awarding XP', xpError, { userId, awardedXp: finalXp });
       return NextResponse.json({ error: xpError }, { status: 500 });
     }
 
-    console.log('Successfully completed chore and awarded XP:', data);
+    logger.info('Chore completed and XP awarded', { choreId, userId, finalXp });
     return NextResponse.json({ data });
   } catch (error) {
-    console.error('Exception in POST /api/chores/completions:', error);
+    logger.error('Exception in POST /api/chores/completions', error instanceof Error ? error : new Error(String(error)), {
+      householdId: (await params).householdId,
+    });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 } 

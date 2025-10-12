@@ -1,20 +1,26 @@
-import { describe, it, expect, vi } from 'vitest';
-import { runMigrations } from '@/scripts/runMigrations';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const execSyncMock = vi.fn();
 vi.mock('child_process', () => ({
-  execSync: vi.fn()
+  __esModule: true,
+  execSync: execSyncMock,
+  default: { execSync: execSyncMock },
 }));
 
-const { execSync } = require('child_process') as { execSync: ReturnType<typeof vi.fn> };
+const { runMigrations } = await import('@/scripts/runMigrations');
+
+beforeEach(() => {
+  execSyncMock.mockReset();
+});
 
 describe('Migration runner', () => {
   it('returns true when migrations run without error', () => {
-    execSync.mockReturnValue(Buffer.from('success'));
+    execSyncMock.mockReturnValue(Buffer.from('success'));
     expect(runMigrations()).toBe(true);
   });
 
   it('returns false when migrations throw', () => {
-    execSync.mockImplementation(() => {
+    execSyncMock.mockImplementation(() => {
       throw new Error('failure');
     });
     expect(runMigrations()).toBe(false);

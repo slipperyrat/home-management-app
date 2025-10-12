@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
 import {
   AICorrectionPattern,
   AIHouseholdProfile,
@@ -6,31 +6,26 @@ import {
   LearningAnalysisResult,
   HouseholdLearningInsights,
   PatternLearningRequest,
-  LearningRuleTrigger
+  LearningRuleTrigger,
 } from '../types/learning';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database';
 
 export class AILearningService {
-  private supabase: any;
-
-  constructor() {
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-  }
+  private supabase = createSupabaseAdminClient();
 
   /**
    * Analyze a correction and extract learning patterns
    */
   async analyzeCorrection(request: PatternLearningRequest): Promise<LearningAnalysisResult> {
     try {
-      console.log('🧠 Analyzing correction for learning:', request.correction_id);
+      logger.info('Analyzing correction for learning', { correctionId: request.correction_id });
 
       // Analyze the correction to determine pattern type and issue category
       const analysis = this.analyzeCorrectionPattern(request);
       
       // Create the correction pattern record
-      const pattern: Partial<AICorrectionPattern> = {
+      const pattern: Partial<Database['public']['Tables']['ai_correction_patterns']['Row']> = {
         household_id: request.household_id,
         correction_id: request.correction_id,
         pattern_type: analysis.pattern_type,
@@ -52,11 +47,14 @@ export class AILearningService {
         .single();
 
       if (error) {
-        console.error('❌ Failed to save correction pattern:', error);
+        logger.error('Failed to save correction pattern', error, {
+          householdId: request.household_id,
+          correctionId: request.correction_id,
+        });
         throw new Error('Failed to save learning pattern');
       }
 
-      console.log('✅ Saved correction pattern:', savedPattern.id);
+      logger.info('Saved correction pattern', { correctionPatternId: savedPattern.id });
 
       // Trigger learning rules
       await this.triggerLearningRules(request.household_id, savedPattern);
@@ -67,7 +65,10 @@ export class AILearningService {
       return analysis;
 
     } catch (error) {
-      console.error('❌ Error analyzing correction:', error);
+      logger.error('Error analyzing correction', error as Error, {
+        householdId: request.household_id,
+        correctionId: request.correction_id,
+      });
       throw error;
     }
   }
@@ -132,7 +133,7 @@ export class AILearningService {
   /**
    * Check if the correction involves missing data
    */
-  private hasMissingData(original: any, corrected: any): boolean {
+  private hasMissingData(original: Record<string, unknown>, corrected: Record<string, unknown>): boolean {
     if (!original || !corrected) return false;
     
     // Check if corrected version has more fields or data
@@ -146,7 +147,7 @@ export class AILearningService {
   /**
    * Check if the correction involves incorrect data
    */
-  private hasIncorrectData(original: any, corrected: any): boolean {
+  private hasIncorrectData(original: Record<string, unknown>, corrected: Record<string, unknown>): boolean {
     if (!original || !corrected) return false;
     
     // Check if any values were changed
@@ -158,7 +159,7 @@ export class AILearningService {
   /**
    * Check if the correction involves wrong classification
    */
-  private hasWrongClassification(original: any, corrected: any): boolean {
+  private hasWrongClassification(original: Record<string, unknown>, corrected: Record<string, unknown>): boolean {
     if (!original || !corrected) return false;
     
     // Check if suggestion_type or item_type changed
@@ -276,24 +277,24 @@ export class AILearningService {
         .order('priority', { ascending: false });
 
       if (error) {
-        console.error('❌ Failed to fetch learning rules:', error);
+        logger.error('Failed to fetch learning rules', error, { householdId: household_id });
         return;
       }
 
-      console.log(`🔍 Found ${rules?.length || 0} applicable learning rules`);
+      logger.info('Applicable learning rules fetched', { householdId: household_id, ruleCount: rules?.length ?? 0 });
 
       // Check which rules should be triggered
       for (const rule of rules || []) {
         const trigger = this.evaluateLearningRule(rule, pattern);
         
         if (trigger.conditions_met) {
-          console.log(`🎯 Triggering learning rule: ${rule.rule_name}`);
+          logger.info('Triggering learning rule', { ruleName: rule.rule_name, correctionPatternId: pattern.id });
           await this.executeLearningRule(rule, pattern, trigger);
         }
       }
 
     } catch (error) {
-      console.error('❌ Error triggering learning rules:', error);
+      logger.error('Error triggering learning rules', error as Error, { householdId: household_id });
     }
   }
 
@@ -354,10 +355,10 @@ export class AILearningService {
         .update({ is_learned: true, learned_at: new Date().toISOString() })
         .eq('id', pattern.id);
 
-      console.log(`✅ Executed learning rule: ${rule.rule_name}`);
+      logger.info('Executed learning rule', { ruleName: rule.rule_name, correctionPatternId: pattern.id });
 
     } catch (error) {
-      console.error(`❌ Error executing learning rule ${rule.rule_name}:`, error);
+      logger.error('Error executing learning rule', error as Error, { ruleName: rule.rule_name, correctionPatternId: pattern.id });
     }
   }
 
@@ -365,24 +366,21 @@ export class AILearningService {
    * Update email format preferences based on corrections
    */
   private async updateEmailFormatPreferences(_pattern: AICorrectionPattern): Promise<void> {
-    // This would update the household profile with learned email format preferences
-    console.log('📧 Updating email format preferences based on correction pattern');
+    logger.debug?.('Updating email format preferences based on correction pattern');
   }
 
   /**
    * Update bill provider patterns based on corrections
    */
   private async updateBillProviderPatterns(_pattern: AICorrectionPattern): Promise<void> {
-    // This would update the household profile with learned bill provider patterns
-    console.log('💰 Updating bill provider patterns based on correction pattern');
+    logger.debug?.('Updating bill provider patterns based on correction pattern');
   }
 
   /**
    * Adjust confidence thresholds based on corrections
    */
   private async adjustConfidenceThreshold(_pattern: AICorrectionPattern): Promise<void> {
-    // This would adjust confidence thresholds for future suggestions
-    console.log('🎯 Adjusting confidence thresholds based on correction pattern');
+    logger.debug?.('Adjusting confidence thresholds based on correction pattern');
   }
 
   /**
@@ -425,10 +423,10 @@ export class AILearningService {
         if (error) throw error;
       }
 
-      console.log('✅ Updated household learning profile');
+      logger.info('Household learning profile updated', { householdId: household_id });
 
     } catch (error) {
-      console.error('❌ Error updating household profile:', error);
+      logger.error('Error updating household profile', error as Error, { householdId: household_id });
     }
   }
 
@@ -459,10 +457,10 @@ export class AILearningService {
 
       // Calculate insights
       const total_patterns_learned = patterns?.length || 0;
-      const accuracy_trend = this.calculateAccuracyTrend(profile, patterns);
-      const top_learning_areas = this.getTopLearningAreas(patterns);
-      const suggested_improvements = this.generateSuggestedImprovements(patterns);
-      const next_learning_goals = this.generateNextLearningGoals(profile, patterns);
+      const accuracy_trend = this.calculateAccuracyTrend(profile as AIHouseholdProfile, patterns as AICorrectionPattern[]);
+      const top_learning_areas = this.getTopLearningAreas(patterns as AICorrectionPattern[]);
+      const suggested_improvements = this.generateSuggestedImprovements(patterns as AICorrectionPattern[]);
+      const next_learning_goals = this.generateNextLearningGoals(profile as AIHouseholdProfile, patterns as AICorrectionPattern[]);
 
       return {
         household_id,
@@ -471,13 +469,13 @@ export class AILearningService {
         accuracy_trend: this.convertTrendToPercentage(accuracy_trend),
         top_learning_areas,
         suggested_improvements,
-        confidence_threshold: profile?.confidence_threshold || 75,
+        confidence_threshold: (profile as AIHouseholdProfile)?.confidence_threshold || 75,
         learning_goals: next_learning_goals,
         last_updated: new Date().toISOString()
       };
 
     } catch (error) {
-      console.error('❌ Error getting household learning insights:', error);
+      logger.error('Error getting household learning insights', error as Error, { householdId: household_id });
       throw error;
     }
   }

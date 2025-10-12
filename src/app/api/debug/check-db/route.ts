@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { auth } from '@clerk/nextjs/server';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { withAPISecurity } from '@/lib/security/apiProtection';
+import { logger } from '@/lib/logging/logger';
 
-const supabase = createClient(
+const supabase: SupabaseClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
 
-    console.log(`🔍 Database check request for user: ${user.id}`);
+    logger.info('Database check request', { userId: user.id });
 
     // Check what tables exist
     const { data: tables, error: tablesError } = await supabase
@@ -21,12 +21,12 @@ export async function GET(request: NextRequest) {
       .eq('table_schema', 'public');
 
     if (tablesError) {
-      console.error('❌ Error fetching tables:', tablesError);
+      logger.error('Error fetching tables', tablesError);
       return NextResponse.json({ error: 'Failed to fetch tables' }, { status: 500 });
     }
 
     const tableNames = tables?.map(t => t.table_name) || [];
-    console.log(`📋 Available tables:`, tableNames);
+    logger.info('Available tables', { tableNames });
 
     // Check if key tables exist
     const hasUsers = tableNames.includes('users');
@@ -50,13 +50,13 @@ export async function GET(request: NextRequest) {
     // Check if user exists in users table
     let userExists = false;
     if (hasUsers) {
-      const { data: user, error: userError } = await supabase
+      const { data: userRow, error: userError } = await supabase
         .from('users')
         .select('id')
         .eq('id', userId)
         .single();
 
-      userExists = !userError && !!user;
+      userExists = !userError && !!userRow;
     }
 
     // Check if user exists in household_members
@@ -118,12 +118,12 @@ export async function GET(request: NextRequest) {
       if (!userColumns.includes('role')) result.missingColumns.push('users.role');
     }
 
-    console.log(`🔍 Database check result:`, result);
+    logger.info('Database check result', result);
 
     return NextResponse.json(result);
 
   } catch (error) {
-    console.error('❌ Unexpected error:', error);
+    logger.error('Unexpected error in check-db API', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
   }, {

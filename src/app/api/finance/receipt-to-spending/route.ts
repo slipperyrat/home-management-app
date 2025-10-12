@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createSpendEntriesFromReceipt, suggestBudgetEnvelopeForReceipt } from '@/lib/finance/receiptIntegration';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/logger';
 
 // Validation schemas
 const createSpendingFromReceiptSchema = z.object({
@@ -20,7 +21,7 @@ const deleteSpendingFromReceiptSchema = z.object({
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -178,7 +179,7 @@ export async function DELETE(request: NextRequest) {
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -212,7 +213,7 @@ export async function GET(request: NextRequest) {
       const { data: spendEntries, error } = await query.order('transaction_date', { ascending: false });
 
       if (error) {
-        console.error('Error fetching spend entries from receipts:', error);
+        logger.error('Error fetching spend entries from receipts', error, { householdId: household.id });
         return createErrorResponse('Failed to fetch spend entries', 500);
       }
 

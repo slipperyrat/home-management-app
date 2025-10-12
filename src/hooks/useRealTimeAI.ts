@@ -1,21 +1,22 @@
 // Real-time AI Processing Hook
 // This can be easily removed if the real-time processing doesn't work
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { useUserData } from './useUserData';
-import { useWebSocket } from './useWebSocket';
+import { useWebSocket, type AIProcessingProgress } from './useWebSocket';
+import { logger } from '@/lib/logging/logger';
 
 export interface RealTimeAIRequest {
   type: 'shopping_suggestions' | 'meal_planning' | 'chore_assignment' | 'email_processing';
-  context: any;
+  context: Record<string, unknown>;
   priority?: 'low' | 'medium' | 'high' | 'urgent';
 }
 
 export interface RealTimeAIResponse {
   requestId: string;
   success: boolean;
-  data?: any;
+  data?: unknown;
   error?: string;
   processingTime: number;
   provider: string;
@@ -42,7 +43,7 @@ export interface UseRealTimeAIReturn {
   isConnecting: boolean;
   error: string | null;
   status: RealTimeAIStatus | null;
-  processingRequests: Map<string, any>;
+  processingRequests: Map<string, AIProcessingProgress>;
   completedRequests: Map<string, RealTimeAIResponse>;
   
   // Methods
@@ -74,14 +75,12 @@ export function useRealTimeAI(): UseRealTimeAIReturn {
 
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RealTimeAIStatus | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
 
   const processRequest = useCallback(async (request: RealTimeAIRequest): Promise<RealTimeAIResponse> => {
     if (!user?.id || !userData?.household?.id) {
       throw new Error('User not authenticated or no household');
     }
 
-    setIsProcessing(true);
     setError(null);
 
     try {
@@ -98,15 +97,14 @@ export function useRealTimeAI(): UseRealTimeAIReturn {
         throw new Error(errorData.message || 'Failed to process AI request');
       }
 
-      const result = await response.json();
+      const result: { data: RealTimeAIResponse } = await response.json();
       return result.data;
 
-    } catch (err: any) {
-      console.error('Real-time AI processing error:', err);
-      setError(err.message);
-      throw err;
-    } finally {
-      setIsProcessing(false);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to process AI request');
+      logger.error('Real-time AI processing error', error, { userId: user?.id });
+      setError(error.message);
+      throw error;
     }
   }, [user?.id, userData?.household?.id]);
 
@@ -128,13 +126,14 @@ export function useRealTimeAI(): UseRealTimeAIReturn {
         throw new Error(errorData.message || 'Failed to get status');
       }
 
-      const result = await response.json();
+      const result: { data: RealTimeAIStatus } = await response.json();
       setStatus(result.data);
       return result.data;
 
-    } catch (err: any) {
-      console.error('Failed to get real-time AI status:', err);
-      setError(err.message);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to get real-time AI status');
+      logger.error('Failed to get real-time AI status', error, { userId: user?.id });
+      setError(error.message);
       return null;
     }
   }, [user?.id, userData?.household?.id]);
@@ -160,9 +159,10 @@ export function useRealTimeAI(): UseRealTimeAIReturn {
       // Refresh status after clearing queue
       await getStatus();
 
-    } catch (err: any) {
-      console.error('Failed to clear queue:', err);
-      setError(err.message);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to clear queue');
+      logger.error('Failed to clear real-time AI queue', error, { userId: user?.id });
+      setError(error.message);
     }
   }, [user?.id, userData?.household?.id, getStatus]);
 

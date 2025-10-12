@@ -1,9 +1,19 @@
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
+import type { Database, ShoppingListRow } from '@/types/database';
+import { logger } from '@/lib/logging/logger';
+
+type SuggestionType = 'bill_action' | 'calendar_event' | 'shopping_list_update' | 'chore_creation';
+
+interface AISuggestion {
+  id: string;
+  suggestion_type: SuggestionType;
+  suggestion_data: Record<string, unknown>;
+}
 
 interface ProcessedSuggestion {
   id: string;
-  suggestion_type: string;
-  suggestion_data: any;
+  suggestion_type: SuggestionType;
+  suggestion_data: Record<string, unknown>;
   household_id: string;
   user_id: string;
   success: boolean;
@@ -12,19 +22,12 @@ interface ProcessedSuggestion {
 }
 
 export class AISuggestionProcessor {
-  private supabase: any;
-
-  constructor() {
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-  }
+  private supabase = createSupabaseAdminClient();
 
   /**
    * Process AI suggestions and automatically insert them into appropriate tables
    */
-  async processSuggestions(suggestions: any[], householdId: string, userId: string): Promise<ProcessedSuggestion[]> {
+  async processSuggestions(suggestions: AISuggestion[], householdId: string, userId: string): Promise<ProcessedSuggestion[]> {
     const results: ProcessedSuggestion[] = [];
 
     for (const suggestion of suggestions) {
@@ -32,7 +35,11 @@ export class AISuggestionProcessor {
         const result = await this.processSingleSuggestion(suggestion, householdId, userId);
         results.push(result);
       } catch (error) {
-        console.error(`Failed to process suggestion ${suggestion.id}:`, error);
+        logger.error('Failed to process AI suggestion', error as Error, {
+          suggestionId: suggestion.id,
+          householdId,
+          userId,
+        });
         results.push({
           id: suggestion.id,
           suggestion_type: suggestion.suggestion_type,
@@ -51,24 +58,27 @@ export class AISuggestionProcessor {
   /**
    * Process a single AI suggestion based on its type
    */
-  private async processSingleSuggestion(suggestion: any, householdId: string, userId: string): Promise<ProcessedSuggestion> {
+  private async processSingleSuggestion(suggestion: AISuggestion, householdId: string, userId: string): Promise<ProcessedSuggestion> {
     const { id, suggestion_type, suggestion_data } = suggestion;
 
     switch (suggestion_type) {
       case 'bill_action':
-        return await this.processBillSuggestion(suggestion, householdId, userId);
+        return this.processBillSuggestion(suggestion, householdId, userId);
       
       case 'calendar_event':
-        return await this.processCalendarEventSuggestion(suggestion, householdId, userId);
+        return this.processCalendarEventSuggestion(suggestion, householdId, userId);
       
       case 'shopping_list_update':
-        return await this.processShoppingListSuggestion(suggestion, householdId, userId);
+        return this.processShoppingListSuggestion(suggestion, householdId, userId);
       
       case 'chore_creation':
-        return await this.processChoreSuggestion(suggestion, householdId, userId);
+        return this.processChoreSuggestion(suggestion, householdId, userId);
       
       default:
-        console.warn(`Unknown suggestion type: ${suggestion_type}`);
+        logger.warn('Unknown AI suggestion type', {
+          suggestionId: id,
+          suggestionType: suggestion_type,
+        });
         return {
           id,
           suggestion_type,
@@ -84,20 +94,20 @@ export class AISuggestionProcessor {
   /**
    * Process bill suggestions - insert into bills table
    */
-  private async processBillSuggestion(suggestion: any, householdId: string, userId: string): Promise<ProcessedSuggestion> {
+  private async processBillSuggestion(suggestion: AISuggestion, householdId: string, userId: string): Promise<ProcessedSuggestion> {
     const { id, suggestion_data } = suggestion;
     
     try {
       // Extract bill data from suggestion
-      const billData = {
+      const billData: Database['public']['Tables']['bills']['Row'] & { source: string; source_data: Record<string, unknown> } = {
         household_id: householdId,
-        name: suggestion_data.description || 'Bill from AI suggestion',
-        amount: suggestion_data.bill_amount || 0,
+        title: (suggestion_data.description as string) || 'Bill from AI suggestion',
+        amount: Number(suggestion_data.bill_amount) || 0,
         currency: 'AUD',
-        due_date: suggestion_data.bill_due_date || new Date().toISOString().split('T')[0],
+        due_date: (suggestion_data.bill_due_date as string) || new Date().toISOString().split('T')[0],
         status: 'pending',
-        category: suggestion_data.bill_category || 'general',
-        description: suggestion_data.description,
+        category: (suggestion_data.bill_category as string) || 'general',
+        description: (suggestion_data.description as string) ?? null,
         source: 'ai_email',
         source_data: {
           ai_suggestion_id: id,
@@ -132,7 +142,7 @@ export class AISuggestionProcessor {
   /**
    * Process calendar event suggestions - insert into household_events table
    */
-  private async processCalendarEventSuggestion(suggestion: any, householdId: string, userId: string): Promise<ProcessedSuggestion> {
+  private async processCalendarEventSuggestion(suggestion: AISuggestion, householdId: string, userId: string): Promise<ProcessedSuggestion> {
     const { id, suggestion_data } = suggestion;
     
     try {
@@ -177,21 +187,22 @@ export class AISuggestionProcessor {
   /**
    * Process shopping list suggestions - update shopping lists
    */
-  private async processShoppingListSuggestion(suggestion: any, householdId: string, userId: string): Promise<ProcessedSuggestion> {
+  private async processShoppingListSuggestion(suggestion: AISuggestion, householdId: string, userId: string): Promise<ProcessedSuggestion> {
     const { id, suggestion_data } = suggestion;
     
     try {
       // Get or create default shopping list
-      let shoppingList = await this.getOrCreateDefaultShoppingList(householdId, userId);
+      const shoppingList = await this.getOrCreateDefaultShoppingList(householdId, userId);
 
       // Add items to shopping list
-      if (suggestion_data.items && Array.isArray(suggestion_data.items)) {
-        for (const item of suggestion_data.items) {
+      const items = suggestion_data.items as Array<{ name?: string; quantity?: string }> | undefined;
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
           await this.supabase
             .from('shopping_items')
             .insert({
               list_id: shoppingList.id,
-              name: item.name || item,
+              name: item.name || 'Item',
               quantity: item.quantity || '1',
               completed: false
             });
@@ -226,7 +237,7 @@ export class AISuggestionProcessor {
   /**
    * Process chore suggestions - insert into household_events table
    */
-  private async processChoreSuggestion(suggestion: any, householdId: string, userId: string): Promise<ProcessedSuggestion> {
+  private async processChoreSuggestion(suggestion: AISuggestion, householdId: string, userId: string): Promise<ProcessedSuggestion> {
     const { id, suggestion_data } = suggestion;
     
     try {
@@ -236,9 +247,9 @@ export class AISuggestionProcessor {
         type: 'chore.created',
         source: 'ai_email',
         payload: {
-          title: suggestion_data.description || 'Chore from AI suggestion',
-          assigned_to: suggestion_data.assigned_to || userId,
-          priority: suggestion_data.priority || 'medium',
+          title: (suggestion_data.description as string) || 'Chore from AI suggestion',
+          assigned_to: (suggestion_data.assigned_to as string) || userId,
+          priority: (suggestion_data.priority as string) || 'medium',
           due_date: suggestion_data.due_date,
           ai_suggestion_id: id,
           original_suggestion: suggestion
@@ -271,9 +282,9 @@ export class AISuggestionProcessor {
   /**
    * Get or create a default shopping list for the household
    */
-  private async getOrCreateDefaultShoppingList(householdId: string, userId: string) {
+  private async getOrCreateDefaultShoppingList(householdId: string, userId: string): Promise<ShoppingListRow> {
     // Try to get existing default list
-    let { data: existingList } = await this.supabase
+    const { data: existingList } = await this.supabase
       .from('shopping_lists')
       .select('*')
       .eq('household_id', householdId)
@@ -322,7 +333,7 @@ export class AISuggestionProcessor {
         .insert(logData);
 
     } catch (error) {
-      console.error('Failed to log processing results:', error);
+      logger.error('Failed to log AI processing results', error as Error, { householdId });
     }
   }
 }

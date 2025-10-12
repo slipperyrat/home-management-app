@@ -11,33 +11,21 @@ interface TooltipContentProps {
 }
 
 interface TooltipTriggerProps {
-  children: React.ReactNode;
-  asChild?: boolean;
+  children: React.ReactElement;
 }
 
 export function TooltipProvider({ children }: TooltipProps) {
-  return <>{children}</>;
+  return <div>{children}</div>;
 }
 
 export function Tooltip({ children }: TooltipProps) {
-  return <>{children}</>;
+  return <div className="relative inline-block">{children}</div>;
 }
 
-export function TooltipTrigger({ children, asChild }: TooltipTriggerProps) {
-  if (asChild && React.isValidElement(children)) {
-    return React.cloneElement(children, {
-      onMouseEnter: () => {},
-      onMouseLeave: () => {},
-      onFocus: () => {},
-      onBlur: () => {}
-    } as any);
-  }
-  
-  return (
-    <div>
-      {children}
-    </div>
-  );
+export function TooltipTrigger({ children }: TooltipTriggerProps) {
+  return React.cloneElement(children, {
+    'aria-describedby': children.props['aria-describedby'] ?? undefined,
+  });
 }
 
 export function TooltipContent({ children }: TooltipContentProps) {

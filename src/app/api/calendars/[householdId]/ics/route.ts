@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDatabaseClient } from '@/lib/api/database';
 import { generateEventOccurrences } from '@/lib/calendar/rruleUtils';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 /**
  * Generate ICS (iCalendar) feed for a household
@@ -65,12 +67,12 @@ export async function GET(
       .order('start_at', { ascending: true });
 
     if (error) {
-      console.error('Error fetching events for ICS:', error);
+      logger.error('Error fetching events for ICS', error, { householdId, userId });
       return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
     }
 
     // Generate ICS content
-    const icsContent = generateICS(events || [], householdId);
+    const icsContent = generateICS(events ?? [], householdId);
 
     return new NextResponse(icsContent, {
       status: 200,
@@ -82,7 +84,7 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error('Error generating ICS feed:', error);
+    logger.error('Error generating ICS feed', error instanceof Error ? error : new Error(String(error)), { householdId: (await params).householdId });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -90,11 +92,30 @@ export async function GET(
 /**
  * Generate ICS content from events
  */
-function generateICS(events: any[], householdId: string): string {
-  const now = new Date();
+type EventRecord = Database['public']['Tables']['events']['Row'] & {
+  calendar?: { name?: string | null; color?: string | null } | null;
+  attendees?: Array<Database['public']['Tables']['event_attendees']['Row']> | null;
+};
+
+type Occurrence = {
+  id?: string;
+  originalEventId?: string;
+  title: string;
+  description?: string | null;
+  startAt: Date;
+  endAt: Date;
+  timezone?: string | null;
+  isAllDay?: boolean | null;
+  attendees?: Array<Database['public']['Tables']['event_attendees']['Row']> | null;
+  calendar?: { name?: string | null; color?: string | null } | null;
+  updated_at?: string | null;
+  created_at: string;
+};
+
+function generateICS(events: EventRecord[], householdId: string): string {
   const calendarName = `Household Calendar ${householdId.slice(0, 8)}`;
   
-  let ics = [
+  const ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Home Management App//Calendar//EN',
@@ -133,7 +154,19 @@ function generateICS(events: any[], householdId: string): string {
       }
     } else {
       // Single occurrence event
-      ics.push(...generateVEVENT(event, event));
+      ics.push(...generateVEVENT({
+        id: event.id,
+        title: event.title,
+        description: event.description,
+        startAt: new Date(event.start_at),
+        endAt: new Date(event.end_at),
+        timezone: event.timezone,
+        isAllDay: event.is_all_day,
+        attendees: event.attendees ?? [],
+        calendar: event.calendar ?? null,
+        updated_at: event.updated_at,
+        created_at: event.created_at,
+      }, event));
     }
   }
 
@@ -145,7 +178,7 @@ function generateICS(events: any[], householdId: string): string {
 /**
  * Generate VEVENT block for an event
  */
-function generateVEVENT(event: any, originalEvent: any): string[] {
+function generateVEVENT(event: Occurrence, originalEvent: EventRecord): string[] {
   const vevent = ['BEGIN:VEVENT'];
   
   // UID (unique identifier)
@@ -155,10 +188,10 @@ function generateVEVENT(event: any, originalEvent: any): string[] {
   vevent.push(`DTSTAMP:${formatICSDate(new Date())}`);
   
   // Start and end times
-  const startDate = new Date(event.startAt || event.start_at);
-  const endDate = new Date(event.endAt || event.end_at);
+  const startDate = new Date(event.startAt);
+  const endDate = new Date(event.endAt);
   
-  if (event.isAllDay || event.is_all_day) {
+  if (event.isAllDay) {
     vevent.push(`DTSTART;VALUE=DATE:${formatICSDate(startDate, true)}`);
     vevent.push(`DTEND;VALUE=DATE:${formatICSDate(endDate, true)}`);
   } else {
@@ -175,8 +208,8 @@ function generateVEVENT(event: any, originalEvent: any): string[] {
   }
   
   // Location
-  if (event.location) {
-    vevent.push(`LOCATION:${escapeICS(event.location)}`);
+  if (originalEvent.location) {
+    vevent.push(`LOCATION:${escapeICS(originalEvent.location)}`);
   }
   
   // Status
@@ -195,11 +228,11 @@ function generateVEVENT(event: any, originalEvent: any): string[] {
     for (const attendee of event.attendees) {
       const email = attendee.email || `${attendee.user_id}@home-management-app.com`;
       const name = attendee.email || `User ${attendee.user_id}`;
-      const status = attendee.status === 'accepted' ? 'ACCEPTED' : 
-                   attendee.status === 'declined' ? 'DECLINED' :
-                   attendee.status === 'tentative' ? 'TENTATIVE' : 'NEEDS-ACTION';
-      
-      vevent.push(`ATTENDEE;CN="${escapeICS(name)}";RSVP=TRUE:mailto:${email}`);
+      const status = attendee.status === 'accepted' ? 'ACCEPTED' :
+        attendee.status === 'declined' ? 'DECLINED' :
+          attendee.status === 'tentative' ? 'TENTATIVE' : 'NEEDS-ACTION';
+
+      vevent.push(`ATTENDEE;CN="${escapeICS(name)}";PARTSTAT=${status};RSVP=TRUE:mailto:${email}`);
     }
   }
   
@@ -229,7 +262,7 @@ function formatICSDate(date: Date, dateOnly = false): string {
   if (dateOnly) {
     return date.toISOString().split('T')[0].replace(/-/g, '');
   }
-  return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  return `${date.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`;
 }
 
 /**

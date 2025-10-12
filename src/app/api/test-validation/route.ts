@@ -16,12 +16,26 @@ export async function POST(request: NextRequest) {
       const body = await request.json();
       // Test with shopping list schema
       validatedData = schemas.createShoppingList.parse(body);
-    } catch (validationError: any) {
-      return NextResponse.json({ 
-        error: 'Validation failed', 
-        details: validationError.errors,
-        schema: 'createShoppingList'
-      }, { status: 400 });
+    } catch (validationError: unknown) {
+      if (validationError instanceof Error && 'errors' in validationError) {
+        return NextResponse.json(
+          {
+            error: 'Validation failed',
+            details: (validationError as { errors: unknown }).errors,
+            schema: 'createShoppingList',
+          },
+          { status: 400 },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: 'Validation failed',
+          details: 'Unknown validation error',
+          schema: 'createShoppingList',
+        },
+        { status: 400 },
+      );
     }
 
     // Test feature access
@@ -31,12 +45,15 @@ export async function POST(request: NextRequest) {
     try {
       requireFeatureAccess(testPlan, 'meal_planner');
     } catch (error) {
-      return NextResponse.json({ 
-        error: 'Feature access test failed',
-        requiredPlan: 'pro',
-        currentPlan: testPlan,
-        availableFeatures
-      }, { status: 403 });
+      return NextResponse.json(
+        {
+          error: 'Feature access test failed',
+          requiredPlan: 'pro',
+          currentPlan: testPlan,
+          availableFeatures,
+        },
+        { status: 403 },
+      );
     }
 
     return NextResponse.json({
@@ -45,9 +62,8 @@ export async function POST(request: NextRequest) {
       validatedData,
       testPlan,
       availableFeatures,
-      featureAccess: 'meal_planner'
+      featureAccess: 'meal_planner',
     });
-
   } catch (error) {
     console.error('Test validation error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

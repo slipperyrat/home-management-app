@@ -1,16 +1,54 @@
-export async function getRewards(householdId: string) {
+import { logger } from '@/lib/logging/logger';
+
+interface RewardPayload {
+  id: string;
+  title: string;
+  cost_xp: number;
+  household_id: string;
+  created_by: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface RewardResponse {
+  data?: RewardPayload[] | { rewards?: RewardPayload[] };
+  error?: string;
+}
+
+interface RedeemRewardPayload {
+  rewardId: string;
+  userId: string;
+  cost: number;
+}
+
+interface RedemptionResponse {
+  data?: unknown;
+  error?: string;
+}
+
+export async function getRewards(householdId: string): Promise<RewardPayload[]> {
   try {
     const response = await fetch(`/api/rewards?householdId=${householdId}`);
-    const result = await response.json();
+    const result = (await response.json()) as RewardResponse;
 
     if (!response.ok) {
-      console.error('Error fetching rewards:', result.error);
-      throw new Error(result.error || 'Failed to fetch rewards');
+      const errorMessage = result.error || 'Failed to fetch rewards';
+      logger.error('Error fetching rewards', new Error(errorMessage), { householdId });
+      throw new Error(errorMessage);
     }
 
-    return result.data;
+    if (Array.isArray(result.data)) {
+      return result.data;
+    }
+
+    if (Array.isArray(result.data?.rewards)) {
+      return result.data.rewards;
+    }
+
+    logger.warn('Unexpected rewards response shape', { householdId, data: result.data });
+    return [];
   } catch (err) {
-    console.error('Exception in getRewards:', err);
+    logger.error('Exception in getRewards', err as Error, { householdId });
     throw err;
   }
 }
@@ -20,10 +58,10 @@ export async function addReward(reward: {
   cost_xp: number
   household_id: string
   created_by: string
-}) {
+}): Promise<RewardPayload> {
   try {
-    console.log('Adding reward:', reward);
-    
+    logger.info('Adding reward', { householdId: reward.household_id, createdBy: reward.created_by });
+
     const response = await fetch('/api/rewards', {
       method: 'POST',
       headers: {
@@ -32,17 +70,28 @@ export async function addReward(reward: {
       body: JSON.stringify(reward),
     });
 
-    const result = await response.json();
+    const result = (await response.json()) as RewardResponse;
 
     if (!response.ok) {
-      console.error('Error adding reward:', result.error);
-      throw new Error(result.error || 'Failed to add reward');
+      const errorMessage = result.error || 'Failed to add reward';
+      logger.error('Error adding reward', new Error(errorMessage), {
+        householdId: reward.household_id,
+        createdBy: reward.created_by,
+      });
+      throw new Error(errorMessage);
     }
 
-    console.log('Successfully added reward:', result.data);
-    return result.data;
+    logger.info('Successfully added reward', {
+      householdId: reward.household_id,
+      createdBy: reward.created_by,
+    });
+
+    return Array.isArray(result.data) ? result.data[0] : (result.data as RewardPayload);
   } catch (err) {
-    console.error('Exception in addReward:', err);
+    logger.error('Exception in addReward', err as Error, {
+      householdId: reward.household_id,
+      createdBy: reward.created_by,
+    });
     throw err;
   }
 }
@@ -51,14 +100,10 @@ export async function redeemReward({
   rewardId,
   userId,
   cost
-}: {
-  rewardId: string
-  userId: string
-  cost: number
-}) {
+}: RedeemRewardPayload): Promise<unknown> {
   try {
-    console.log('Redeeming reward:', { rewardId, userId, cost });
-    
+    logger.info('Redeeming reward', { rewardId, userId, cost });
+
     const response = await fetch('/api/rewards/redemptions', {
       method: 'POST',
       headers: {
@@ -67,35 +112,45 @@ export async function redeemReward({
       body: JSON.stringify({ rewardId, userId, cost }),
     });
 
-    const result = await response.json();
+    const result = (await response.json()) as RedemptionResponse;
 
     if (!response.ok) {
-      console.error('Error redeeming reward:', result.error);
-      throw new Error(result.error || 'Failed to redeem reward');
+      const errorMessage = result.error || 'Failed to redeem reward';
+      logger.error('Error redeeming reward', new Error(errorMessage), {
+        rewardId,
+        userId,
+        cost,
+      });
+      throw new Error(errorMessage);
     }
 
-    console.log('Successfully redeemed reward:', result.data);
+    logger.info('Successfully redeemed reward', { rewardId, userId });
     return result.data;
   } catch (err) {
-    console.error('Exception in redeemReward:', err);
+    logger.error('Exception in redeemReward', err as Error, {
+      rewardId,
+      userId,
+      cost,
+    });
     throw err;
   }
 }
 
-export async function getRedemptions(householdId: string) {
+export async function getRedemptions(householdId: string): Promise<unknown> {
   try {
     const response = await fetch(`/api/rewards/redemptions?householdId=${householdId}`);
-    const result = await response.json();
+    const result = (await response.json()) as RedemptionResponse;
 
     if (!response.ok) {
-      console.error('Error fetching redemptions:', result.error);
-      throw new Error(result.error || 'Failed to fetch redemptions');
+      const errorMessage = result.error || 'Failed to fetch redemptions';
+      logger.error('Error fetching redemptions', new Error(errorMessage), { householdId });
+      throw new Error(errorMessage);
     }
 
-    console.log('Fetched redemptions:', result.data);
+    logger.info('Fetched redemptions', { householdId });
     return result.data;
   } catch (err) {
-    console.error('Exception in getRedemptions:', err);
+    logger.error('Exception in getRedemptions', err as Error, { householdId });
     throw err;
   }
 } 

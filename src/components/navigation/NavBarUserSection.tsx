@@ -21,14 +21,14 @@ export default function NavBarUserSection() {
             XP: {userData.xp}
           </span>
           <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-medium">
-            🪙 {userData.coins}
+            Coins: {userData.coins}
           </span>
         </div>
       ) : null}
 
       {/* User Button */}
       {isSignedIn ? (
-        <UserButton afterSignOutUrl="/" />
+        <UserButton fallbackRedirectUrl="/" />
       ) : (
         <Link 
           href="/sign-in" 

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
 // Create a Supabase client with service role key for server-side operations
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase: SupabaseClient<Database> = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
       .order('redeemed_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching redemptions:', error);
+      logger.error('Error fetching reward redemptions', error, { householdId });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -43,7 +45,7 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ data: filteredData });
   } catch (error) {
-    console.error('Exception in GET /api/rewards/redemptions:', error);
+    logger.error('Exception in GET /api/rewards/redemptions', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -57,8 +59,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Reward ID, user ID, and cost are required' }, { status: 400 });
     }
 
-    console.log('Redeeming reward:', { rewardId, userId, cost });
-
     // Insert redemption record
     const { data, error } = await supabase
       .from('reward_redemptions')
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error('Error redeeming reward:', error);
+      logger.error('Error redeeming reward', error, { rewardId, userId, cost });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -82,14 +82,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (xpError) {
-      console.error('Error deducting XP:', xpError);
+      logger.error('Error deducting XP during reward redemption', xpError, { rewardId, userId, cost });
       return NextResponse.json({ error: xpError }, { status: 500 });
     }
 
-    console.log('Successfully redeemed reward and deducted XP:', data);
+    logger.info('Reward redeemed and XP deducted', { rewardId, userId, cost });
     return NextResponse.json({ data });
   } catch (error) {
-    console.error('Exception in POST /api/rewards/redemptions:', error);
+    logger.error('Exception in POST /api/rewards/redemptions', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 } 

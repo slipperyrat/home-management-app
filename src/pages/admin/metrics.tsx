@@ -55,7 +55,7 @@ export default function AdminMetricsPage() {
               <TableRow>
                 <TableHead>Job</TableHead>
                 <TableHead>Success Rate</TableHead>
-                <TableHead>Average Duration</TableRow>
+                <TableHead>Average Duration</TableHead>
                 <TableHead>Queue Depth</TableHead>
               </TableRow>
             </TableHeader>

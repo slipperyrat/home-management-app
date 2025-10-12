@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(_request: NextRequest) {
   try {
@@ -34,7 +40,7 @@ export async function GET(_request: NextRequest) {
       .eq('household_id', householdId);
 
     if (choresError) {
-      console.error('Error fetching chores:', choresError);
+      logger.error('Error fetching chores', choresError, { householdId, userId });
       return NextResponse.json({ error: 'Failed to fetch chores' }, { status: 500 });
     }
 
@@ -45,14 +51,14 @@ export async function GET(_request: NextRequest) {
       .eq('household_id', householdId);
 
     if (completionsError) {
-      console.error('Error fetching completions:', completionsError);
+      logger.error('Error fetching completions', completionsError, { householdId, userId });
       return NextResponse.json({ error: 'Failed to fetch completions' }, { status: 500 });
     }
 
     // Generate AI-powered chore suggestions
     const suggestions = generateAIChoreSuggestions(
-      chores || [],
-      completions || [],
+      chores ?? [],
+      completions ?? [],
       householdId
     );
 
@@ -62,18 +68,47 @@ export async function GET(_request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in chore suggestions API:', error);
+    logger.error('Error in chore suggestions API', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-function generateAIChoreSuggestions(chores: any[], completions: any[], householdId: string) {
-  const suggestions: any[] = [];
+type ChoreRecord = Database['public']['Tables']['chores']['Row'];
+type CompletionRecord = Database['public']['Tables']['chore_completion_patterns']['Row'];
+
+type SuggestionPriority = 'low' | 'medium' | 'high';
+
+type ChoreSuggestion = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  ai_difficulty_rating: number;
+  ai_estimated_duration: number;
+  ai_energy_level: 'low' | 'medium' | 'high';
+  ai_confidence: number;
+  reasoning: string;
+  suggested_frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'seasonal';
+  priority: SuggestionPriority;
+  ai_suggested: boolean;
+  household_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type EnergyDistribution = Record<'low' | 'medium' | 'high', number>;
+
+function generateAIChoreSuggestions(
+  chores: ChoreRecord[],
+  completions: CompletionRecord[],
+  householdId: string,
+): ChoreSuggestion[] {
+  const suggestions: ChoreSuggestion[] = [];
   const now = new Date();
 
   // Analyze existing chore patterns
   const choreCategories = chores.map(c => c.category || 'general');
-  const categoryCounts: { [key: string]: number } = {};
+  const categoryCounts: Record<string, number> = {};
   const difficultyLevels = chores.map(c => c.ai_difficulty_rating || 50);
   const energyLevels = chores.map(c => c.ai_energy_level || 'medium');
 
@@ -93,7 +128,7 @@ function generateAIChoreSuggestions(chores: any[], completions: any[], household
     ? Math.round(difficultyLevels.reduce((sum, d) => sum + d, 0) / difficultyLevels.length)
     : 50;
 
-  const energyDistribution = { low: 0, medium: 0, high: 0 };
+  const energyDistribution: EnergyDistribution = { low: 0, medium: 0, high: 0 };
   energyLevels.forEach(energy => {
     energyDistribution[energy as keyof typeof energyDistribution]++;
   });

@@ -1,7 +1,9 @@
-import { NextRequest } from "next/server";
-import { getAuth } from "@clerk/nextjs/server";
-import { createClient } from '@supabase/supabase-js';
-import { apiResponse, setCacheHeaders } from "@/lib/api/response";
+import { NextRequest } from 'next/server';
+import { getAuth } from '@clerk/nextjs/server';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { apiResponse, setCacheHeaders } from '@/lib/api/response';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -10,22 +12,16 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('🔍 User data API called');
-    
     const { userId } = await getAuth(request);
-    console.log('🔍 Auth result:', { userId });
 
     if (!userId) {
-      console.log('❌ No user ID from auth');
       return apiResponse.unauthorized('User not authenticated');
     }
 
-    console.log('🔍 Querying users table for clerk_id:', userId);
-    
     // Query users table directly since it has household_id
     const { data, error } = await supabase
       .from('users')
@@ -41,16 +37,13 @@ export async function GET(request: NextRequest) {
       .eq('id', userId)  // Use 'id' field which stores the Clerk user ID
       .maybeSingle();
 
-    console.log('🔍 Database query result:', { data, error });
-
     if (error) {
-      console.error('❌ Database error:', error);
+      logger.error('Failed to fetch user data', error, { userId });
       return apiResponse.internalError(`Failed to fetch user data: ${error.message}`);
     }
 
     // If user doesn't exist yet, return a default response
     if (!data) {
-      console.log('🔍 No user data found, returning default');
       const defaultUser = {
         email: '',
         role: 'member',
@@ -66,8 +59,6 @@ export async function GET(request: NextRequest) {
       const response = apiResponse.success(defaultUser, 'Default user data created');
       return setCacheHeaders(response, 300, 60);
     }
-
-    console.log('🔍 User data found:', data);
 
     // Extract data from the direct query
     const householdId = data.household_id;
@@ -85,12 +76,11 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
       
       if (householdError) {
-        console.error('❌ Household query error:', householdError);
+        logger.error('Failed to fetch household data', householdError, { householdId });
       } else if (householdData) {
         plan = householdData.plan || 'free';
         createdAt = householdData.created_at;
         gameMode = householdData.game_mode || 'default';
-        console.log('🔍 Household data found:', { plan, createdAt, gameMode });
       }
     }
 
@@ -101,17 +91,13 @@ export async function GET(request: NextRequest) {
       const daysSinceCreation = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
 
       if (daysSinceCreation >= 7) {
-        console.log(`Auto-upgrading household ${householdId} to pro (${daysSinceCreation} days old)`);
-        
         const { error: updateError } = await supabase
           .from("households")
           .update({ plan: "pro" })
           .eq("id", householdId);
 
         if (updateError) {
-          console.error('Error updating plan:', updateError);
-        } else {
-          console.log(`Successfully auto-upgraded household ${householdId} to pro`);
+          logger.error('Failed to auto-upgrade household plan', updateError, { householdId });
         }
       }
     }
@@ -133,15 +119,12 @@ export async function GET(request: NextRequest) {
         created_at: createdAt
       }
     };
-    
-    console.log('🔍 Returning user data:', userData);
-    
     const response = apiResponse.success(userData, 'User data fetched successfully');
     
     // Smart caching: Cache for 5 minutes, allow stale for 1 minute
     return setCacheHeaders(response, 300, 60);
   } catch (error) {
-    console.error('❌ Unexpected error in user-data API:', error);
+    logger.error('Unexpected error in user-data API', error instanceof Error ? error : new Error(String(error)));
     return apiResponse.internalError(`An unexpected error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 } 

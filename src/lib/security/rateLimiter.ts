@@ -10,8 +10,10 @@ export interface RateLimitConfig {
   endpoint: string;
 }
 
+type SupabaseClientType = ReturnType<typeof createClient> | null;
+
 export class RateLimiter {
-  private supabase: any;
+  private supabase: SupabaseClientType;
 
   constructor() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

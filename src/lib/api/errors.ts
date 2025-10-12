@@ -5,10 +5,10 @@ import { NextResponse } from 'next/server';
 import { ServerError } from '@/lib/server/supabaseAdmin';
 import { logger } from '@/lib/logging/logger';
 
-export interface ErrorResponse {
+export interface ErrorResponse<TDetails = unknown> {
   success: false;
   error: string;
-  details?: any;
+  details?: TDetails;
   timestamp: string;
   requestId?: string;
 }
@@ -20,11 +20,11 @@ export interface ErrorResponse {
  * @param details - Additional error details
  * @returns NextResponse with error
  */
-export function createErrorResponse(
+export function createErrorResponse<TDetails = unknown>(
   error: Error | string | ServerError,
   status: number = 500,
-  details?: any
-): NextResponse<ErrorResponse> {
+  details?: TDetails,
+): NextResponse<ErrorResponse<TDetails>> {
   const errorMessage = error instanceof Error ? error.message : error;
   const timestamp = new Date().toISOString();
   const requestId = generateRequestId();
@@ -34,17 +34,17 @@ export function createErrorResponse(
     status,
     details,
     requestId,
-    timestamp
+    timestamp,
   });
 
-  const response: ErrorResponse = {
+  const response: ErrorResponse<TDetails> = {
     success: false,
     error: errorMessage,
     timestamp,
-    requestId
+    requestId,
   };
 
-  if (details) {
+  if (details !== undefined) {
     response.details = details;
   }
 
@@ -56,14 +56,14 @@ export function createErrorResponse(
  * @param validationErrors - Zod validation errors
  * @returns NextResponse with validation error
  */
-export function createValidationErrorResponse(validationErrors: any[]): NextResponse<ErrorResponse> {
+export function createValidationErrorResponse<TError>(validationErrors: TError[]): NextResponse<ErrorResponse<{ type: 'validation_error'; errors: TError[] }>> {
   return createErrorResponse(
     'Validation failed',
     400,
     {
       type: 'validation_error',
-      errors: validationErrors
-    }
+      errors: validationErrors,
+    },
   );
 }
 
@@ -99,14 +99,14 @@ export function createNotFoundErrorResponse(resource: string = 'Resource'): Next
  * @param retryAfter - Seconds to wait before retrying
  * @returns NextResponse with rate limit error
  */
-export function createRateLimitErrorResponse(retryAfter: number): NextResponse<ErrorResponse> {
+export function createRateLimitErrorResponse(retryAfter: number): NextResponse<ErrorResponse<{ type: 'rate_limit_error'; retryAfter: number }>> {
   const response = createErrorResponse(
     'Rate limit exceeded',
     429,
     {
       type: 'rate_limit_error',
-      retryAfter
-    }
+      retryAfter,
+    },
   );
 
   response.headers.set('Retry-After', retryAfter.toString());
@@ -119,10 +119,10 @@ export function createRateLimitErrorResponse(retryAfter: number): NextResponse<E
  * @param details - Additional details
  * @returns NextResponse with server error
  */
-export function createServerErrorResponse(
+export function createServerErrorResponse<TDetails = unknown>(
   message: string = 'Internal server error',
-  details?: any
-): NextResponse<ErrorResponse> {
+  details?: TDetails,
+): NextResponse<ErrorResponse<TDetails>> {
   return createErrorResponse(message, 500, details);
 }
 
@@ -134,7 +134,7 @@ export function createServerErrorResponse(
  */
 export function handleApiError(
   error: unknown,
-  context: { route: string; method: string; userId?: string }
+  context: { route: string; method: string; userId?: string },
 ): NextResponse<ErrorResponse> {
   if (error instanceof ServerError) {
     return createErrorResponse(error.message, error.status);
@@ -144,9 +144,9 @@ export function handleApiError(
     logger.error(`API Error in ${context.method} ${context.route}`, error, {
       userId: context.userId,
       route: context.route,
-      method: context.method
+      method: context.method,
     });
-    
+
     return createServerErrorResponse(error.message);
   }
 
@@ -154,7 +154,7 @@ export function handleApiError(
     userId: context.userId,
     route: context.route,
     method: context.method,
-    error
+    error,
   });
 
   return createServerErrorResponse('An unexpected error occurred');
@@ -165,7 +165,7 @@ export function handleApiError(
  * @returns Request ID string
  */
 function generateRequestId(): string {
-  return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
 /**
@@ -178,12 +178,15 @@ function generateRequestId(): string {
 export function createSuccessResponse<T>(
   data: T,
   message: string = 'Success',
-  status: number = 200
+  status: number = 200,
 ): NextResponse<{ success: true; data: T; message: string; timestamp: string }> {
-  return NextResponse.json({
-    success: true,
-    data,
-    message,
-    timestamp: new Date().toISOString()
-  }, { status });
+  return NextResponse.json(
+    {
+      success: true,
+      data,
+      message,
+      timestamp: new Date().toISOString(),
+    },
+    { status },
+  );
 }

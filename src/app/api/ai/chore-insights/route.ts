@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(_request: NextRequest) {
   try {
@@ -34,7 +40,7 @@ export async function GET(_request: NextRequest) {
       .eq('household_id', householdId);
 
     if (choresError) {
-      console.error('Error fetching chores:', choresError);
+      logger.error('Error fetching chores', choresError, { householdId, userId });
       return NextResponse.json({ error: 'Failed to fetch chores' }, { status: 500 });
     }
 
@@ -44,9 +50,10 @@ export async function GET(_request: NextRequest) {
       .select('*');
 
     if (completionsError) {
-      console.error('Error fetching completions:', completionsError);
-      // Don't fail the entire request if completions table doesn't exist
-      console.log('Completions table not available, continuing without completion data');
+      logger.warn('Completions table not available, continuing without completion data', {
+        error: completionsError.message,
+        householdId,
+      });
     }
 
     // Fetch chore preferences for optimization
@@ -55,16 +62,17 @@ export async function GET(_request: NextRequest) {
       .select('*');
 
     if (preferencesError) {
-      console.error('Error fetching preferences:', preferencesError);
-      // Don't fail the entire request if preferences table doesn't exist
-      console.log('Preferences table not available, continuing without preference data');
+      logger.warn('Preferences table not available, continuing without preference data', {
+        error: preferencesError.message,
+        householdId,
+      });
     }
 
     // Generate AI insights
     const insights = calculateAIChoreInsights(
-      chores || [],
-      completions || [],
-      preferences || []
+      chores ?? [],
+      completions ?? [],
+      preferences ?? []
     );
 
     return NextResponse.json({
@@ -73,12 +81,46 @@ export async function GET(_request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in chore insights API:', error);
+    logger.error('Error in chore insights API', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-function calculateAIChoreInsights(chores: any[], completions: any[], preferences: any[]) {
+type ChoreRecord = Database['public']['Tables']['chores']['Row'];
+type CompletionRecord = Database['public']['Tables']['chore_completion_patterns']['Row'];
+type PreferenceRecord = Database['public']['Tables']['chore_preferences']['Row'];
+
+type EnergyLevel = 'low' | 'medium' | 'high';
+
+type ChoreInsights = {
+  total_chores: number;
+  pending_chores: number;
+  completed_chores: number;
+  ai_suggested_chores: number;
+  average_difficulty: number;
+  average_duration: number;
+  fairness_score: number;
+  household_patterns: string[];
+  suggested_improvements: string[];
+  ai_learning_progress: number;
+  optimal_scheduling: string[];
+  skill_gaps: string[];
+  energy_distribution: Record<EnergyLevel, number>;
+  category_breakdown: Record<string, number>;
+  user_workload_distribution: Record<string, number>;
+  completion_efficiency: number;
+  ai_confidence_trends: {
+    improving: number;
+    stable: number;
+    declining: number;
+  };
+};
+
+function calculateAIChoreInsights(
+  chores: ChoreRecord[],
+  completions: CompletionRecord[],
+  preferences: PreferenceRecord[],
+): ChoreInsights {
   const insights = {
     total_chores: chores.length,
     pending_chores: chores.filter(c => c.status === 'pending').length,
@@ -119,8 +161,8 @@ function calculateAIChoreInsights(chores: any[], completions: any[], preferences
 
   // Calculate energy distribution
   chores.forEach(chore => {
-    const energy = chore.ai_energy_level || 'medium';
-    insights.energy_distribution[energy as keyof typeof insights.energy_distribution]++;
+    const energy = (chore.ai_energy_level ?? 'medium') as EnergyLevel;
+    insights.energy_distribution[energy] += 1;
   });
 
   // Calculate category breakdown
@@ -132,7 +174,7 @@ function calculateAIChoreInsights(chores: any[], completions: any[], preferences
   // Calculate user workload distribution
   chores.forEach(chore => {
     if (chore.assigned_to) {
-      insights.user_workload_distribution[chore.assigned_to] = 
+      insights.user_workload_distribution[chore.assigned_to] =
         (insights.user_workload_distribution[chore.assigned_to] || 0) + 1;
     }
   });
@@ -148,8 +190,10 @@ function calculateAIChoreInsights(chores: any[], completions: any[], preferences
   // Analyze completion patterns
   if (completions.length > 0) {
     const totalEstimatedTime = chores.reduce((sum, c) => sum + (c.ai_estimated_duration || 30), 0);
-    const totalActualTime = completions.reduce((sum, c) => sum + c.completion_time, 0);
-    insights.completion_efficiency = Math.round((totalEstimatedTime / totalActualTime) * 100);
+    const totalActualTime = completions.reduce((sum, c) => sum + (c.completion_time ?? 0), 0);
+    insights.completion_efficiency = totalActualTime > 0
+      ? Math.round((totalEstimatedTime / totalActualTime) * 100)
+      : 0;
   }
 
   // Generate household patterns
@@ -221,9 +265,7 @@ function calculateAIChoreInsights(chores: any[], completions: any[], preferences
   // Identify skill gaps
   const requiredSkills = new Set<string>();
   chores.forEach(chore => {
-    if (chore.ai_skill_requirements) {
-      chore.ai_skill_requirements.forEach((skill: string) => requiredSkills.add(skill));
-    }
+    chore.ai_skill_requirements?.forEach((skill: string) => requiredSkills.add(skill));
   });
 
   if (requiredSkills.size > 0) {

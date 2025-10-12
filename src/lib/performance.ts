@@ -1,5 +1,6 @@
 // Performance monitoring utilities
 import { useEffect } from 'react';
+import { logger } from '@/lib/logging/logger';
 
 // Type definitions for Performance API interfaces
 interface PerformanceEventTiming extends PerformanceEntry {
@@ -17,7 +18,7 @@ interface PerformanceMetric {
   startTime: number;
   endTime?: number;
   duration?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 class PerformanceMonitor {
@@ -27,9 +28,9 @@ class PerformanceMonitor {
   /**
    * Start timing a performance metric
    */
-  start(name: string, metadata?: Record<string, any>): void {
+  start(name: string, metadata?: Record<string, unknown>): void {
     if (this.metrics.has(name)) {
-      console.warn(`Performance metric "${name}" already exists, overwriting`);
+      logger.warn('Performance metric already exists, overwriting', { name });
     }
     
     this.metrics.set(name, {
@@ -45,7 +46,7 @@ class PerformanceMonitor {
   end(name: string): PerformanceMetric | null {
     const metric = this.metrics.get(name);
     if (!metric) {
-      console.warn(`Performance metric "${name}" not found`);
+      logger.warn('Performance metric not found', { name });
       return null;
     }
 
@@ -70,7 +71,7 @@ class PerformanceMonitor {
     const endTime = this.marks.get(endMark);
     
     if (!startTime || !endTime) {
-      console.warn(`Mark "${startMark}" or "${endMark}" not found`);
+      logger.warn('Performance mark not found', { startMark, endMark });
       return null;
     }
     
@@ -98,15 +99,17 @@ class PerformanceMonitor {
   logMetrics(): void {
     const metrics = this.getMetrics();
     if (metrics.length === 0) {
-      console.log('No performance metrics to log');
+    logger.info('No performance metrics to log');
       return;
     }
 
-    console.group('Performance Metrics');
     metrics.forEach(metric => {
-      console.log(`${metric.name}: ${metric.duration?.toFixed(2)}ms`, metric.metadata || '');
+      logger.info('Performance metric', {
+        name: metric.name,
+        duration: metric.duration?.toFixed(2),
+        metadata: metric.metadata,
+      });
     });
-    console.groupEnd();
   }
 
   /**
@@ -122,12 +125,12 @@ class PerformanceMonitor {
         const entries = list.getEntries();
         entries.forEach((entry) => {
           performanceMonitor.mark('lcp');
-          console.log('LCP:', entry.startTime);
+          logger.info('LCP observed', { startTime: entry.startTime });
         });
       });
       lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] });
     } catch (error) {
-      console.warn('Failed to observe LCP:', error);
+      logger.warn('Failed to observe LCP', error as Error);
     }
 
     try {
@@ -138,13 +141,15 @@ class PerformanceMonitor {
           performanceMonitor.mark('fid');
           const fidEntry = entry as PerformanceEventTiming;
           if (fidEntry.processingStart) {
-            console.log('FID:', fidEntry.processingStart - fidEntry.startTime);
+            logger.info('FID observed', {
+              duration: fidEntry.processingStart - fidEntry.startTime,
+            });
           }
         });
       });
       fidObserver.observe({ entryTypes: ['first-input'] });
     } catch (error) {
-      console.warn('Failed to observe FID:', error);
+      logger.warn('Failed to observe FID', error as Error);
     }
 
     try {
@@ -158,11 +163,11 @@ class PerformanceMonitor {
           }
         }
         performanceMonitor.mark('cls');
-        console.log('CLS:', clsValue);
+        logger.info('CLS observed', { value: clsValue });
       });
       clsObserver.observe({ entryTypes: ['layout-shift'] });
     } catch (error) {
-      console.warn('Failed to observe CLS:', error);
+      logger.warn('Failed to observe CLS', error as Error);
     }
 
     try {
@@ -171,12 +176,12 @@ class PerformanceMonitor {
         const entries = list.getEntries();
         entries.forEach((entry) => {
           performanceMonitor.mark('fcp');
-          console.log('FCP:', entry.startTime);
+          logger.info('FCP observed', { startTime: entry.startTime });
         });
       });
       fcpObserver.observe({ entryTypes: ['first-contentful-paint'] });
     } catch (error) {
-      console.warn('Failed to observe FCP:', error);
+      logger.warn('Failed to observe FCP', error as Error);
     }
   }
 }
@@ -190,20 +195,21 @@ if (typeof window !== 'undefined') {
 }
 
 // React performance hooks
-export function usePerformanceMeasure(name: string, dependencies: any[] = []) {
+export function usePerformanceMeasure(name: string, dependencies: unknown[] = []) {
   useEffect(() => {
     performanceMonitor.start(name);
-    
+
     return () => {
       performanceMonitor.end(name);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, dependencies);
 }
 
 // Enhanced performance monitoring for PWA
 export class PWAPerformanceMonitor {
   private static instance: PWAPerformanceMonitor;
-  private metrics: Map<string, any> = new Map();
+  private metrics: Map<string, Record<string, unknown>> = new Map();
 
   static getInstance(): PWAPerformanceMonitor {
     if (!PWAPerformanceMonitor.instance) {
@@ -218,7 +224,7 @@ export class PWAPerformanceMonitor {
       outcome,
       timestamp: Date.now(),
     });
-    console.log(`PWA Install: ${outcome}`);
+    logger.info('PWA install event recorded', { outcome });
   }
 
   trackOfflineUsage(feature: string, duration: number) {
@@ -227,7 +233,7 @@ export class PWAPerformanceMonitor {
       duration,
       timestamp: Date.now(),
     });
-    console.log(`Offline Usage: ${feature} for ${duration}ms`);
+    logger.info('Offline usage event recorded', { feature, duration });
   }
 
   trackBundleLoadTime(bundle: string, loadTime: number) {
@@ -236,7 +242,7 @@ export class PWAPerformanceMonitor {
       loadTime,
       timestamp: Date.now(),
     });
-    console.log(`Bundle Load: ${bundle} in ${loadTime}ms`);
+    logger.info('Bundle load event recorded', { bundle, loadTime });
   }
 
   trackCacheHitRate(cache: string, hitRate: number) {
@@ -245,7 +251,7 @@ export class PWAPerformanceMonitor {
       hitRate,
       timestamp: Date.now(),
     });
-    console.log(`Cache Hit Rate: ${cache} ${hitRate}%`);
+    logger.info('Cache hit rate recorded', { cache, hitRate });
   }
 
   // Get all metrics

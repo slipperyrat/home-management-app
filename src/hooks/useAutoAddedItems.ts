@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logging/logger';
 
 // Types
 export interface PendingItem {
@@ -31,7 +32,9 @@ async function fetchPendingConfirmations(): Promise<PendingItem[]> {
     });
     
     if (!response.ok) {
-      console.error('Failed to fetch pending confirmations:', response.status, response.statusText);
+      logger.error('Failed to fetch pending confirmations', new Error(response.statusText), {
+        status: response.status,
+      });
       throw new Error(`Failed to fetch pending confirmations: ${response.status}`);
     }
     
@@ -43,7 +46,7 @@ async function fetchPendingConfirmations(): Promise<PendingItem[]> {
     
     return [];
   } catch (error) {
-    console.error('Error in fetchPendingConfirmations:', error);
+    logger.error('Error in fetchPendingConfirmations', error as Error);
     throw error;
   }
 }

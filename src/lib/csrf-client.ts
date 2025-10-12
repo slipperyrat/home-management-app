@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logging/logger';
+
 // Client-side CSRF token utilities
 
 let csrfToken: string | null = null;
@@ -16,20 +18,23 @@ export async function getCSRFToken(): Promise<string> {
   try {
     const response = await fetch('/api/csrf-token', {
       method: 'GET',
-      credentials: 'include'
+      credentials: 'include',
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch CSRF token');
+      throw new Error(`Failed to fetch CSRF token (status ${response.status})`);
     }
 
-    const data = await response.json();
-    csrfToken = data.csrfToken;
-    tokenExpiry = new Date(data.expiresAt);
+    const { csrfToken: token, expiresAt } = (await response.json()) as {
+      csrfToken: string;
+      expiresAt: string;
+    };
+    csrfToken = token;
+    tokenExpiry = new Date(expiresAt);
     
     return csrfToken;
   } catch (error) {
-    console.error('Error fetching CSRF token:', error);
+    logger.error('Error fetching CSRF token', error as Error);
     throw error;
   }
 }
@@ -56,6 +61,7 @@ export async function fetchWithCSRF(url: string, options: RequestInit = {}): Pro
   
   return fetch(url, {
     ...options,
-    headers
+    headers,
+    credentials: options.credentials ?? 'include',
   });
 }

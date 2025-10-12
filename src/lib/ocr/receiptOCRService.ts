@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logging/logger';
 import { sb } from '@/lib/server/supabaseAdmin';
 
 interface ReceiptItem {
@@ -40,7 +41,7 @@ export class ReceiptOCRService {
     householdId: string
   ): Promise<OCRResult> {
     try {
-      console.log(`🔍 Processing receipt for attachment ${attachmentId}`);
+      logger.info('Processing receipt for attachment', { attachmentId });
 
       // Step 1: Extract text from image (simulated OCR)
       const rawText = await this.extractTextFromImage(imageUrl);
@@ -69,7 +70,10 @@ export class ReceiptOCRService {
         await this.updatePriceHistory(householdId, receiptData);
       }
 
-      console.log(`✅ Successfully processed receipt: ${receiptData.items.length} items extracted`);
+      logger.info('Successfully processed receipt', {
+        attachmentId,
+        itemCount: receiptData.items.length,
+      });
 
       return {
         success: true,
@@ -78,7 +82,10 @@ export class ReceiptOCRService {
       };
 
     } catch (error) {
-      console.error('❌ Error processing receipt:', error);
+      logger.error('Error processing receipt', error as Error, {
+        attachmentId,
+        householdId,
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -163,12 +170,12 @@ Thank you for shopping Safeway!`
 
       // Return a random mock receipt for demonstration
       const randomReceipt = mockReceipts[Math.floor(Math.random() * mockReceipts.length)];
-      
-      console.log('📄 Simulated OCR extraction completed');
+
+      logger.info('Simulated OCR extraction completed', { imageUrl });
       return randomReceipt;
 
     } catch (error) {
-      console.error('❌ Error extracting text from image:', error);
+      logger.error('Error extracting text from image', error as Error);
       throw new Error('Failed to extract text from image');
     }
   }
@@ -176,7 +183,7 @@ Thank you for shopping Safeway!`
   /**
    * Parse receipt text to extract structured data
    */
-  private async parseReceiptText(text: string, householdId: string): Promise<ReceiptData> {
+  private async parseReceiptText(text: string, _householdId: string): Promise<ReceiptData> {
     try {
       const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
       
@@ -244,16 +251,13 @@ Thank you for shopping Safeway!`
           }
 
           // Categorize the item
-          const category = this.categorizeItem(itemName);
-          const brand = this.extractBrand(itemName);
-
           items.push({
             name: itemName,
-            price: price,
+            price,
             quantity: 1,
-            category: category,
-            brand: brand,
-            unit: this.extractUnit(itemName)
+            category: this.categorizeItem(itemName),
+            brand: this.extractBrand(itemName),
+            unit: this.extractUnit(itemName),
           });
         }
       }
@@ -268,12 +272,12 @@ Thank you for shopping Safeway!`
         store_name: storeName,
         receipt_date: receiptDate,
         total_amount: totalAmount,
-        items: items,
+        items,
         confidence: Math.min(confidence, 1.0)
       };
 
     } catch (error) {
-      console.error('❌ Error parsing receipt text:', error);
+      logger.error('Error parsing receipt text', error as Error);
       throw new Error('Failed to parse receipt text');
     }
   }
@@ -359,7 +363,7 @@ Thank you for shopping Safeway!`
       .eq('id', attachmentId);
 
     if (error) {
-      console.error('❌ Error storing OCR results:', error);
+      logger.error('Error storing OCR results', error as Error, { attachmentId });
       throw new Error('Failed to store OCR results');
     }
   }
@@ -389,7 +393,11 @@ Thank you for shopping Safeway!`
       .insert(receiptItems);
 
     if (error) {
-      console.error('❌ Error creating receipt items:', error);
+      logger.error('Error creating receipt items', error as Error, {
+        attachmentId,
+        householdId,
+        itemCount: items.length,
+      });
       throw new Error('Failed to create receipt items');
     }
   }
@@ -419,7 +427,11 @@ Thank you for shopping Safeway!`
       .insert(priceEntries);
 
     if (error) {
-      console.error('❌ Error updating price history:', error);
+      logger.error('Error updating price history', error as Error, {
+        householdId,
+        storeName: receiptData.store_name,
+        itemCount: receiptData.items.length,
+      });
       // Don't throw here as price history is not critical
     }
   }

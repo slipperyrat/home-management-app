@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(_request: NextRequest) {
   try {
@@ -35,12 +41,12 @@ export async function GET(_request: NextRequest) {
       .order('due_date', { ascending: true });
 
     if (billsError) {
-      console.error('Error fetching bills:', billsError);
+      logger.error('Error fetching bills', billsError, { householdId, userId });
       return NextResponse.json({ error: 'Failed to fetch bills' }, { status: 500 });
     }
 
     // Calculate AI insights
-    const insights = await calculateAIBillInsights(bills || [], householdId);
+    const insights = await calculateAIBillInsights(bills ?? [], householdId);
 
     return NextResponse.json({
       success: true,
@@ -48,12 +54,33 @@ export async function GET(_request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in bill insights API:', error);
+    logger.error('Error in bill insights API', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-async function calculateAIBillInsights(bills: any[], _householdId: string) {
+type BillRecord = Database['public']['Tables']['bills']['Row'];
+
+type BillInsightCategory = {
+  category: string;
+  amount: number;
+  percentage: number;
+};
+
+type BillCategoryTotals = Record<string, number>;
+
+type BillInsightResponse = {
+  total_bills: number;
+  monthly_spending: number;
+  spending_trend: 'increasing' | 'decreasing' | 'stable';
+  top_categories: BillInsightCategory[];
+  upcoming_bills: number;
+  overdue_risk: number;
+  ai_recommendations: string[];
+  spending_patterns: Array<{ month: string; amount: number }>;
+};
+
+async function calculateAIBillInsights(bills: BillRecord[], _householdId: string): Promise<BillInsightResponse> {
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
@@ -87,10 +114,11 @@ async function calculateAIBillInsights(bills: any[], _householdId: string) {
   }
 
   // Category analysis
-  const categoryTotals: { [key: string]: number } = {};
-  bills.forEach(bill => {
-    const category = bill.category || 'other';
-    categoryTotals[category] = (categoryTotals[category] || 0) + (bill.amount || 0);
+  const categoryTotals: BillCategoryTotals = {};
+  bills.forEach((bill) => {
+    const category = bill.category ?? 'other';
+    const amount = bill.amount ?? 0;
+    categoryTotals[category] = (categoryTotals[category] ?? 0) + amount;
   });
 
   const totalSpending = Object.values(categoryTotals).reduce((sum, amount) => sum + amount, 0);
@@ -98,7 +126,7 @@ async function calculateAIBillInsights(bills: any[], _householdId: string) {
     .map(([category, amount]) => ({
       category,
       amount,
-      percentage: totalSpending > 0 ? (amount / totalSpending) * 100 : 0
+      percentage: totalSpending > 0 ? (amount / totalSpending) * 100 : 0,
     }))
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 5);
@@ -144,7 +172,12 @@ async function calculateAIBillInsights(bills: any[], _householdId: string) {
   };
 }
 
-function generateAIRecommendations(bills: any[], spendingTrend: string, topCategories: any[], overdueRisk: number): string[] {
+function generateAIRecommendations(
+  bills: BillRecord[],
+  spendingTrend: 'increasing' | 'decreasing' | 'stable',
+  topCategories: BillInsightCategory[],
+  overdueRisk: number,
+): string[] {
   const recommendations: string[] = [];
 
   // Spending trend recommendations

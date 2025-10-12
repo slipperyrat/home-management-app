@@ -1,16 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createChoreSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 GET: Fetching chores for user:', user.id);
+      logger.info('Fetching chores', { userId: user.id });
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
         .order('due_at', { ascending: true });
 
       if (error) {
-        console.error('Error fetching chores:', error);
+        logger.error('Error fetching chores', error, { householdId: household.id });
         return createErrorResponse('Failed to fetch chores', 500, error.message);
       }
 
@@ -44,22 +45,23 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Creating chore for user:', user.id);
+      logger.info('Creating chore', { userId: user.id });
 
       // Validate input using Zod schema
       let validatedData;
       try {
         const body = await req.json();
-        console.log('🔍 Request body:', JSON.stringify(body, null, 2));
         validatedData = createChoreSchema.parse(body);
-        console.log('✅ Validation passed:', JSON.stringify(validatedData, null, 2));
-      } catch (validationError: any) {
-        console.error('❌ Validation failed:', validationError.errors);
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+      } catch (validationError: unknown) {
+        if (validationError instanceof Error && 'errors' in validationError) {
+          logger.warn('Chore validation failed', validationError, { userId: user.id });
+          return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
+        }
+        return createErrorResponse('Invalid input', 400);
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -120,8 +122,6 @@ export async function POST(request: NextRequest) {
         household_id: household.id
       };
 
-      console.log('Creating chore:', choreData);
-
       const supabase = getDatabaseClient();
       const { data, error } = await supabase
         .from('chores')
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) {
-        console.error('Error creating chore:', error);
+        logger.error('Error creating chore', error, { householdId: household.id, userId: user.id });
         return createErrorResponse('Failed to create chore', 500, error.message);
       }
 
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      console.log('Successfully created chore:', data);
+      logger.info('Chore created', { choreId: data.id, householdId: household.id, userId: user.id });
       return createSuccessResponse({ chore: data }, 'Chore created successfully');
 
     } catch (error) {

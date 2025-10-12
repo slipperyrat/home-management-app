@@ -1,32 +1,44 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Trash2, Calendar, Clock } from 'lucide-react';
+import { Plus, Trash2, Calendar } from 'lucide-react';
 import { CalendarTemplate } from '@/lib/entitlements';
 import { useFormState } from '@/hooks/useFormValidation';
 import { createCalendarTemplateSchema } from '@/lib/validation/schemas';
+import { toast } from 'sonner';
 
 interface CreateTemplateFormProps {
   householdId: string;
   template?: CalendarTemplate;
-  onCreateTemplate: (template: Omit<CalendarTemplate, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
-  onEditTemplate?: (template: Omit<CalendarTemplate, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onCreateTemplate: (template: CalendarTemplatePayload) => Promise<void>;
+  onEditTemplate?: (template: CalendarTemplatePayload) => Promise<void>;
   onCancel: () => void;
 }
 
 interface TemplateEvent {
+  id: string;
   title: string;
   start: string;
   end: string;
   color: string;
   recurring?: boolean;
 }
+
+type CalendarTemplatePayload = {
+  household_id: string;
+  name: string;
+  description?: string;
+  template_type: CalendarTemplate['template_type'];
+  rrule: string;
+  events: Array<Omit<TemplateEvent, 'id'>>;
+  is_active: boolean;
+};
 
 const DEFAULT_COLORS = [
   '#3B82F6', // Blue
@@ -39,6 +51,11 @@ const DEFAULT_COLORS = [
   '#F97316', // Orange
 ];
 
+const generateEventId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+
 export default function CreateTemplateForm({ householdId, template, onCreateTemplate, onEditTemplate, onCancel }: CreateTemplateFormProps) {
   const isEditing = !!template;
 
@@ -48,6 +65,8 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
     reset,
     validate,
     errors,
+    getFieldError,
+    hasFieldError,
   } = useFormState({
     name: template?.name || '',
     description: template?.description || '',
@@ -60,99 +79,169 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
     rrule: true,
   }));
 
-  const [events, setEvents] = useState<TemplateEvent[]>(
-    template?.events || [
-      {
-        title: '',
-        start: '09:00',
-        end: '10:00',
-        color: DEFAULT_COLORS[0],
-        recurring: false,
-      }
-    ]
+  const initialEvents = useMemo<TemplateEvent[]>(
+    () =>
+      template?.events?.map((event) => ({
+        id: generateEventId(),
+        title: event.title,
+        start: event.start,
+        end: event.end,
+        color: event.color || DEFAULT_COLORS[0],
+        recurring: event.recurring,
+      })) ?? [
+        {
+          id: generateEventId(),
+          title: '',
+          start: new Date().toISOString().slice(0, 16),
+          end: new Date().toISOString().slice(0, 16),
+          color: DEFAULT_COLORS[0],
+          recurring: false,
+        },
+      ],
+    [template?.events]
   );
 
+  const [events, setEvents] = useState<TemplateEvent[]>(initialEvents);
+  const [errorsState, setErrorsState] = useState<FormFieldError[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const handleInputChange = (field: keyof typeof formData, value: string) => {
-    setValue(field, value);
-  };
+  useEffect(() => {
+    setEvents(initialEvents);
+  }, [initialEvents]);
 
-  const handleEventChange = (index: number, field: keyof TemplateEvent, value: string | boolean) => {
-    setEvents(prev => 
-      prev.map((event, i) => 
-        i === index ? { ...event, [field]: value } : event
-      )
-    );
-  };
+  const handleInputChange = useCallback(
+    (field: keyof typeof formData, value: string) => {
+      setValue(field, value);
+    },
+    [setValue]
+  );
 
-  const addEvent = () => {
-    setEvents(prev => [...prev, {
-      title: '',
-      start: '09:00',
-      end: '10:00',
-      color: DEFAULT_COLORS[prev.length % DEFAULT_COLORS.length],
-      recurring: false,
-    }]);
-  };
+  const handleEventChange = useCallback(
+    (index: number, field: keyof TemplateEvent, value: string | boolean) => {
+      setEvents((prev) =>
+        prev.map((event, i) =>
+          i === index
+            ? {
+                ...event,
+                [field]: value,
+              }
+            : event
+        )
+      );
+    },
+    []
+  );
 
-  const removeEvent = (index: number) => {
-    if (events.length > 1) {
-      setEvents(prev => prev.filter((_, i) => i !== index));
-    }
-  };
+  const addEvent = useCallback(() => {
+    setEvents((prev) => [
+      ...prev,
+      {
+        id: generateEventId(),
+        title: '',
+        start: new Date().toISOString().slice(0, 16),
+        end: new Date().toISOString().slice(0, 16),
+        color: DEFAULT_COLORS[prev.length % DEFAULT_COLORS.length],
+        recurring: false,
+      },
+    ]);
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const removeEvent = useCallback((index: number) => {
+    setEvents((prev) => {
+      if (prev.length <= 1) {
+        return prev;
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
 
-    const isValid = validate();
-    if (!isValid) {
-      setError('Please fix the highlighted fields');
-      return;
-    }
+  const validateEvents = useCallback(() => {
+    const validationErrors: { field: string; message: string }[] = [];
 
-    const validEvents = events.filter(event => event.title.trim() && event.start && event.end);
-    if (validEvents.length === 0) {
-      setError('At least one event is required');
-      return;
-    }
+    events.forEach((event) => {
+      if (!event.title.trim()) {
+        validationErrors.push({ field: event.id, message: 'Event title is required' });
+      }
+      if (!event.start || !event.end) {
+        validationErrors.push({ field: event.id, message: 'Start and end time are required' });
+      }
+      if (event.start && event.end && new Date(event.start) >= new Date(event.end)) {
+        validationErrors.push({ field: event.id, message: 'End time must be after start time' });
+      }
+    });
 
-    try {
+    return validationErrors;
+  }, [events]);
+
+  const handleSubmit = useCallback(
+    async (submitEvent?: React.FormEvent<HTMLFormElement>) => {
+      submitEvent?.preventDefault();
       setIsSubmitting(true);
-      setError(null);
+      setErrorsState([]);
 
-      const templateData = {
+      const isValid = validate();
+      const eventErrors = validateEvents();
+
+      if (!isValid || eventErrors.length > 0) {
+        setErrorsState(eventErrors);
+        toast.error('Please fix the highlighted fields');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const templateEvents = events.map(({ id: _id, ...rest }) => rest);
+
+      const templateData: CalendarTemplatePayload = {
         household_id: householdId,
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
         template_type: formData.template_type,
         rrule: formData.rrule,
-        events: validEvents,
+        events: templateEvents,
         is_active: true,
       };
 
-      if (isEditing && onEditTemplate) {
-        await onEditTemplate(templateData);
-      } else {
-        await onCreateTemplate(templateData);
-      }
+      try {
+        if (isEditing && onEditTemplate) {
+          await onEditTemplate(templateData);
+        } else {
+          await onCreateTemplate(templateData);
+        }
 
-      reset();
-      setEvents([{
-        title: '',
-        start: '09:00',
-        end: '10:00',
-        color: DEFAULT_COLORS[0],
-        recurring: false,
-      }]);
-    } catch (err) {
-      console.error('Error creating template:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create template');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+        reset();
+        setEvents([
+          {
+            id: generateEventId(),
+            title: '',
+            start: new Date().toISOString().slice(0, 16),
+            end: new Date().toISOString().slice(0, 16),
+            color: DEFAULT_COLORS[0],
+            recurring: false,
+          },
+        ]);
+        toast.success(isEditing ? 'Template updated successfully' : 'Template created successfully');
+      } catch (submissionError) {
+        console.error('Error saving template:', submissionError);
+        toast.error('Failed to save template');
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [
+      events,
+      formData.description,
+      formData.name,
+      formData.rrule,
+      formData.template_type,
+      householdId,
+      isEditing,
+      onCreateTemplate,
+      onEditTemplate,
+      reset,
+      validate,
+      validateEvents,
+    ]
+  );
 
   return (
     <Card>
@@ -167,13 +256,13 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {(error || errors.length > 0) && (
+          {errors.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-800 text-sm">{error || errors[0].message}</p>
+              <p className="text-red-800 text-sm">{errors[0].message}</p>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="name">Template Name *</Label>
               <Input
@@ -181,11 +270,10 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="e.g., Weekly Team Meeting"
-                required
-                aria-invalid={!!errors.find(err => err.field === 'name')}
+                aria-invalid={hasFieldError('name') ? 'true' : 'false'}
               />
-              {errors.find(err => err.field === 'name') && (
-                <p className="text-sm text-red-600 mt-1">{errors.find(err => err.field === 'name')?.message}</p>
+              {hasFieldError('name') && (
+                <p className="text-sm text-red-600 mt-1" role="alert">{getFieldError('name')}</p>
               )}
             </div>
             <div>
@@ -213,10 +301,10 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Describe the template's purpose"
-              aria-invalid={!!errors.find(err => err.field === 'description')}
+              aria-invalid={hasFieldError('description') ? 'true' : 'false'}
             />
-            {errors.find(err => err.field === 'description') && (
-              <p className="text-sm text-red-600 mt-1">{errors.find(err => err.field === 'description')?.message}</p>
+            {hasFieldError('description') && (
+              <p className="text-sm text-red-600 mt-1">{getFieldError('description')}</p>
             )}
           </div>
 
@@ -245,23 +333,28 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
               </Button>
             </div>
 
-            <div className="space-y-4">
-              {events.map((event, index) => (
-                <div key={index} className="border rounded-lg p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium">Event {index + 1}</h4>
-                    {events.length > 1 && (
+              <div className="space-y-4">
+              {events.map((event, index) => {
+                const eventError = errorsState.find((eventErr) => eventErr.field === event.id);
+                return (
+                  <div key={event.id} className="border rounded-lg p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium">Event {index + 1}</h4>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => removeEvent(index)}
-                        className="text-red-600 hover:text-red-700"
+                        disabled={events.length === 1}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Remove
                       </Button>
+                    </div>
+
+                    {eventError && (
+                      <p className="text-sm text-red-600" role="alert">{eventError.message}</p>
                     )}
-                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -271,7 +364,11 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
                         value={event.title}
                         onChange={(e) => handleEventChange(index, 'title', e.target.value)}
                         placeholder="e.g., Team Meeting"
+                        aria-invalid={eventError ? 'true' : 'false'}
                       />
+                      {eventError && (
+                        <p className="text-sm text-red-600 mt-1" role="alert">{eventError.message}</p>
+                      )}
                     </div>
 
                     <div>
@@ -292,22 +389,22 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
                     </div>
 
                     <div>
-                      <Label htmlFor={`event-start-${index}`}>Start Time</Label>
+                      <Label>Start Time *</Label>
                       <Input
-                        id={`event-start-${index}`}
-                        type="time"
+                        type="datetime-local"
                         value={event.start}
                         onChange={(e) => handleEventChange(index, 'start', e.target.value)}
+                        aria-invalid={eventError ? 'true' : 'false'}
                       />
                     </div>
 
                     <div>
-                      <Label htmlFor={`event-end-${index}`}>End Time</Label>
+                      <Label>End Time *</Label>
                       <Input
-                        id={`event-end-${index}`}
-                        type="time"
+                        type="datetime-local"
                         value={event.end}
                         onChange={(e) => handleEventChange(index, 'end', e.target.value)}
+                        aria-invalid={eventError ? 'true' : 'false'}
                       />
                     </div>
                   </div>
@@ -325,27 +422,17 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
                     </Label>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           </div>
 
-          <div className="flex gap-4 pt-4">
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {isSubmitting 
-                ? (isEditing ? 'Updating...' : 'Creating...') 
-                : (isEditing ? 'Update Template' : 'Create Template')
-              }
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-            >
+          <div className="flex justify-end space-x-3 pt-4">
+            <Button variant="outline" type="button" onClick={onCancel} disabled={isSubmitting}>
               Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving…' : isEditing ? 'Update Template' : 'Create Calendar Template'}
             </Button>
           </div>
         </form>

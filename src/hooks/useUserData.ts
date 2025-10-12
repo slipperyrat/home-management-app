@@ -66,9 +66,8 @@ export function useUserData() {
     enabled: isLoaded && isSignedIn && !!user?.id,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-    retry: (failureCount, error: any) => {
-      // Don't retry on 401/403 errors
-      if (error?.status === 401 || error?.status === 403) {
+    retry: (failureCount, error: Error & { status?: number }) => {
+      if (error.status === 401 || error.status === 403) {
         return false;
       }
       // Retry up to 3 times for other errors

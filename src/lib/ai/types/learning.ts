@@ -5,25 +5,15 @@ export interface AICorrectionPattern {
   id: string;
   household_id: string;
   correction_id: string;
-  
-  // Pattern analysis
   pattern_type: 'email_format' | 'data_extraction' | 'classification' | 'confidence_threshold' | 'user_preference';
   issue_category: 'missing_data' | 'incorrect_data' | 'wrong_classification' | 'low_confidence' | 'user_override';
-  
-  // Correction details
   correction_type: 'correct' | 'ignore' | 'mark_done';
-  
-  // Detailed analysis
-  original_ai_output: any;
-  corrected_output: any;
+  original_ai_output: Record<string, unknown> | null;
+  corrected_output: Record<string, unknown> | null;
   correction_reason: string;
-  
-  // Learning metadata
   confidence_impact: number;
   pattern_strength: number;
   is_learned: boolean;
-  
-  // Timestamps
   created_at: string;
   learned_at?: string;
   updated_at: string;
@@ -32,47 +22,42 @@ export interface AICorrectionPattern {
 export interface AIHouseholdProfile {
   id: string;
   household_id: string;
-  
-  // Learning progress
   total_corrections: number;
   successful_learnings: number;
   accuracy_improvement: number;
-  
-  // Pattern preferences
-  preferred_email_formats?: any;
-  common_bill_providers?: any;
-  typical_shopping_patterns?: any;
-  event_preferences?: any;
-  
-  // AI model and status
+  preferred_email_formats?: Record<string, unknown> | null;
+  common_bill_providers?: Record<string, unknown> | null;
+  typical_shopping_patterns?: Record<string, unknown> | null;
+  event_preferences?: Record<string, unknown> | null;
   current_ai_model_version: string;
   last_learning_update: string;
   learning_status: 'active' | 'paused' | 'completed';
-  
-  // Timestamps
   created_at: string;
   updated_at: string;
 }
 
+export interface AILearningRuleConditions {
+  pattern_type?: AICorrectionPattern['pattern_type'];
+  issue_category?: AICorrectionPattern['issue_category'];
+  correction_type?: AICorrectionPattern['correction_type'];
+}
+
+export interface AILearningRuleActions {
+  action: 'update_email_format_preferences' | 'update_bill_provider_patterns' | 'adjust_confidence_threshold';
+  parameters?: Record<string, unknown>;
+}
+
 export interface AILearningRule {
   id: string;
-  household_id: string;
-  
-  // Rule definition
+  household_id: string | null;
   rule_name: string;
   rule_description?: string;
   rule_type: 'email_parsing' | 'data_extraction' | 'classification' | 'confidence_adjustment';
-  
-  // Rule conditions and actions
-  trigger_conditions: any;
-  learning_actions: any;
+  trigger_conditions: AILearningRuleConditions;
+  learning_actions: AILearningRuleActions;
   priority: number;
-  
-  // Rule status
   is_active: boolean;
   success_rate: number;
-  
-  // Timestamps
   created_at: string;
   updated_at: string;
 }
@@ -80,18 +65,12 @@ export interface AILearningRule {
 export interface AISuggestionImprovement {
   id: string;
   household_id: string;
-  
-  // Improvement tracking
   suggestion_type: string;
   original_accuracy: number;
   improved_accuracy: number;
   improvement_factor: number;
-  
-  // Learning source
   pattern_id?: string;
   rule_id?: string;
-  
-  // Metadata
   learning_date: string;
   improvement_notes?: string;
 }
@@ -108,7 +87,7 @@ export interface HouseholdLearningInsights {
   household_id: string;
   total_corrections: number;
   patterns_identified: number;
-  accuracy_trend: number; // Percentage value for dashboard
+  accuracy_trend: number;
   top_learning_areas: string[];
   suggested_improvements: string[];
   confidence_threshold: number;
@@ -119,9 +98,9 @@ export interface HouseholdLearningInsights {
 export interface PatternLearningRequest {
   correction_id: string;
   household_id: string;
-  original_suggestion: any;
-  user_correction: any;
-  correction_type: string;
+  original_suggestion: Record<string, unknown>;
+  user_correction: Record<string, unknown>;
+  correction_type: 'correct' | 'ignore' | 'mark_done';
   user_notes: string;
 }
 

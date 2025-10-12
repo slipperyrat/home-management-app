@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         }, { status: 500 });
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof z.ZodError) {
         logger.warn('Merge duplicates validation failed', {
           userId: user.id,
@@ -89,13 +89,13 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
-      logger.error('Unexpected error in merge-duplicates API', error as Error, {
+      logger.error('Unexpected error in merge-duplicates API', error instanceof Error ? error : new Error(String(error)), {
         userId: user.id,
         route: '/api/shopping-lists/merge-duplicates',
       });
-      return NextResponse.json({ 
-        success: false, 
-        error: error.message || 'Internal server error' 
+      return NextResponse.json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error',
       }, { status: 500 });
     }
   }, {

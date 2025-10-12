@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDatabaseClient } from '@/lib/api/database';
-import { startOfDay, endOfDay, addDays, format } from 'date-fns';
+import { startOfDay, endOfDay, format } from 'date-fns';
 
 interface TodayViewData {
   date: string;

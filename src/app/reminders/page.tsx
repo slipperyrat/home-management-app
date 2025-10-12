@@ -1,10 +1,9 @@
 'use client'
 
 import { useAuth, useUser } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getReminders, addReminder, deleteReminder } from '@/lib/reminders';
-import { getChores } from '@/lib/chores';
 import { getCalendarEvents } from '@/lib/calendar';
 import { canAccessFeature } from '@/lib/planFeatures';
 
@@ -118,7 +117,6 @@ export default function RemindersPage() {
           // Check if user can access reminders feature
           if (!canAccessFeature(userDataObj.plan, 'reminders')) {
             router.push('/upgrade');
-            
           }
         } else {
           setError('User not found in database');
@@ -134,38 +132,41 @@ export default function RemindersPage() {
     fetchUserData();
   }, [isLoaded, isSignedIn, user?.id, router]);
 
-  useEffect(() => {
-    if (userData?.household?.id) {
-      fetchReminders();
-      fetchRelatedItems();
-    }
-  }, [userData]);
+  const householdId = userData?.household?.id;
 
-  async function fetchRelatedItems() {
-    if (!userData?.household?.id) return;
+  const fetchRelatedItems = useCallback(async () => {
+    if (!householdId) return;
 
     try {
       setLoadingRelatedItems(true);
-      const [choresData, eventsData] = await Promise.all([
-        getChores(userData.household.id),
-        getCalendarEvents(userData.household.id)
+      const [choresResponse, eventsData] = await Promise.all([
+        fetch(`/api/chores?householdId=${householdId}`),
+        getCalendarEvents(householdId),
       ]);
-      setChores(choresData);
-      setCalendarEvents(eventsData);
+
+      if (!choresResponse.ok) {
+        throw new Error('Failed to load chores');
+      }
+
+      const choresJson = await choresResponse.json().catch(() => ({ data: [] }));
+      const choresData = choresJson?.data ?? choresJson ?? [];
+
+      setChores(Array.isArray(choresData) ? choresData : choresData?.chores ?? []);
+      setCalendarEvents(Array.isArray(eventsData) ? eventsData : eventsData?.events ?? []);
     } catch (err) {
       console.error('Error fetching related items:', err);
       setError('Failed to load chores and events');
     } finally {
       setLoadingRelatedItems(false);
     }
-  }
+  }, [householdId]);
 
-  async function fetchReminders() {
-    if (!userData?.household?.id) return;
+  const fetchReminders = useCallback(async () => {
+    if (!householdId) return;
 
     try {
       setLoading(true);
-      const data = await getReminders(userData.household.id);
+      const data = await getReminders(householdId);
       setReminders(data);
     } catch (err) {
       console.error('Error fetching reminders:', err);
@@ -173,11 +174,18 @@ export default function RemindersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [householdId]);
 
-  async function handleAddReminder(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user?.id || !userData?.household?.id) return;
+  useEffect(() => {
+    if (householdId) {
+      void fetchReminders();
+      void fetchRelatedItems();
+    }
+  }, [fetchRelatedItems, fetchReminders, householdId]);
+
+  const handleAddReminder = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!user?.id || !householdId) return;
 
     try {
       setAddingReminder(true);
@@ -189,18 +197,16 @@ export default function RemindersPage() {
         related_id: formData.related_id,
         remind_at: formData.remind_at,
         created_by: user.id,
-        household_id: userData.household.id
+        household_id: householdId,
       });
 
-      // Reset form
       setFormData({
         title: '',
         related_type: 'chore',
         related_id: '',
-        remind_at: ''
+        remind_at: '',
       });
 
-      // Refresh reminders
       await fetchReminders();
     } catch (err) {
       console.error('Error adding reminder:', err);
@@ -208,17 +214,17 @@ export default function RemindersPage() {
     } finally {
       setAddingReminder(false);
     }
-  }
+  }, [fetchReminders, formData, householdId, user?.id]);
 
-  function handleRelatedTypeChange(newType: 'chore' | 'calendar_event') {
-    setFormData({
-      ...formData,
+  const handleRelatedTypeChange = useCallback((newType: 'chore' | 'calendar_event') => {
+    setFormData((prev) => ({
+      ...prev,
       related_type: newType,
-      related_id: '' // Reset related_id when type changes
-    });
-  }
+      related_id: '',
+    }));
+  }, []);
 
-  async function handleDeleteReminder(reminderId: string) {
+  const handleDeleteReminder = useCallback(async (reminderId: string) => {
     if (!user?.id) return;
 
     try {
@@ -233,17 +239,17 @@ export default function RemindersPage() {
     } finally {
       setDeletingReminder(null);
     }
-  }
+  }, [fetchReminders, user?.id]);
 
-  function formatDateTime(dateTimeString: string) {
+  const formatDateTime = useCallback((dateTimeString: string) => {
     return new Date(dateTimeString).toLocaleString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
-  }
+  }, []);
 
   // Show loading spinner while auth is loading or data is being fetched
   if (!isLoaded || loading) {

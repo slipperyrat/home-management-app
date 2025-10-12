@@ -226,7 +226,7 @@ const CreateListModal = React.memo(({
             value={formData.description}
             onChange={(e) => setValue('description', e.target.value)}
             placeholder="e.g., Weekly grocery shopping for family of 4"
-            multiline
+            multiline="true"
             rows={3}
           />
           

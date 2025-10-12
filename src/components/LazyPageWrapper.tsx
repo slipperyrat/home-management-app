@@ -152,6 +152,13 @@ export const LazyRewards = withLazyLoading(
   </div>
 );
 
+export const LazyFinance = withLazyLoading(
+  lazy(() => import('@/app/finance/page')),
+  <div className="flex items-center justify-center min-h-screen">
+    <LoadingSpinner size="lg" text="Loading finance..." />
+  </div>
+);
+
 // Lazy component components
 export const LazyPWAInstallPrompt = lazy(() => import('@/components/PWAInstallPrompt'));
 export const LazyPWAStatus = lazy(() => import('@/components/PWAStatus'));

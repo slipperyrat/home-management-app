@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Calendar, ArrowLeft } from 'lucide-react';
+
 import { useUserData } from '@/hooks/useUserData';
-import { getEntitlements, Entitlements } from '@/lib/entitlements';
+import { getEntitlements, type Entitlements } from '@/lib/entitlements';
 import CalendarTemplates from '@/components/CalendarTemplates';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
 
 export default function CalendarTemplatesPage() {
   const { userData, isLoading: userLoading, isError: userError } = useUserData();
@@ -17,13 +18,7 @@ export default function CalendarTemplatesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (userData?.household_id) {
-      loadEntitlements();
-    }
-  }, [userData?.household_id]);
-
-  const loadEntitlements = async () => {
+  const loadEntitlements = useCallback(async () => {
     if (!userData?.household_id) return;
 
     try {
@@ -37,7 +32,13 @@ export default function CalendarTemplatesPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userData?.household_id]);
+
+  useEffect(() => {
+    if (userData?.household_id) {
+      void loadEntitlements();
+    }
+  }, [userData?.household_id, loadEntitlements]);
 
   if (userLoading || isLoading) {
     return (
@@ -126,15 +127,15 @@ export default function CalendarTemplatesPage() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <div className="w-2 h-2 rounded-full bg-blue-500" />
                   <span className="text-sm text-blue-800">Unlimited custom templates</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <div className="w-2 h-2 rounded-full bg-blue-500" />
                   <span className="text-sm text-blue-800">Advanced recurrence patterns</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <div className="w-2 h-2 rounded-full bg-blue-500" />
                   <span className="text-sm text-blue-800">Conflict detection</span>
                 </div>
               </div>

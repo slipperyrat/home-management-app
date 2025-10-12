@@ -120,25 +120,25 @@ export function sanitizeDeep<T>(
   }
 
   // Handle objects
-  const result = {} as T;
+  const result: Record<string, unknown> = {};
   
   for (const [key, val] of Object.entries(value)) {
     const keyPolicy = policy[key] || 'text';
     
     if (keyPolicy === 'skip') {
-      (result as any)[key] = val;
+      result[key] = val;
     } else if (typeof val === 'string') {
       if (keyPolicy === 'rich') {
-        (result as any)[key] = sanitizeRich(val);
+        result[key] = sanitizeRich(val);
       } else {
-        (result as any)[key] = sanitizeText(val);
+        result[key] = sanitizeText(val);
       }
     } else {
-      (result as any)[key] = sanitizeDeep(val, policy);
+      result[key] = sanitizeDeep(val, policy);
     }
   }
 
-  return result;
+  return result as T;
 }
 
 /**

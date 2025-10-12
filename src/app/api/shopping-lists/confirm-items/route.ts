@@ -33,192 +33,179 @@ export async function POST(request: NextRequest) {
       const householdId = userData.household_id;
 
     // Get the "Groceries" list for this household
-    const { data: groceriesList, error: listError } = await supabase
-      .from('shopping_lists')
-      .select('id, title')
-      .eq('household_id', householdId)
-      .eq('title', 'Groceries')
-      .single();
+      const { data: groceriesList, error: listError } = await supabase
+        .from('shopping_lists')
+        .select('id, title')
+        .eq('household_id', householdId)
+        .eq('title', 'Groceries')
+        .single();
 
-    if (listError || !groceriesList) {
-      logger.warn('Groceries list not found during confirm-items', {
-        userId: user.id,
-        householdId,
-        error: listError?.message,
-      });
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Groceries list not found' 
-      }, { status: 404 });
-    }
+      if (listError || !groceriesList) {
+        logger.warn('Groceries list not found during confirm-items', {
+          userId: user.id,
+          householdId,
+          error: listError?.message,
+        });
+        return NextResponse.json({
+          success: false,
+          error: 'Groceries list not found'
+        }, { status: 404 });
+      }
 
-    // Get the items to confirm
-    const { data: itemsToConfirm, error: fetchError } = await supabase
-      .from('shopping_items')
-      .select('*')
-      .in('id', itemIds)
-      .eq('pending_confirmation', true)
-      .eq('auto_added', true);
+      // Get the items to confirm
+      const { data: itemsToConfirm, error: fetchError } = await supabase
+        .from('shopping_items')
+        .select('*')
+        .in('id', itemIds)
+        .eq('pending_confirmation', true)
+        .eq('auto_added', true);
 
-    if (fetchError) {
-      logger.error('Failed to fetch items for confirmation', fetchError, {
-        userId: user.id,
-        householdId,
-        itemCount: itemIds.length,
-      });
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Failed to fetch items' 
-      }, { status: 500 });
-    }
+      if (fetchError) {
+        logger.error('Failed to fetch items for confirmation', fetchError, {
+          userId: user.id,
+          householdId,
+          itemCount: itemIds.length,
+        });
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to fetch items'
+        }, { status: 500 });
+      }
 
-    if (!itemsToConfirm || itemsToConfirm.length === 0) {
-      logger.warn('No pending items found to confirm', {
-        userId: user.id,
-        householdId,
-        itemCount: itemIds.length,
-      });
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No items found to confirm' 
-      }, { status: 404 });
-    }
+      if (!itemsToConfirm || itemsToConfirm.length === 0) {
+        logger.warn('No pending items found to confirm', {
+          userId: user.id,
+          householdId,
+          itemCount: itemIds.length,
+        });
+        return NextResponse.json({
+          success: false,
+          error: 'No items found to confirm'
+        }, { status: 404 });
+      }
 
-    const confirmedItems = [];
-    const errors = [];
+      type ConfirmedItem = {
+        id: string;
+        name: string;
+        quantity: string | number | null;
+        action: 'updated' | 'created';
+      };
 
-    // Process each item
-    for (const item of itemsToConfirm) {
-      try {
-        // Check if there's already an item with the same name in the groceries list
-        const { data: existingItem, error: checkError } = await supabase
-          .from('shopping_items')
-          .select('id, quantity')
-          .eq('list_id', groceriesList.id)
-          .eq('name', item.name)
-          .eq('pending_confirmation', false)
-          .single();
+      const confirmedItems: ConfirmedItem[] = [];
+      const errors: string[] = [];
 
-        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
-          errors.push(`Error checking existing item ${item.name}: ${checkError.message}`);
-          continue;
-        }
-
-        if (existingItem) {
-          // Update existing item quantity - handle both string and number quantities
-          let newQuantity;
-          const existingQty = parseFloat(existingItem.quantity) || 0;
-          const itemQty = parseFloat(item.quantity) || 0;
-          
-          if (!isNaN(existingQty) && !isNaN(itemQty)) {
-            newQuantity = Math.round((existingQty + itemQty) * 100) / 100; // Round to 2 decimal places
-          } else {
-            // If we can't parse as numbers, try to handle common string patterns
-            const existingStr = String(existingItem.quantity).trim();
-            const itemStr = String(item.quantity).trim();
-            
-            // If existing quantity already contains a "+", extract the numeric part
-            if (existingStr.includes('+')) {
-              const parts = existingStr.split('+');
-              const totalExisting = parts.reduce((sum, part) => sum + (parseFloat(part.trim()) || 0), 0);
-              const newTotal = totalExisting + itemQty;
-              newQuantity = newTotal.toString();
-            } else {
-              // Simple concatenation for non-numeric quantities
-              newQuantity = `${existingItem.quantity} + ${item.quantity}`;
-            }
-          }
-
-          const { error: updateError } = await supabase
+      // Process each item
+      for (const item of itemsToConfirm) {
+        try {
+          // Check if there's already an item with the same name in the groceries list
+          const { data: existingItem, error: checkError } = await supabase
             .from('shopping_items')
-            .update({ 
-              quantity: newQuantity,
-              auto_added: true,
-              auto_added_at: new Date().toISOString(),
-              source_recipe_id: item.source_recipe_id
-            })
-            .eq('id', existingItem.id);
-
-          if (updateError) {
-            errors.push(`Error updating existing item ${item.name}: ${updateError.message}`);
-            continue;
-          }
-
-          // Delete the pending item
-          const { error: deleteError } = await supabase
-            .from('shopping_items')
-            .delete()
-            .eq('id', item.id);
-
-          if (deleteError) {
-            errors.push(`Error deleting pending item ${item.name}: ${deleteError.message}`);
-            continue;
-          }
-
-          confirmedItems.push({
-            id: existingItem.id,
-            name: item.name,
-            quantity: newQuantity,
-            action: 'updated'
-          });
-        } else {
-          // Create new item in groceries list
-          const { data: newItem, error: createError } = await supabase
-            .from('shopping_items')
-            .insert({
-              list_id: groceriesList.id,
-              name: item.name,
-              quantity: item.quantity,
-              auto_added: true,
-              auto_added_at: new Date().toISOString(),
-              source_recipe_id: item.source_recipe_id,
-              pending_confirmation: false,
-              is_complete: false
-            })
-            .select()
+            .select('id, quantity')
+            .eq('list_id', groceriesList.id)
+            .eq('name', item.name)
+            .eq('pending_confirmation', false)
             .single();
 
-          if (createError) {
-            errors.push(`Error creating item ${item.name}: ${createError.message}`);
+          if (checkError && checkError.code !== 'PGRST116') {
+            errors.push(`Error checking existing item ${item.name}: ${checkError.message}`);
             continue;
           }
 
-          // Delete the pending item
-          const { error: deleteError } = await supabase
-            .from('shopping_items')
-            .delete()
-            .eq('id', item.id);
+          const now = new Date().toISOString();
 
-          if (deleteError) {
-            errors.push(`Error deleting pending item ${item.name}: ${deleteError.message}`);
-            continue;
+          if (existingItem) {
+            const updatedQuantity = getMergedQuantity(existingItem.quantity, item.quantity);
+
+            const { error: updateError } = await supabase
+              .from('shopping_items')
+              .update({
+                quantity: updatedQuantity,
+                auto_added: true,
+                auto_added_at: now,
+                source_recipe_id: item.source_recipe_id,
+              })
+              .eq('id', existingItem.id);
+
+            if (updateError) {
+              errors.push(`Error updating existing item ${item.name}: ${updateError.message}`);
+              continue;
+            }
+
+            const { error: deleteError } = await supabase
+              .from('shopping_items')
+              .delete()
+              .eq('id', item.id);
+
+            if (deleteError) {
+              errors.push(`Error deleting pending item ${item.name}: ${deleteError.message}`);
+              continue;
+            }
+
+            confirmedItems.push({
+              id: existingItem.id,
+              name: item.name,
+              quantity: updatedQuantity,
+              action: 'updated',
+            });
+          } else {
+            const { data: newItem, error: createError } = await supabase
+              .from('shopping_items')
+              .insert({
+                list_id: groceriesList.id,
+                name: item.name,
+                quantity: item.quantity,
+                auto_added: true,
+                auto_added_at: now,
+                source_recipe_id: item.source_recipe_id,
+                pending_confirmation: false,
+                is_complete: false,
+              })
+              .select()
+              .single();
+
+            if (createError) {
+              errors.push(`Error creating item ${item.name}: ${createError.message}`);
+              continue;
+            }
+
+            const { error: deleteError } = await supabase
+              .from('shopping_items')
+              .delete()
+              .eq('id', item.id);
+
+            if (deleteError) {
+              errors.push(`Error deleting pending item ${item.name}: ${deleteError.message}`);
+              continue;
+            }
+
+            confirmedItems.push({
+              id: newItem.id,
+              name: item.name,
+              quantity: item.quantity,
+              action: 'created',
+            });
           }
-
-          confirmedItems.push({
-            id: newItem.id,
-            name: item.name,
-            quantity: item.quantity,
-            action: 'created'
-          });
+        } catch (itemError: unknown) {
+          const message = itemError instanceof Error ? itemError.message : 'Unknown error';
+          errors.push(`Error processing item ${item.name}: ${message}`);
         }
-      } catch (itemError: any) {
-        errors.push(`Error processing item ${item.name}: ${itemError.message}`);
       }
-    }
 
       const countUpdate = await updateShoppingListCounts(groceriesList.id);
 
-    logger.info('Confirm-items completed', {
-      userId: user.id,
-      householdId,
-      listId: groceriesList.id,
-      confirmedCount: confirmedItems.length,
-      errorCount: errors.length,
-      updatedCounts: countUpdate.ok ? {
-        totalItems: countUpdate.totalItems,
-        completedItems: countUpdate.completedItems,
-      } : undefined,
-    });
+      logger.info('Confirm-items completed', {
+        userId: user.id,
+        householdId,
+        listId: groceriesList.id,
+        confirmedCount: confirmedItems.length,
+        errorCount: errors.length,
+        updatedCounts: countUpdate.ok
+          ? {
+              totalItems: countUpdate.totalItems,
+              completedItems: countUpdate.completedItems,
+            }
+          : undefined,
+      });
 
       return NextResponse.json({
         success: true,
@@ -231,11 +218,13 @@ export async function POST(request: NextRequest) {
         } : undefined
       });
 
-    } catch (error: any) {
-      console.error('❌ Error in confirm-items API:', error);
-      return NextResponse.json({ 
-        success: false, 
-        error: error.message 
+    } catch (error) {
+      logger.error('Error in confirm-items API', error instanceof Error ? error : new Error(String(error)), {
+        userId: user.id,
+      });
+      return NextResponse.json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal server error',
       }, { status: 500 });
     }
   }, {
@@ -243,4 +232,35 @@ export async function POST(request: NextRequest) {
     requireCSRF: true,
     rateLimitConfig: 'shopping'
   });
+}
+
+function getMergedQuantity(existingQuantity: unknown, incomingQuantity: unknown): string | number {
+  const existingNumeric = parseFloat(String(existingQuantity));
+  const incomingNumeric = parseFloat(String(incomingQuantity));
+
+  if (!Number.isNaN(existingNumeric) && !Number.isNaN(incomingNumeric)) {
+    return Math.round((existingNumeric + incomingNumeric) * 100) / 100;
+  }
+
+  const existingStr = String(existingQuantity ?? '').trim();
+  const incomingStr = String(incomingQuantity ?? '').trim();
+
+  if (existingStr.includes('+')) {
+    const totalExisting = existingStr
+      .split('+')
+      .map((part) => parseFloat(part.trim()) || 0)
+      .reduce((sum, value) => sum + value, 0);
+    const combinedTotal = totalExisting + (parseFloat(incomingStr) || 0);
+    return combinedTotal;
+  }
+
+  if (existingStr.length === 0) {
+    return incomingQuantity ?? null;
+  }
+
+  if (incomingStr.length === 0) {
+    return existingQuantity ?? null;
+  }
+
+  return `${existingQuantity} + ${incomingQuantity}`;
 }

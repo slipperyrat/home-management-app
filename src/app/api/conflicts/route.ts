@@ -54,23 +54,7 @@ export async function GET(request: NextRequest) {
     // Get conflicts for the household with event details
     const { data: conflicts, error: conflictsError } = await supabase
       .from('calendar_conflicts')
-      .select(`
-        *,
-        event1:events!calendar_conflicts_event1_id_fkey(
-          id,
-          title,
-          start_at,
-          end_at,
-          attendee_user_id
-        ),
-        event2:events!calendar_conflicts_event2_id_fkey(
-          id,
-          title,
-          start_at,
-          end_at,
-          attendee_user_id
-        )
-      `)
+      .select('id, household_id, event1_id, event2_id, conflict_type, severity, is_resolved, created_at, resolved_at, resolved_by')
       .eq('household_id', householdId)
       .eq('is_resolved', false)
       .order('created_at', { ascending: false });
@@ -80,10 +64,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch conflicts' }, { status: 500 });
     }
 
+    const eventIds = Array.from(new Set(
+      (conflicts || []).flatMap(conflict => [conflict.event1_id, conflict.event2_id]).filter(Boolean)
+    ));
+
+    const eventMap = new Map<string, { id: string; title: string | null; start_at: string | null; end_at: string | null; attendee_user_id: string | null }>();
+
+    if (eventIds.length > 0) {
+      const { data: events, error: eventsError } = await supabase
+        .from('events')
+        .select('id, title, start_at, end_at, attendee_user_id')
+        .in('id', eventIds);
+
+      if (eventsError) {
+        console.error('Error fetching conflict events:', eventsError);
+        return NextResponse.json({ error: 'Failed to fetch conflicts' }, { status: 500 });
+      }
+
+      events?.forEach(event => {
+        eventMap.set(event.id, {
+          id: event.id,
+          title: event.title ?? null,
+          start_at: event.start_at ?? null,
+          end_at: event.end_at ?? null,
+          attendee_user_id: event.attendee_user_id ?? null,
+        });
+      });
+    }
+
     // Get conflict statistics
     const { data: allConflicts, error: statsError } = await supabase
       .from('calendar_conflicts')
-      .select('conflict_type, severity, resolved')
+      .select('conflict_type, severity, is_resolved')
       .eq('household_id', householdId);
 
     if (statsError) {
@@ -93,8 +105,8 @@ export async function GET(request: NextRequest) {
 
     // Calculate statistics
     const totalConflicts = allConflicts?.length || 0;
-    const unresolvedConflicts = allConflicts?.filter(c => !c.resolved).length || 0;
-    const resolvedConflicts = allConflicts?.filter(c => c.resolved).length || 0;
+    const unresolvedConflicts = allConflicts?.filter(c => !c.is_resolved).length || 0;
+    const resolvedConflicts = allConflicts?.filter(c => c.is_resolved).length || 0;
 
     const conflictsByType = allConflicts?.reduce((acc, conflict) => {
       acc[conflict.conflict_type] = (acc[conflict.conflict_type] || 0) + 1;
@@ -115,7 +127,11 @@ export async function GET(request: NextRequest) {
     };
 
     // Transform conflicts data
-    const transformedConflicts = conflicts?.map(conflict => ({
+    const transformedConflicts = conflicts?.map(conflict => {
+      const event1 = eventMap.get(conflict.event1_id) || null;
+      const event2 = eventMap.get(conflict.event2_id) || null;
+
+      return {
       id: conflict.id,
       household_id: conflict.household_id,
       event1_id: conflict.event1_id,
@@ -123,28 +139,29 @@ export async function GET(request: NextRequest) {
       conflict_type: conflict.conflict_type,
       severity: conflict.severity,
       description: getConflictDescription(
-        conflict.conflict_type, 
-        conflict.event1, 
-        conflict.event2
+        conflict.conflict_type,
+        event1,
+        event2
       ),
       detected_at: conflict.created_at,
-      resolved_at: conflict.resolved ? conflict.updated_at : null,
-      resolution_notes: conflict.resolution_notes,
-      event1: {
-        id: conflict.event1?.id,
-        title: conflict.event1?.title || 'Unknown Event',
-        start_at: conflict.event1?.start_at,
-        end_at: conflict.event1?.end_at,
-        attendee_user_id: conflict.event1?.attendee_user_id
-      },
-      event2: {
-        id: conflict.event2?.id,
-        title: conflict.event2?.title || 'Unknown Event',
-        start_at: conflict.event2?.start_at,
-        end_at: conflict.event2?.end_at,
-        attendee_user_id: conflict.event2?.attendee_user_id
-      }
-    })) || [];
+      resolved_at: conflict.is_resolved ? conflict.updated_at : null,
+      resolution_notes: null,
+      event1: event1 ? {
+        id: event1.id,
+        title: event1.title || 'Unknown Event',
+        start_at: event1.start_at,
+        end_at: event1.end_at,
+        attendee_user_id: event1.attendee_user_id
+      } : null,
+      event2: event2 ? {
+        id: event2.id,
+        title: event2.title || 'Unknown Event',
+        start_at: event2.start_at,
+        end_at: event2.end_at,
+        attendee_user_id: event2.attendee_user_id
+      } : null
+    };
+    }) || [];
 
     return NextResponse.json({
       success: true,

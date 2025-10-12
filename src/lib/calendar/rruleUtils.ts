@@ -3,7 +3,8 @@
  * Reuses and extends the RRULE logic from chores for calendar events
  */
 
-import { RRule, RRuleSet, rrulestr } from 'rrule';
+import { RRuleSet, rrulestr } from 'rrule';
+import { logger } from '@/lib/logging/logger';
 
 export interface EventOccurrence {
   id: string;
@@ -179,34 +180,37 @@ export function createRRule(
 export function parseRRuleDescription(rrule: string): string {
   try {
     const rule = rrulestr(rrule);
-    const options = rule.options;
-    
-    if (!options.freq) return 'No recurrence';
-    
-    const freq = ['', 'Daily', 'Weekly', 'Monthly', 'Yearly'][options.freq];
-    const interval = options.interval || 1;
-    
-    let description = `Every ${interval > 1 ? `${interval} ` : ''}${freq.toLowerCase()}`;
-    
-    if (options.byweekday) {
-      const days = options.byweekday.map(day => {
-        const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        return dayNames[day.weekday];
-      });
+    const {
+      freq,
+      interval = 1,
+      byweekday,
+      count,
+      until,
+    } = rule.options;
+
+    if (!freq) return 'No recurrence';
+
+    const freqLabel = ['', 'Daily', 'Weekly', 'Monthly', 'Yearly'][freq] ?? 'Custom';
+
+    let description = `Every ${interval > 1 ? `${interval} ` : ''}${freqLabel.toLowerCase()}`;
+
+    if (byweekday) {
+      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const days = byweekday.map((day) => dayNames[day.weekday] ?? String(day.weekday));
       description += ` on ${days.join(', ')}`;
     }
-    
-    if (options.count) {
-      description += ` (${options.count} times)`;
+
+    if (count) {
+      description += ` (${count} times)`;
     }
-    
-    if (options.until) {
-      description += ` until ${options.until.toLocaleDateString()}`;
+
+    if (until) {
+      description += ` until ${until.toLocaleDateString()}`;
     }
-    
+
     return description;
   } catch (error) {
-    console.error('Error parsing RRULE:', error);
+  logger.error('Error parsing RRULE', error as Error, { rrule });
     return 'Custom recurrence';
   }
 }
@@ -314,7 +318,6 @@ export function getCurrentTimezoneOffset(timezone: string): number {
   // This is a simplified implementation
   // In production, use Intl.DateTimeFormat or a proper timezone library
   const now = new Date();
-  const utc = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
   
   // For Australia/Melbourne, check if we're in daylight saving time
   if (timezone === 'Australia/Melbourne' || timezone === 'Australia/Sydney') {
@@ -332,5 +335,5 @@ export function getCurrentTimezoneOffset(timezone: string): number {
     return 600; // UTC+10 (AEST)
   }
   
-  return getTimezoneOffset(timezone);
+  return getTimezoneOffset(timezone) + (now.getTimezoneOffset() * -1);
 }

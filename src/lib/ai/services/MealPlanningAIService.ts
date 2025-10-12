@@ -2,7 +2,9 @@
 // Uses OpenAI for intelligent meal recommendations with easy fallback
 
 import { BaseAIService, AIResponse } from './BaseAIService';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
+import type { RecipeRow, MealPlanRow } from '@/types/database';
 
 export interface MealSuggestion {
   id: string;
@@ -56,21 +58,16 @@ export interface MealPlanningContext {
 }
 
 export class MealPlanningAIService extends BaseAIService {
-  private supabase: any;
+  private supabase = createSupabaseAdminClient();
 
   constructor() {
     super('mealPlanning');
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
   }
 
   async generateMealSuggestions(context: MealPlanningContext): Promise<AIResponse<MealSuggestion[]>> {
     return this.executeWithFallback(
       () => this.generateAIMealSuggestions(context),
       () => this.getMockResponse(context),
-      context
     );
   }
 
@@ -79,14 +76,12 @@ export class MealPlanningAIService extends BaseAIService {
       throw new Error('OpenAI client not initialized');
     }
 
-    // Get household meal history and preferences
     const mealHistory = await this.getMealHistory(context.householdId);
     const availableRecipes = await this.getAvailableRecipes(context.householdId);
-    
-    // Create AI prompt
-    const systemPrompt = `You are an AI meal planning assistant that provides intelligent meal recommendations based on household preferences, dietary restrictions, and cooking context. 
-    
-    You must respond with valid JSON only. Be practical and helpful in your suggestions.`;
+
+    const systemPrompt = `You are an AI meal planning assistant that provides intelligent meal recommendations based on household preferences, dietary restrictions, and cooking context.
+
+You must respond with valid JSON only. Be practical and helpful in your suggestions.`;
 
     const userPrompt = this.createMealPlanningPrompt(context, mealHistory, availableRecipes);
 
@@ -95,7 +90,7 @@ export class MealPlanningAIService extends BaseAIService {
       messages: this.createOpenAIPrompt(systemPrompt, userPrompt),
       temperature: 0.3,
       max_tokens: 1200,
-      response_format: { type: 'json_object' }
+      response_format: { type: 'json_object' },
     });
 
     const aiContent = response.choices[0]?.message?.content;
@@ -107,18 +102,30 @@ export class MealPlanningAIService extends BaseAIService {
   }
 
   private createMealPlanningPrompt(
-    context: MealPlanningContext, 
-    mealHistory: any[], 
-    availableRecipes: any[]
+    context: MealPlanningContext,
+    mealHistory: MealPlanRow[],
+    availableRecipes: RecipeRow[],
   ): string {
-    const recentMeals = mealHistory.slice(0, 10).map(meal => ({
-      name: meal.title || meal.name,
-      mealType: meal.meal_type || 'dinner',
-      cuisine: meal.cuisine || 'unknown',
-      prepTime: meal.prep_time || 30
-    }));
+    const recipeLookup = new Map(availableRecipes.map((recipe) => [recipe.id, recipe.title ?? 'Untitled recipe']));
 
-    const recipeNames = availableRecipes.slice(0, 20).map(recipe => recipe.title || recipe.name);
+    const recentMeals = mealHistory
+      .flatMap(({ week_start_date: weekStart, meals }) => {
+        if (!meals) {
+          return [] as { week: string; day: string; slot: string; recipe: string }[];
+        }
+
+        return Object.entries(meals).flatMap(([day, slots]) =>
+          Object.entries(slots ?? {}).map(([slot, recipeId]) => ({
+            week: weekStart,
+            day,
+            slot,
+            recipe: recipeId ? recipeLookup.get(recipeId) ?? `Recipe ${recipeId}` : 'Unassigned',
+          })),
+        );
+      })
+      .slice(0, 10);
+
+    const recipeNames = availableRecipes.slice(0, 20).map((recipe) => recipe.title ?? 'Untitled recipe');
 
     return `Generate meal suggestions for a household based on the following context:
 
@@ -194,7 +201,7 @@ Please provide 3-5 meal suggestions in this JSON format:
 Focus on practical, delicious meals that fit the household's preferences and constraints.`;
   }
 
-  private async getMealHistory(householdId: string): Promise<any[]> {
+  private async getMealHistory(householdId: string): Promise<MealPlanRow[]> {
     try {
       const { data, error } = await this.supabase
         .from('meal_plans')
@@ -204,14 +211,14 @@ Focus on practical, delicious meals that fit the household's preferences and con
         .limit(20);
 
       if (error) throw error;
-      return data || [];
+      return data ?? [];
     } catch (error) {
-      console.error('Error fetching meal history:', error);
+      logger.error('Error fetching meal history', error as Error, { householdId });
       return [];
     }
   }
 
-  private async getAvailableRecipes(householdId: string): Promise<any[]> {
+  private async getAvailableRecipes(householdId: string): Promise<RecipeRow[]> {
     try {
       const { data, error } = await this.supabase
         .from('recipes')
@@ -221,15 +228,17 @@ Focus on practical, delicious meals that fit the household's preferences and con
         .limit(50);
 
       if (error) throw error;
-      return data || [];
+      return data ?? [];
     } catch (error) {
-      console.error('Error fetching available recipes:', error);
+      logger.error('Error fetching available recipes', error as Error, { householdId });
       return [];
     }
   }
 
   protected async getMockResponse(context?: MealPlanningContext): Promise<MealSuggestion[]> {
-    // Enhanced mock response with better data
+    const servings = context?.servings ?? 4;
+    const mealType = context?.mealType ?? 'dinner';
+
     const mockSuggestions: MealSuggestion[] = [
       {
         id: 'mock_meal_1',
@@ -238,10 +247,10 @@ Focus on practical, delicious meals that fit the household's preferences and con
         prepTime: 10,
         cookTime: 15,
         totalTime: 25,
-        servings: context?.servings || 4,
+        servings,
         difficulty: 'easy',
         cuisine: 'Italian',
-        mealType: context?.mealType || 'dinner',
+        mealType,
         dietaryTags: ['vegetarian', 'quick'],
         ingredients: [
           {
@@ -250,7 +259,7 @@ Focus on practical, delicious meals that fit the household's preferences and con
             unit: 'oz',
             category: 'Grains',
             optional: false,
-            substitutions: ['Gluten-free pasta', 'Zucchini noodles']
+            substitutions: ['Gluten-free pasta', 'Zucchini noodles'],
           },
           {
             name: 'Mixed vegetables',
@@ -258,14 +267,14 @@ Focus on practical, delicious meals that fit the household's preferences and con
             unit: 'cups',
             category: 'Vegetables',
             optional: false,
-            substitutions: ['Frozen vegetables', 'Fresh seasonal vegetables']
+            substitutions: ['Frozen vegetables', 'Fresh seasonal vegetables'],
           },
           {
             name: 'Olive oil',
             amount: '3',
             unit: 'tbsp',
             category: 'Fats',
-            optional: false
+            optional: false,
           },
           {
             name: 'Parmesan cheese',
@@ -273,8 +282,8 @@ Focus on practical, delicious meals that fit the household's preferences and con
             unit: 'cup',
             category: 'Dairy',
             optional: true,
-            substitutions: ['Nutritional yeast', 'Vegan parmesan']
-          }
+            substitutions: ['Nutritional yeast', 'Vegan parmesan'],
+          },
         ],
         instructions: [
           'Bring a large pot of salted water to boil',
@@ -282,7 +291,7 @@ Focus on practical, delicious meals that fit the household's preferences and con
           'Meanwhile, heat olive oil in a large pan',
           'Add vegetables and sauté for 5-7 minutes',
           'Drain pasta and add to vegetables',
-          'Toss with cheese and season to taste'
+          'Toss with cheese and season to taste',
         ],
         nutritionalInfo: {
           calories: 420,
@@ -290,10 +299,10 @@ Focus on practical, delicious meals that fit the household's preferences and con
           carbs: 65,
           fat: 12,
           fiber: 6,
-          sugar: 8
+          sugar: 8,
         },
         confidence: 80,
-        reasoning: 'Quick and easy meal perfect for busy weeknights'
+        reasoning: 'Quick and easy meal perfect for busy weeknights',
       },
       {
         id: 'mock_meal_2',
@@ -302,10 +311,10 @@ Focus on practical, delicious meals that fit the household's preferences and con
         prepTime: 15,
         cookTime: 20,
         totalTime: 35,
-        servings: context?.servings || 4,
+        servings,
         difficulty: 'easy',
         cuisine: 'Mediterranean',
-        mealType: context?.mealType || 'lunch',
+        mealType,
         dietaryTags: ['vegan', 'gluten-free', 'high-protein'],
         ingredients: [
           {
@@ -314,28 +323,28 @@ Focus on practical, delicious meals that fit the household's preferences and con
             unit: 'cup',
             category: 'Grains',
             optional: false,
-            substitutions: ['Brown rice', 'Couscous']
+            substitutions: ['Brown rice', 'Couscous'],
           },
           {
             name: 'Cherry tomatoes',
             amount: '1',
             unit: 'cup',
             category: 'Vegetables',
-            optional: false
+            optional: false,
           },
           {
             name: 'Cucumber',
             amount: '1',
             unit: 'medium',
             category: 'Vegetables',
-            optional: false
+            optional: false,
           },
           {
             name: 'Kalamata olives',
             amount: '1/2',
             unit: 'cup',
             category: 'Vegetables',
-            optional: true
+            optional: true,
           },
           {
             name: 'Feta cheese',
@@ -343,8 +352,8 @@ Focus on practical, delicious meals that fit the household's preferences and con
             unit: 'oz',
             category: 'Dairy',
             optional: true,
-            substitutions: ['Vegan feta', 'Nutritional yeast']
-          }
+            substitutions: ['Vegan feta', 'Nutritional yeast'],
+          },
         ],
         instructions: [
           'Rinse quinoa and cook according to package directions',
@@ -352,7 +361,7 @@ Focus on practical, delicious meals that fit the household's preferences and con
           'Dice tomatoes and cucumber',
           'Mix quinoa with vegetables and olives',
           'Drizzle with olive oil and lemon juice',
-          'Top with feta cheese if desired'
+          'Top with feta cheese if desired',
         ],
         nutritionalInfo: {
           calories: 380,
@@ -360,10 +369,10 @@ Focus on practical, delicious meals that fit the household's preferences and con
           carbs: 45,
           fat: 15,
           fiber: 8,
-          sugar: 6
+          sugar: 6,
         },
         confidence: 85,
-        reasoning: 'Nutritious and satisfying meal with Mediterranean flavors'
+        reasoning: 'Nutritious and satisfying meal with Mediterranean flavors',
       },
       {
         id: 'mock_meal_3',
@@ -372,10 +381,10 @@ Focus on practical, delicious meals that fit the household's preferences and con
         prepTime: 10,
         cookTime: 20,
         totalTime: 30,
-        servings: context?.servings || 4,
+        servings,
         difficulty: 'easy',
         cuisine: 'American',
-        mealType: context?.mealType || 'dinner',
+        mealType,
         dietaryTags: ['gluten-free', 'high-protein', 'omega-3'],
         ingredients: [
           {
@@ -384,7 +393,7 @@ Focus on practical, delicious meals that fit the household's preferences and con
             unit: 'pieces',
             category: 'Protein',
             optional: false,
-            substitutions: ['Cod', 'Chicken breast', 'Tofu']
+            substitutions: ['Cod', 'Chicken breast', 'Tofu'],
           },
           {
             name: 'Broccoli',
@@ -392,7 +401,7 @@ Focus on practical, delicious meals that fit the household's preferences and con
             unit: 'head',
             category: 'Vegetables',
             optional: false,
-            substitutions: ['Asparagus', 'Green beans']
+            substitutions: ['Asparagus', 'Green beans'],
           },
           {
             name: 'Sweet potato',
@@ -400,45 +409,57 @@ Focus on practical, delicious meals that fit the household's preferences and con
             unit: 'medium',
             category: 'Vegetables',
             optional: false,
-            substitutions: ['Regular potato', 'Butternut squash']
+            substitutions: ['Butternut squash', 'Carrots'],
+          },
+          {
+            name: 'Olive oil',
+            amount: '2',
+            unit: 'tbsp',
+            category: 'Fats',
+            optional: false,
           },
           {
             name: 'Lemon',
             amount: '1',
-            unit: 'piece',
-            category: 'Fruits',
-            optional: false
-          }
+            unit: 'whole',
+            category: 'Produce',
+            optional: false,
+          },
         ],
         instructions: [
-          'Preheat oven to 425°F (220°C)',
-          'Cut vegetables into bite-sized pieces',
-          'Arrange salmon and vegetables on a sheet pan',
-          'Drizzle with olive oil and season with salt and pepper',
-          'Roast for 18-20 minutes until salmon is cooked through',
-          'Squeeze lemon over everything before serving'
+          'Preheat oven to 400°F (200°C)',
+          'Line a sheet pan with parchment paper',
+          'Arrange vegetables and salmon on the pan',
+          'Drizzle with olive oil and season with salt, pepper, and herbs',
+          'Bake for 18-20 minutes until salmon is cooked and vegetables are tender',
+          'Finish with fresh lemon juice',
         ],
         nutritionalInfo: {
-          calories: 320,
-          protein: 28,
-          carbs: 25,
-          fat: 12,
+          calories: 450,
+          protein: 32,
+          carbs: 28,
+          fat: 22,
           fiber: 6,
-          sugar: 8
+          sugar: 7,
         },
         confidence: 90,
-        reasoning: 'Healthy one-pan meal that\'s easy to prepare and clean up'
-      }
+        reasoning: "Healthy one-pan meal that's easy to prepare and clean up",
+      },
     ];
 
-    // Filter based on dietary restrictions
-    if (context?.dietaryRestrictions && context.dietaryRestrictions.length > 0) {
-      return mockSuggestions.filter(meal => 
-        context.dietaryRestrictions.some(restriction => 
-          meal.dietaryTags.includes(restriction.toLowerCase()) ||
-          meal.dietaryTags.includes('vegetarian') && restriction.toLowerCase().includes('vegetarian') ||
-          meal.dietaryTags.includes('vegan') && restriction.toLowerCase().includes('vegan')
-        )
+    if (context?.dietaryRestrictions?.includes('vegetarian')) {
+      return mockSuggestions.filter((meal) => meal.dietaryTags.includes('vegetarian'));
+    }
+
+    if (context?.dietaryRestrictions?.includes('vegan')) {
+      return mockSuggestions.filter((meal) => meal.dietaryTags.includes('vegan'));
+    }
+
+    if (context?.avoidIngredients) {
+      return mockSuggestions.filter((meal) =>
+        !context.avoidIngredients?.some((ingredient) =>
+          meal.ingredients.some((item) => item.name.toLowerCase().includes(ingredient.toLowerCase())),
+        ),
       );
     }
 

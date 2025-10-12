@@ -1,9 +1,8 @@
-// Analytics and usage tracking utilities
-// This provides a foundation for tracking feature usage and business metrics
+import { logger } from '@/lib/logging/logger';
 
 export interface AnalyticsEvent {
   event: string;
-  properties?: Record<string, any>;
+  properties?: Record<string, unknown>;
   userId?: string;
   householdId?: string;
   timestamp?: Date;
@@ -15,7 +14,7 @@ export interface FeatureUsageEvent extends AnalyticsEvent {
     feature: string;
     plan: string;
     action: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   };
 }
 
@@ -35,36 +34,37 @@ export interface UserEngagementEvent extends AnalyticsEvent {
     action: string;
     page: string;
     duration?: number;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   };
 }
 
-// Analytics event types
-export type AnalyticsEventType = 
-  | FeatureUsageEvent 
-  | SubscriptionEvent 
-  | UserEngagementEvent;
+export type AnalyticsEventType = FeatureUsageEvent | SubscriptionEvent | UserEngagementEvent;
+
+type GTag = (...args: unknown[]) => void;
+type Mixpanel = { track: (event: string, props?: Record<string, unknown>) => void };
+
+declare global {
+  interface Window {
+    gtag?: GTag;
+    mixpanel?: Mixpanel;
+  }
+}
 
 class Analytics {
   private events: AnalyticsEvent[] = [];
-  private isEnabled: boolean = true;
+  private isEnabled = true;
 
   constructor() {
-    // Check if analytics is enabled (you might want to make this configurable)
-    this.isEnabled = process.env.NODE_ENV === 'production' || 
-                    process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === 'true';
+    this.isEnabled = process.env.NODE_ENV === 'production' || process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === 'true';
   }
 
-  /**
-   * Track a feature usage event
-   */
   trackFeatureUsage(
     feature: string,
     action: string,
     plan: string,
     userId?: string,
     householdId?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>,
   ) {
     this.track({
       event: 'feature_used',
@@ -77,20 +77,17 @@ class Analytics {
       userId,
       householdId,
       timestamp: new Date(),
-    });
+    } satisfies FeatureUsageEvent);
   }
 
-  /**
-   * Track subscription events
-   */
   trackSubscription(
-    event: 'subscription_created' | 'subscription_updated' | 'subscription_cancelled',
+    event: SubscriptionEvent['event'],
     plan: string,
     previousPlan?: string,
     stripeCustomerId?: string,
     stripeSubscriptionId?: string,
     userId?: string,
-    householdId?: string
+    householdId?: string,
   ) {
     this.track({
       event,
@@ -103,19 +100,16 @@ class Analytics {
       userId,
       householdId,
       timestamp: new Date(),
-    });
+    } satisfies SubscriptionEvent);
   }
 
-  /**
-   * Track user engagement
-   */
   trackEngagement(
     action: string,
     page: string,
     duration?: number,
     userId?: string,
     householdId?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>,
   ) {
     this.track({
       event: 'user_engagement',
@@ -128,12 +122,9 @@ class Analytics {
       userId,
       householdId,
       timestamp: new Date(),
-    });
+    } satisfies UserEngagementEvent);
   }
 
-  /**
-   * Generic track method
-   */
   track(event: AnalyticsEvent) {
     if (!this.isEnabled) {
       return;
@@ -141,105 +132,85 @@ class Analytics {
 
     this.events.push(event);
 
-    // In production, you'd send this to your analytics service
     if (typeof window !== 'undefined') {
-      // Send to client-side analytics (Google Analytics, Mixpanel, etc.)
       this.sendToClientAnalytics(event);
     } else {
-      // Send to server-side analytics
-      this.sendToServerAnalytics(event);
+      void this.sendToServerAnalytics(event);
     }
   }
 
-  /**
-   * Send event to client-side analytics
-   */
   private sendToClientAnalytics(event: AnalyticsEvent) {
-    // Google Analytics 4
-    if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', event.event, {
+    const { gtag, mixpanel } = window;
+
+    if (typeof gtag === 'function') {
+      gtag('event', event.event, {
         event_category: 'feature_usage',
-        event_label: event.properties?.feature || event.event,
-        value: event.properties?.duration || 1,
+        event_label: (event.properties as FeatureUsageEvent['properties'])?.feature ?? event.event,
+        value: (event.properties as UserEngagementEvent['properties'])?.duration ?? 1,
         custom_parameters: event.properties,
       });
     }
 
-    // Mixpanel
-    if (typeof window !== 'undefined' && (window as any).mixpanel) {
-      (window as any).mixpanel.track(event.event, event.properties);
+    if (mixpanel) {
+      mixpanel.track(event.event, event.properties as Record<string, unknown> | undefined);
     }
 
-    // Custom analytics endpoint
     fetch('/api/analytics/track', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(event),
-    }).catch(error => {
-      console.error('Failed to send analytics event:', error);
+    }).catch((error: unknown) => {
+      logger.warn('Failed to send analytics event to /api/analytics/track', {
+        error,
+        event: event.event,
+      });
     });
   }
 
-  /**
-   * Send event to server-side analytics
-   */
   private async sendToServerAnalytics(event: AnalyticsEvent) {
     try {
-      // In a real implementation, you'd send this to your analytics service
-      // For now, we'll just log it
-      console.log('Analytics Event:', JSON.stringify(event, null, 2));
+      logger.info('Analytics event captured', { event: event.event, userId: event.userId, householdId: event.householdId });
     } catch (error) {
-      console.error('Failed to send server analytics event:', error);
+      logger.warn('Failed to record server analytics event', { error, event: event.event });
     }
   }
 
-  /**
-   * Get all tracked events
-   */
   getEvents(): AnalyticsEvent[] {
     return [...this.events];
   }
 
-  /**
-   * Clear all events
-   */
   clearEvents() {
     this.events = [];
   }
 
-  /**
-   * Enable/disable analytics
-   */
   setEnabled(enabled: boolean) {
     this.isEnabled = enabled;
   }
 }
 
-// Export singleton instance
 export const analytics = new Analytics();
 
-// Helper functions for common tracking scenarios
 export const trackFeatureUsage = (
   feature: string,
   action: string,
   plan: string,
   userId?: string,
   householdId?: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>,
 ) => {
   analytics.trackFeatureUsage(feature, action, plan, userId, householdId, metadata);
 };
 
 export const trackSubscription = (
-  event: 'subscription_created' | 'subscription_updated' | 'subscription_cancelled',
+  event: SubscriptionEvent['event'],
   plan: string,
   previousPlan?: string,
   stripeCustomerId?: string,
   stripeSubscriptionId?: string,
   userId?: string,
-  householdId?: string
+  householdId?: string,
 ) => {
   analytics.trackSubscription(event, plan, previousPlan, stripeCustomerId, stripeSubscriptionId, userId, householdId);
 };
@@ -250,7 +221,7 @@ export const trackEngagement = (
   duration?: number,
   userId?: string,
   householdId?: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>,
 ) => {
   analytics.trackEngagement(action, page, duration, userId, householdId, metadata);
 };

@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { canAccessFeature } from '@/lib/server/canAccessFeature';
 import { updateBillCalendarEvent, deleteBillCalendarEvent } from '@/lib/finance/calendarIntegration';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/logger';
 
 // Validation schemas
 const updateBillSchema = z.object({
@@ -29,7 +30,7 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         if (error.code === 'PGRST116') {
           return createErrorResponse('Bill not found', 404);
         }
-        console.error('Error fetching bill:', error);
+        logger.error('Error fetching bill', error, { billId, householdId: household.id });
         return createErrorResponse('Failed to fetch bill', 500);
       }
 
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -109,12 +110,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       }
 
       // Prepare update data
-      const updateData: any = {};
-      Object.keys(validatedData).forEach(key => {
-        if (validatedData[key as keyof typeof validatedData] !== undefined) {
-          updateData[key] = validatedData[key as keyof typeof validatedData];
-        }
-      });
+      type UpdateBillInput = z.infer<typeof updateBillSchema>;
+      const updateData = Object.fromEntries(
+        Object.entries(validatedData).filter(([, value]) => value !== undefined),
+      ) as Partial<UpdateBillInput>;
 
       // Update bill
       const { data: bill, error } = await db
@@ -126,13 +125,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         .single();
 
       if (error) {
-        console.error('Error updating bill:', error);
+        logger.error('Error updating bill', error, { billId, householdId: household.id });
         return createErrorResponse('Failed to update bill', 500);
       }
 
       // Update calendar event if needed
       try {
-        const calendarUpdates: any = {};
+        const calendarUpdates: Record<string, unknown> = {};
         
         if (updateData.status === 'paid') {
           calendarUpdates.paid = true;
@@ -146,16 +145,16 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         if (updateData.title) {
           calendarUpdates.new_title = updateData.title;
         }
-        if (updateData.name) {
-          calendarUpdates.new_name = updateData.name;
-        }
-
         if (Object.keys(calendarUpdates).length > 0) {
           await updateBillCalendarEvent(billId, calendarUpdates, household.id);
-          console.log(`Updated calendar event for bill: ${bill.title}`);
+          logger.info('Updated calendar event for bill', { billId, householdId: household.id });
         }
       } catch (calendarError) {
-        console.error('Failed to update calendar event for bill:', calendarError);
+        logger.error(
+          'Failed to update calendar event for bill',
+          calendarError instanceof Error ? calendarError : new Error(String(calendarError)),
+          { billId, householdId: household.id },
+        );
         // Don't fail the bill update if calendar event update fails
       }
 
@@ -190,7 +189,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -227,16 +226,20 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         .eq('household_id', household.id);
 
       if (error) {
-        console.error('Error deleting bill:', error);
+        logger.error('Error deleting bill', error, { billId, householdId: household.id });
         return createErrorResponse('Failed to delete bill', 500);
       }
 
       // Delete associated calendar event
       try {
         await deleteBillCalendarEvent(billId, household.id);
-        console.log(`Deleted calendar event for bill: ${existingBill.title}`);
+        logger.info('Deleted calendar event for bill', { billId, householdId: household.id });
       } catch (calendarError) {
-        console.error('Failed to delete calendar event for bill:', calendarError);
+        logger.error(
+          'Failed to delete calendar event for bill',
+          calendarError instanceof Error ? calendarError : new Error(String(calendarError)),
+          { billId, householdId: household.id },
+        );
         // Don't fail the bill deletion if calendar event deletion fails
       }
 

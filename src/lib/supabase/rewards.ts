@@ -1,9 +1,25 @@
-import { supabase } from '@/lib/supabaseClient'
+import { supabase } from '@/lib/supabaseClient';
+import { logger } from '@/lib/logging/logger';
 
-/**
- * Fetches all rewards from the rewards table ordered by created_at descending
- */
-export async function getAllRewards() {
+interface Reward {
+  id: string;
+  title: string;
+  cost_xp: number;
+  cost_coins: number;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+interface RewardClaim {
+  reward_id: string;
+}
+
+interface PowerUp {
+  type: string;
+  expires_at: string | null;
+}
+
+export async function getAllRewards(): Promise<Reward[]> {
   const { data, error } = await supabase
     .from('rewards')
     .select('*')
@@ -13,13 +29,10 @@ export async function getAllRewards() {
     throw new Error(`Error fetching rewards: ${error.message}`);
   }
 
-  return data;
+  return data ?? [];
 }
 
-/**
- * Fetches all claimed reward IDs for a specific user
- */
-export async function getClaimedRewards(userId: string) {
+export async function getClaimedRewards(userId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from('reward_claims')
     .select('reward_id')
@@ -29,43 +42,32 @@ export async function getClaimedRewards(userId: string) {
     throw new Error(`Error fetching claimed rewards: ${error.message}`);
   }
 
-  return data.map(claim => claim.reward_id);
+  return (data ?? []).map((claim: RewardClaim) => claim.reward_id);
 }
 
-/**
- * Claims a reward for a specific user and handles power-ups
- */
-export async function claimReward(rewardId: string, userId: string) {
-  try {
-    console.log(`🎯 Claiming reward ${rewardId} for user ${userId}`);
-    
-    // Call the API route to handle reward claiming and power-ups
-    const response = await fetch('/api/rewards/claim', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ rewardId }),
-    });
+export async function claimReward(rewardId: string, userId: string): Promise<Response> {
+  logger.info('Claiming reward', { rewardId, userId });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to claim reward');
-    }
+  const response = await fetch('/api/rewards/claim', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ rewardId }),
+  });
 
-    const result = await response.json();
-    console.log('✅ Reward claimed successfully with power-ups');
-    return result;
-  } catch (error) {
-    console.error('❌ Error in claimReward:', error);
-    throw error;
+  if (!response.ok) {
+    const errorData = await response.json();
+    logger.warn('Failed to claim reward', { rewardId, userId, error: errorData });
+    throw new Error(errorData.error || 'Failed to claim reward');
   }
+
+  logger.info('Reward claimed successfully', { rewardId, userId });
+  return response;
 }
 
-/**
- * Unclaims a reward for a specific user
- */
-export async function unclaimReward(rewardId: string, userId: string) {
+export async function unclaimReward(rewardId: string, userId: string): Promise<{ success: true }>
+{
   const { error } = await supabase
     .from('reward_claims')
     .delete()
@@ -79,92 +81,66 @@ export async function unclaimReward(rewardId: string, userId: string) {
   return { success: true };
 }
 
-/**
- * Gets active power-ups for a user and automatically cleans up expired ones
- */
-export async function getUserPowerUps(userId: string): Promise<string[]> {
-  try {
-    console.log(`🔍 Fetching power-ups for user ${userId}`);
-    
-    // Fetch remaining (active) power-ups
-    const { data, error } = await supabase
-      .from('power_ups')
-      .select('type')
-      .eq('user_id', userId)
-      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+export async function getUserPowerUps(userId: string): Promise<string[]>
+{
+  logger.info('Fetching active power-ups', { userId });
 
-    if (error) {
-      console.error('❌ Error fetching user power-ups:', error);
-      throw new Error(`Error fetching user power-ups: ${error.message}`);
-    }
+  const { data, error } = await supabase
+    .from('power_ups')
+    .select('type, expires_at')
+    .eq('user_id', userId)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
 
-    if (!data || data.length === 0) {
-      console.log(`ℹ️ No active power-ups found for user ${userId}`);
-      return [];
-    }
-
-    const activePowerUps = data.map(powerUp => powerUp.type);
-    
-    console.log(`✅ Found ${activePowerUps.length} active power-ups for user ${userId}: ${activePowerUps.join(', ')}`);
-    
-    return activePowerUps;
-  } catch (error) {
-    console.error('❌ Error in getUserPowerUps:', error);
-    throw error;
+  if (error) {
+    logger.error('Error fetching user power-ups', error, { userId });
+    throw new Error(`Error fetching user power-ups: ${error.message}`);
   }
+
+  if (!data || data.length === 0) {
+    return [];
+  }
+
+  const activePowerUps = data.map((powerUp: PowerUp) => powerUp.type);
+  logger.info('Active power-ups retrieved', { userId, count: activePowerUps.length });
+
+  return activePowerUps;
 }
 
-/**
- * Gets active power-up details for a user (for UI display)
- */
-export async function getUserPowerUpDetails(userId: string) {
-  try {
-    const { data, error } = await supabase
-      .from('power_ups')
-      .select('*')
-      .eq('user_id', userId);
+export async function getUserPowerUpDetails(userId: string): Promise<PowerUp[]>
+{
+  const { data, error } = await supabase
+    .from('power_ups')
+    .select('*')
+    .eq('user_id', userId);
 
-    if (error) {
-      console.error('❌ Error fetching user power-up details:', error);
-      throw new Error(`Error fetching user power-up details: ${error.message}`);
-    }
-
-    if (!data || data.length === 0) {
-      console.log(`ℹ️ No power-ups found for user ${userId}`);
-      return [];
-    }
-
-    const now = new Date();
-    const activePowerUps: any[] = [];
-    const expiredPowerUps: any[] = [];
-
-    // Filter power-ups based on expiration
-    data.forEach(powerUp => {
-      if (powerUp.expires_at === null) {
-        // Permanent power-up
-        activePowerUps.push(powerUp);
-        console.log(`✅ Active permanent power-up: ${powerUp.type}`);
-      } else {
-        // Temporary power-up - check if expired
-        const expiresAt = new Date(powerUp.expires_at);
-        if (now < expiresAt) {
-          activePowerUps.push(powerUp);
-          console.log(`✅ Active temporary power-up: ${powerUp.type} (expires: ${powerUp.expires_at})`);
-        } else {
-          expiredPowerUps.push(powerUp);
-          console.log(`❌ Expired power-up: ${powerUp.type} (expired: ${powerUp.expires_at})`);
-        }
-      }
-    });
-
-    // Log summary
-    console.log(`📊 Power-up details summary for user ${userId}:`);
-    console.log(`   Active: ${activePowerUps.length} (${activePowerUps.map(p => p.type).join(', ')})`);
-    console.log(`   Expired: ${expiredPowerUps.length} (${expiredPowerUps.map(p => p.type).join(', ')})`);
-
-    return activePowerUps;
-  } catch (error) {
-    console.error('❌ Error in getUserPowerUpDetails:', error);
-    throw error;
+  if (error) {
+    logger.error('Error fetching user power-up details', error, { userId });
+    throw new Error(`Error fetching user power-up details: ${error.message}`);
   }
+
+  if (!data || data.length === 0) {
+    return [];
+  }
+
+  const now = new Date();
+  const activePowerUps: PowerUp[] = [];
+
+  data.forEach((powerUp: PowerUp) => {
+    if (powerUp.expires_at === null) {
+      activePowerUps.push(powerUp);
+      return;
+    }
+
+    const expiresAt = new Date(powerUp.expires_at);
+    if (now < expiresAt) {
+      activePowerUps.push(powerUp);
+    }
+  });
+
+  logger.info('Power-up detail summary', {
+    userId,
+    activeCount: activePowerUps.length,
+  });
+
+  return activePowerUps;
 } 

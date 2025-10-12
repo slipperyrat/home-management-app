@@ -1,22 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { getAuth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { getAuth } from '@clerk/nextjs/server';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase environment variables');
+  throw new Error('Missing Supabase environment variables');
 }
 
-const supabase = createClient(supabaseUrl!, supabaseKey!);
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await getAuth(request);
 
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      logger.warn('User role request missing Clerk userId', { securityEvent: true });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { data, error } = await supabase
@@ -26,19 +29,20 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (error) {
-      // If user doesn't exist in database yet, return default role
       if (error.code === 'PGRST116') {
-        console.log('User not found in database yet, returning default role');
+        logger.info('User role fallback to member (no DB record)', { userId });
         return NextResponse.json({ role: 'member' });
       }
-      
-      console.error('Error fetching user role:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+
+      logger.error('Failed to fetch user role', error, { userId, securityEvent: true });
+      return NextResponse.json({ error: 'Failed to fetch user role' }, { status: 500 });
     }
 
     return NextResponse.json({ role: data?.role || 'member' });
-  } catch (err: any) {
-    console.error('Exception in user-role API:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    logger.error('Unexpected error fetching user role', err instanceof Error ? err : new Error(String(err)), {
+      securityEvent: true,
+    });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
   }
 } 

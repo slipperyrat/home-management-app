@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(_request: NextRequest) {
   try {
@@ -35,7 +41,7 @@ export async function GET(_request: NextRequest) {
       .order('start_time', { ascending: true });
 
     if (eventsError) {
-      console.error('Error fetching events:', eventsError);
+      logger.error('Error fetching events for scheduling suggestions', eventsError, { householdId, userId });
       return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
     }
 
@@ -48,31 +54,45 @@ export async function GET(_request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in scheduling suggestions API:', error);
+    logger.error('Error in scheduling suggestions API', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-function generateAISchedulingSuggestions(events: any[]): any[] {
-  const suggestions: any[] = [];
+type HouseholdEvent = Database['public']['Tables']['household_events']['Row'];
+
+type SchedulingSuggestion = {
+  id: string;
+  title: string;
+  description: string;
+  suggested_time: string;
+  suggested_date: string;
+  event_type: string;
+  priority: 'low' | 'medium' | 'high';
+  ai_confidence: number;
+  reasoning: string;
+};
+
+function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSuggestion[] {
+  const suggestions: SchedulingSuggestion[] = [];
   const now = new Date();
 
   // Analyze existing events for patterns
-  const eventTypes = events.map(e => e.event_type || 'general');
-  const timeSlots = events.map(e => {
-    const hour = new Date(e.start_time).getHours();
+  const eventTypes = events.map((event) => event.event_type || 'general');
+  const timeSlots = events.map((event) => {
+    const hour = new Date(event.start_time).getHours();
     return hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
   });
 
   // Find most common patterns
-  const typeCounts: { [key: string]: number } = {};
-  const timeCounts: { [key: string]: number } = {};
+  const typeCounts: Record<string, number> = {};
+  const timeCounts: Record<string, number> = {};
 
-  eventTypes.forEach(type => {
+  eventTypes.forEach((type) => {
     typeCounts[type] = (typeCounts[type] || 0) + 1;
   });
 
-  timeSlots.forEach(time => {
+  timeSlots.forEach((time) => {
     timeCounts[time] = (timeCounts[time] || 0) + 1;
   });
 
@@ -132,7 +152,7 @@ function generateAISchedulingSuggestions(events: any[]): any[] {
   }
 
   // Personal time suggestion
-  if (events.filter(e => e.event_type === 'personal').length < 2) {
+  if (events.filter((event) => event.event_type === 'personal').length < 2) {
     suggestions.push({
       id: 'personal-time',
       title: 'Personal Time Block',
@@ -179,10 +199,12 @@ function generateAISchedulingSuggestions(events: any[]): any[] {
   return suggestions;
 }
 
-function findPotentialConflicts(events: any[]): any[] {
-  const conflicts: any[] = [];
-  const sortedEvents = [...events].sort((a, b) => 
-    new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+type EventConflict = [HouseholdEvent, HouseholdEvent];
+
+function findPotentialConflicts(events: HouseholdEvent[]): EventConflict[] {
+  const conflicts: EventConflict[] = [];
+  const sortedEvents = [...events].sort((a, b) =>
+    new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
   );
 
   for (let i = 0; i < sortedEvents.length - 1; i++) {

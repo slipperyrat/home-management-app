@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { logger } from '@/lib/logging/logger';
 
 interface ConfirmItemsResponse {
   success: boolean;
@@ -22,34 +23,34 @@ export function useConfirmItems() {
     setError(null);
 
     try {
-      console.log('🔍 Confirming items:', itemIds);
+      logger.debug?.('Confirming items', { itemIds });
       const response = await fetch('/api/shopping-lists/confirm-items', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ itemIds }),
-        credentials: 'include', // Ensure authentication cookies are sent
+        credentials: 'include',
       });
 
-      console.log('🔍 Confirm items response:', response.status, response.statusText);
+      logger.debug?.('Confirm items response', { status: response.status, statusText: response.statusText });
 
-      const data = await response.json();
+      const data: ConfirmItemsResponse = await response.json();
 
       if (!response.ok) {
-        console.error('❌ Confirm items failed:', data);
+        logger.error('Confirm items failed', new Error(data.error || 'Unknown error'), { itemIds });
         throw new Error(data.error || 'Failed to confirm items');
       }
 
-      console.log('✅ Confirm items success:', data);
+      logger.info('Confirm items success', { itemIds, confirmedCount: data.confirmedItems?.length || 0 });
       return data;
-    } catch (err: any) {
-      console.error('❌ Confirm items error:', err);
-      const errorMessage = err.message || 'Failed to confirm items';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to confirm items';
+      logger.error('Confirm items error', err as Error, { itemIds });
       setError(errorMessage);
       return {
         success: false,
-        error: errorMessage
+        error: errorMessage,
       };
     } finally {
       setIsLoading(false);
@@ -59,6 +60,6 @@ export function useConfirmItems() {
   return {
     confirmItems,
     isLoading,
-    error
+    error,
   };
 }

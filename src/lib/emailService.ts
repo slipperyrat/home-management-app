@@ -309,7 +309,7 @@ export class EmailService {
    * Generate HTML for weekly digest
    */
   private static generateWeeklyDigestHTML(data: DigestData): string {
-    const { user_name, household_name, date, chores, meals, shopping, events, achievements, insights } = data;
+    const { user_name, household_name, date, chores, events, achievements, insights } = data;
     
     return `
       <!DOCTYPE html>
@@ -483,7 +483,7 @@ export class EmailService {
    * Generate plain text for weekly digest
    */
   private static generateWeeklyDigestText(data: DigestData): string {
-    const { user_name, household_name, date, chores, meals, shopping, events, achievements, insights } = data;
+    const { user_name, household_name, date, chores, events, achievements } = data;
     
     let text = `Weekly Digest - ${date}\n`;
     text += `Here's your weekly summary for ${household_name}, ${user_name}!\n\n`;

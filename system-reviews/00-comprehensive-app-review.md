@@ -89,7 +89,7 @@ The Home Management App is a **feature-rich application** with comprehensive hou
 - **Chore Assignment**: Multi-strategy AI assignment algorithms
 - **Learning System**: Pattern recognition and correction learning
 - **Real-time Processing**: WebSocket-based live AI processing
-- **Performance Monitoring**: Comprehensive AI metrics and dashboards
+- **Performance Monitoring**: Backend metrics available (UI deferred)
 - **Batch Processing**: Efficient batch job management
 
 ### **Automation Framework (Grade: A+ - 100% Complete)**
@@ -227,7 +227,7 @@ The Home Management App is a **feature-rich application** with comprehensive hou
    - Test and validate improved AI responses
    - **Impact**: Significantly improve AI suggestion quality
 
-6. **Performance Monitoring Enhancement**
+6. **Performance Monitoring Enhancement (UI deferred)**
    - Add real-time performance dashboards
    - Implement alerting for performance issues
    - Add user experience monitoring

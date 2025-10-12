@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDatabaseClient } from '@/lib/api/database';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
+import { logger } from '@/lib/logging/logger';
 
 const syncSettingsSchema = z.object({
   enable_public_sync: z.boolean().optional(),
@@ -65,7 +66,7 @@ export async function GET(
     // Generate new token if expired or doesn't exist
     if (tokenExpired) {
       icsToken = randomBytes(32).toString('hex');
-      tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 1 year
+      tokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
       const { error: updateError } = await supabase
         .from('households')
@@ -76,7 +77,7 @@ export async function GET(
         .eq('id', householdId);
 
       if (updateError) {
-        console.error('Error updating ICS token:', updateError);
+        logger.error('Error updating ICS token', updateError, { householdId, userId });
         return NextResponse.json({ error: 'Failed to generate sync token' }, { status: 500 });
       }
     }
@@ -108,7 +109,7 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error('Error getting calendar sync settings:', error);
+    logger.error('Error getting calendar sync settings', error instanceof Error ? error : new Error(String(error)), { householdId: (await params).householdId });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -155,7 +156,7 @@ export async function PUT(
     // }
 
     // Update household sync settings
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     
     if (validatedData.enable_public_sync !== undefined) {
       updateData.public_sync_enabled = validatedData.enable_public_sync;
@@ -172,7 +173,7 @@ export async function PUT(
       .eq('id', householdId);
 
     if (updateError) {
-      console.error('Error updating sync settings:', updateError);
+      logger.error('Error updating sync settings', updateError, { householdId, userId });
       return NextResponse.json({ error: 'Failed to update sync settings' }, { status: 500 });
     }
 
@@ -205,7 +206,7 @@ export async function PUT(
     });
 
   } catch (error) {
-    console.error('Error updating calendar sync settings:', error);
+    logger.error('Error updating calendar sync settings', error instanceof Error ? error : new Error(String(error)), { householdId: (await params).householdId });
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid input', details: error.errors }, { status: 400 });
     }
@@ -264,7 +265,7 @@ export async function POST(
       .eq('id', householdId);
 
     if (updateError) {
-      console.error('Error regenerating ICS token:', updateError);
+      logger.error('Error regenerating ICS token', updateError, { householdId, userId });
       return NextResponse.json({ error: 'Failed to regenerate token' }, { status: 500 });
     }
 
@@ -279,7 +280,7 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('Error regenerating ICS token:', error);
+    logger.error('Error regenerating ICS token', error instanceof Error ? error : new Error(String(error)), { householdId: (await params).householdId });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

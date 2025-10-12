@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { logger } from '@/lib/logging/logger';
 import { z } from 'zod';
 import { sanitizeDeep, SanitizePolicy } from '@/lib/security/sanitize';
 import { ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
 
 // Standard API response types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
@@ -182,8 +183,45 @@ export async function handleAsyncOperation<T>(
     const data = await operation();
     return { success: true, data };
   } catch (error) {
-    console.error(`${errorMessage}:`, error);
+    logger.error(errorMessage, error as Error);
     const message = error instanceof Error ? error.message : errorMessage;
     return { success: false, error: message };
   }
+}
+
+interface ParsedBody<T> {
+  success: true;
+  data: T;
+}
+interface ParsedBodyError {
+  success: false;
+  error: string;
+}
+
+type ParsedBodyResult<T> = ParsedBody<T> | ParsedBodyError;
+
+export async function parseJsonBody<T>(request: NextRequest): Promise<ParsedBodyResult<T>> {
+  try {
+    const json = await request.json();
+    return { success: true, data: json as T };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Invalid JSON payload',
+    };
+  }
+}
+
+export function getQueryParam(request: NextRequest, key: string): string | null {
+  return request.nextUrl.searchParams.get(key);
+}
+
+export function getRequiredQueryParam(request: NextRequest, key: string): string {
+  const value = getQueryParam(request, key);
+
+  if (!value) {
+    throw new Error(`Missing query parameter: ${key}`);
+  }
+
+  return value;
 }

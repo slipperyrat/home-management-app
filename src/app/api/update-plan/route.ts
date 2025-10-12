@@ -1,6 +1,3 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "@clerk/nextjs/server";
-import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,19 +8,23 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+type UpdatePlanBody = {
+  plan?: 'free' | 'pro' | 'pro_plus';
+};
+
+const VALID_PLANS: UpdatePlanBody['plan'][] = ['free', 'pro', 'pro_plus'];
+
 export async function POST(request: NextRequest) {
-  console.log('Update plan API called');
-  
+
   const { userId } = await getAuth(request);
 
   if (!userId) {
-    console.log('No userId found, unauthorized');
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     // Parse request body
-    const body = await request.json();
+    const body = (await request.json()) as UpdatePlanBody;
     const { plan } = body;
 
     // Validate request body
@@ -33,13 +34,12 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    if (!['free', 'pro', 'pro_plus'].includes(plan)) {
+    if (!VALID_PLANS.includes(plan)) {
       return NextResponse.json({ 
         error: "Invalid plan. Must be 'free', 'pro', or 'pro_plus'" 
       }, { status: 400 });
     }
 
-    console.log(`User ${userId} attempting to update plan to ${plan}`);
 
     // Check if current user is an owner
     const { data: currentUser, error: currentUserError } = await supabase
@@ -88,7 +88,6 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    console.log(`Successfully updated household ${currentUser.household_id} plan to ${plan}`);
     return NextResponse.json({ 
       success: true,
       message: `Plan updated successfully to ${plan}`,

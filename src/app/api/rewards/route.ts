@@ -1,16 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createRewardSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 GET: Fetching rewards for user:', user.id);
+      logger.info('Fetching rewards', { userId: user.id });
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
         .order('cost_xp', { ascending: true });
 
       if (error) {
-        console.error('Error fetching rewards:', error);
+        logger.error('Error fetching rewards', error, { householdId: household.id });
         return createErrorResponse('Failed to fetch rewards', 500, error.message);
       }
 
@@ -43,19 +44,22 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Creating reward for user:', user.id);
+      logger.info('Creating reward', { userId: user.id });
 
       // Parse and validate request body using Zod schema
       let validatedData;
       try {
         const body = await req.json();
         validatedData = createRewardSchema.parse(body);
-      } catch (validationError: any) {
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+      } catch (validationError: unknown) {
+        if (validationError instanceof Error && 'errors' in validationError) {
+          return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
+        }
+        return createErrorResponse('Invalid input', 400);
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -70,8 +74,6 @@ export async function POST(request: NextRequest) {
         created_by: user.id
       };
 
-      console.log('Creating reward:', rewardData);
-
       const supabase = getDatabaseClient();
       const { data, error } = await supabase
         .from('rewards')
@@ -80,7 +82,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) {
-        console.error('Error creating reward:', error);
+        logger.error('Error creating reward', error, { householdId: household.id, userId: user.id });
         return createErrorResponse('Failed to create reward', 500, error.message);
       }
 
@@ -97,7 +99,7 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      console.log('Successfully created reward:', data);
+      logger.info('Reward created', { rewardId: data.id, householdId: household.id, userId: user.id });
       return createSuccessResponse({ reward: data }, 'Reward created successfully');
 
     } catch (error) {

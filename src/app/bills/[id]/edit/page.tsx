@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { toast } from 'sonner';
@@ -43,11 +43,11 @@ export default function EditBillPage() {
 
   useEffect(() => {
     if (params.id && user) {
-      fetchBill();
+      void fetchBill();
     }
-  }, [params.id, user]);
+  }, [fetchBill, params.id, user]);
 
-  const fetchBill = async () => {
+  const fetchBill = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/bills/${params.id}`);
@@ -67,18 +67,18 @@ export default function EditBillPage() {
       } else {
         console.error('Failed to fetch bill');
         toast.error('Failed to load bill');
-        router.push('/bills');
+        router.push('/finance');
       }
     } catch (error) {
       console.error('Error fetching bill:', error);
       toast.error('Error loading bill');
-      router.push('/bills');
+      router.push('/finance');
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id, router]);
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.title || !formData.amount || !formData.due_date) {
@@ -99,7 +99,7 @@ export default function EditBillPage() {
 
       if (response.ok) {
         toast.success('Bill updated successfully!');
-        router.push('/bills');
+        router.push('/finance');
       } else {
         const error = await response.json();
         toast.error(error.error || 'Failed to update bill');
@@ -110,9 +110,9 @@ export default function EditBillPage() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [formData, params.id, router]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!confirm('Are you sure you want to delete this bill? This action cannot be undone.')) {
       return;
     }
@@ -124,7 +124,7 @@ export default function EditBillPage() {
 
       if (response.ok) {
         toast.success('Bill deleted successfully!');
-        router.push('/bills');
+        router.push('/finance');
       } else {
         toast.error('Failed to delete bill');
       }
@@ -132,7 +132,7 @@ export default function EditBillPage() {
       console.error('Error deleting bill:', error);
       toast.error('Something went wrong');
     }
-  };
+  }, [params.id, router]);
 
   if (loading) {
     return (
@@ -153,10 +153,10 @@ export default function EditBillPage() {
           <h3 className="text-lg font-medium text-gray-900 mb-2">Bill not found</h3>
           <p className="text-gray-600 mb-4">The bill you're looking for doesn't exist or you don't have access to it.</p>
           <button
-            onClick={() => router.push('/bills')}
+            onClick={() => router.push('/finance')}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
           >
-            Back to Bills
+            Back to Finance
           </button>
         </div>
       </div>
@@ -286,7 +286,7 @@ export default function EditBillPage() {
             <div className="flex justify-end space-x-3 pt-4">
               <button
                 type="button"
-                onClick={() => router.push('/bills')}
+                onClick={() => router.push('/finance')}
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
               >
                 Cancel

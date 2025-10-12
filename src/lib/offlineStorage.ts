@@ -1,8 +1,10 @@
 // Offline data storage using IndexedDB
+type OfflinePayload = Record<string, unknown>;
+
 interface OfflineData {
   id: string;
   type: 'shopping_list' | 'chore' | 'meal_plan' | 'bill' | 'recipe';
-  data: any;
+  data: OfflinePayload;
   timestamp: number;
   synced: boolean;
 }
@@ -52,7 +54,7 @@ class OfflineStorageManager {
     });
   }
 
-  async storeData(type: OfflineData['type'], data: any): Promise<string> {
+  async storeData(type: OfflineData['type'], data: OfflinePayload): Promise<string> {
     if (!this.db) await this.init();
 
     const id = `${type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -244,12 +246,12 @@ export const backgroundSync = BackgroundSyncManager.getInstance();
 
 // React hooks for offline functionality
 export function useOfflineStorage() {
-  const storeData = async (type: OfflineData['type'], data: any) => {
-    return await offlineStorage.storeData(type, data);
+  const storeData = async (type: OfflineData['type'], data: OfflinePayload) => {
+    return offlineStorage.storeData(type, data);
   };
 
   const getData = async (type?: OfflineData['type']) => {
-    return await offlineStorage.getData(type);
+    return offlineStorage.getData(type);
   };
 
   const syncData = async () => {

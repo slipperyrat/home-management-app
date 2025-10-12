@@ -3,14 +3,14 @@
 
 import { ShoppingSuggestionsAIService } from '../services/ShoppingSuggestionsAIService';
 import { AIConfigManager } from '../config/aiConfig';
+import { logger } from '@/lib/logging/logger';
 
 export async function testShoppingAI() {
-  console.log('🧪 Testing Shopping AI Service...');
-  
+  logger.info('Testing Shopping AI Service');
+
   try {
-    // Test with mock data
     const aiService = new ShoppingSuggestionsAIService();
-    
+
     const context = {
       householdId: 'test-household-id',
       dietaryRestrictions: ['vegetarian'],
@@ -18,55 +18,56 @@ export async function testShoppingAI() {
       specialOccasions: ['birthday']
     };
 
-    console.log('📝 Test context:', context);
-    
+    logger.debug?.('Shopping AI test context', context);
+
     const result = await aiService.generateSuggestions(context);
-    
-    console.log('✅ AI Service Result:');
-    console.log('- Success:', result.success);
-    console.log('- Provider:', result.provider);
-    console.log('- Processing Time:', result.processingTime + 'ms');
-    console.log('- Fallback Used:', result.fallbackUsed);
-    console.log('- Suggestions Count:', result.data?.length || 0);
-    
+
+    logger.info('Shopping AI service result', {
+      success: result.success,
+      provider: result.provider,
+      processingTimeMs: result.processingTime,
+      fallbackUsed: result.fallbackUsed,
+      suggestionCount: result.data?.length || 0,
+    });
+
     if (result.data && result.data.length > 0) {
-      console.log('📋 Sample Suggestion:');
-      console.log(JSON.stringify(result.data[0], null, 2));
+      logger.info('Sample shopping suggestion', { suggestion: result.data[0] });
     }
-    
+
     return result;
-    
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    logger.error('Shopping AI test failed', error as Error);
     return null;
   }
 }
 
-// Test configuration management
 export function testAIConfig() {
-  console.log('🧪 Testing AI Configuration...');
-  
+  logger.info('Testing AI configuration manager');
+
   const configManager = AIConfigManager.getInstance();
-  
-  console.log('📊 Current Configuration:');
-  console.log('- Shopping AI Enabled:', configManager.isEnabled('shoppingSuggestions'));
-  console.log('- Shopping AI Provider:', configManager.getConfig('shoppingSuggestions').provider);
-  console.log('- Meal Planning Enabled:', configManager.isEnabled('mealPlanning'));
-  
-  // Test disabling feature
-  console.log('🔄 Testing feature disable...');
+
+  logger.info('Current AI configuration', {
+    shoppingEnabled: configManager.isEnabled('shoppingSuggestions'),
+    shoppingProvider: configManager.getConfig('shoppingSuggestions').provider,
+    mealPlanningEnabled: configManager.isEnabled('mealPlanning'),
+  });
+
+  logger.info('Disabling shopping suggestions feature');
   configManager.disableFeature('shoppingSuggestions');
-  console.log('- Shopping AI Enabled (after disable):', configManager.isEnabled('shoppingSuggestions'));
-  
-  // Re-enable
+  logger.info('Shopping AI enabled after disable', { enabled: configManager.isEnabled('shoppingSuggestions') });
+
   configManager.enableFeature('shoppingSuggestions');
-  console.log('- Shopping AI Enabled (after re-enable):', configManager.isEnabled('shoppingSuggestions'));
+  logger.info('Shopping AI enabled after re-enable', { enabled: configManager.isEnabled('shoppingSuggestions') });
 }
 
-// Run tests if this file is executed directly
 if (require.main === module) {
+  logger.info('Starting Shopping AI tests');
   testAIConfig();
-  testShoppingAI().then(() => {
-    console.log('🎉 All tests completed!');
-  });
+  testShoppingAI()
+    .then(() => {
+      logger.info('Shopping AI tests completed');
+    })
+    .catch((error) => {
+      logger.error('Shopping AI tests encountered an error', error as Error);
+    });
 }

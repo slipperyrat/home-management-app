@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/logger';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 
 export async function DELETE(
   _request: NextRequest,
@@ -17,7 +22,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
     }
 
-    console.log('Deleting calendar event:', id);
+    logger.info('Deleting calendar event', { eventId: id });
 
     const { error } = await supabase
       .from('calendar_events')
@@ -25,14 +30,14 @@ export async function DELETE(
       .eq('id', id);
 
     if (error) {
-      console.error('Error deleting calendar event:', error);
+      logger.error('Error deleting calendar event', error, { eventId: id });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log('Successfully deleted calendar event:', id);
+    logger.info('Successfully deleted calendar event', { eventId: id });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Exception in calendar delete API:', error);
+    logger.error('Exception in calendar delete API', error instanceof Error ? error : new Error(String(error)), { eventId: (await params).id });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 } 

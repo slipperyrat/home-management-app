@@ -27,8 +27,8 @@ describe('Security - Input Sanitization', () => {
     })
 
     it('should handle null and undefined', () => {
-      expect(sanitizeText(null as any)).toBe('')
-      expect(sanitizeText(undefined as any)).toBe('')
+      expect(sanitizeText(null as unknown as string)).toBe('')
+      expect(sanitizeText(undefined as unknown as string)).toBe('')
     })
   })
 

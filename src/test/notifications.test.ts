@@ -30,12 +30,12 @@ const mockNavigator = {
 }
 
 // Mock global objects
-Object.defineProperty(global, 'Notification', {
+Object.defineProperty(globalThis, 'Notification', {
   value: mockNotification,
   writable: true
 })
 
-Object.defineProperty(global, 'navigator', {
+Object.defineProperty(globalThis, 'navigator', {
   value: mockNavigator,
   writable: true
 })

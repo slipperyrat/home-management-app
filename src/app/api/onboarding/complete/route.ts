@@ -1,35 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+
 import { sb, ServerError, createErrorResponse, getUserAndHousehold } from '@/lib/server/supabaseAdmin';
+import { withAPISecurity } from '@/lib/security/apiProtection';
+import { createSuccessResponse, handleApiError } from '@/lib/api/errors';
 
-export async function POST(_request: NextRequest) {
-  try {
-    const { userId } = await getUserAndHousehold();
+export async function POST(request: NextRequest) {
+  return withAPISecurity(request, async () => {
+    try {
+      const { userId } = await getUserAndHousehold();
 
-    // Sets users.onboarding_completed = true for current user
-    const { error: userError } = await sb()
-      .from('users')
-      .update({ 
-        onboarding_completed: true,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', userId);
+      const { error: userError } = await sb()
+        .from('users')
+        .update({
+          onboarding_completed: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
 
-    if (userError) {
-      console.error('Error updating user onboarding status:', userError);
-      throw new ServerError('Failed to complete onboarding', 500);
+      if (userError) {
+        throw new ServerError('Failed to complete onboarding', 500);
+      }
+
+      return createSuccessResponse({ onboardingCompleted: true }, 'Onboarding completed');
+    } catch (error) {
+      if (error instanceof ServerError) {
+        return createErrorResponse(error);
+      }
+
+      return handleApiError(error, { route: '/api/onboarding/complete', method: 'POST', userId: undefined });
     }
-
-    console.log(`User ${userId} completed onboarding`);
-
-    return NextResponse.json({ 
-      ok: true
-    });
-
-  } catch (error) {
-    if (error instanceof ServerError) {
-      return createErrorResponse(error);
-    }
-    console.error('Unexpected error:', error);
-    return createErrorResponse(new ServerError('Internal server error', 500));
-  }
+  }, {
+    requireCSRF: true,
+    rateLimitConfig: 'api'
+  });
 }

@@ -1,69 +1,81 @@
-export async function getCalendarEvents(household_id: string) {
+import { logger } from '@/lib/logging/logger';
+
+interface CalendarEventPayload {
+  id?: string;
+  title: string;
+  description?: string;
+  start_time: string;
+  end_time: string;
+  created_by: string;
+  household_id: string;
+}
+
+export async function getCalendarEvents(householdId: string): Promise<CalendarEventPayload[]> {
   try {
-    console.log('Fetching calendar events for household:', household_id);
-    const response = await fetch(`/api/calendar?householdId=${household_id}`);
-    const result = await response.json();
-    
+    logger.info('Fetching calendar events', { householdId });
+    const response = await fetch(`/api/calendar?householdId=${householdId}`);
+    const result = (await response.json()) as { data?: CalendarEventPayload[]; error?: string };
+
     if (!response.ok) {
-      console.error('Error fetching calendar events:', result.error);
+      logger.error('Error fetching calendar events', new Error(result.error ?? 'Unknown error'), {
+        householdId,
+      });
       throw new Error(result.error || 'Failed to fetch calendar events');
     }
-    
-    console.log('Successfully fetched calendar events:', result.data);
-    return result.data;
-  } catch (err) {
-    console.error('Exception in getCalendarEvents:', err);
-    throw err;
+
+    logger.info('Fetched calendar events', { householdId, count: result.data?.length ?? 0 });
+    return result.data ?? [];
+  } catch (error) {
+    logger.error('Exception in getCalendarEvents', error as Error, { householdId });
+    throw error;
   }
 }
 
-export async function addCalendarEvent(event: {
-  title: string
-  description?: string
-  start_time: string
-  end_time: string
-  created_by: string
-  household_id: string
-}) {
+export async function addCalendarEvent(event: CalendarEventPayload): Promise<CalendarEventPayload> {
   try {
-    console.log('Adding calendar event:', event);
+    logger.info('Adding calendar event', { householdId: event.household_id, title: event.title });
     const response = await fetch('/api/calendar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(event),
     });
-    const result = await response.json();
-    
-    if (!response.ok) {
-      console.error('Error adding calendar event:', result.error);
+    const result = (await response.json()) as { event?: CalendarEventPayload; data?: CalendarEventPayload; error?: string };
+
+    if (!response.ok || (!result.event && !result.data)) {
+      logger.error('Error adding calendar event', new Error(result.error ?? 'Unknown error'), {
+        householdId: event.household_id,
+        title: event.title,
+      });
       throw new Error(result.error || 'Failed to add calendar event');
     }
-    
-    console.log('Successfully added calendar event:', result.data);
-    return result.data;
-  } catch (err) {
-    console.error('Exception in addCalendarEvent:', err);
-    throw err;
+
+    const createdEvent = result.event ?? result.data!;
+    logger.info('Added calendar event', { householdId: event.household_id, eventId: createdEvent.id });
+    return createdEvent;
+  } catch (error) {
+    logger.error('Exception in addCalendarEvent', error as Error, {
+      householdId: event.household_id,
+    });
+    throw error;
   }
 }
 
-export async function deleteCalendarEvent(id: string) {
+export async function deleteCalendarEvent(id: string): Promise<void> {
   try {
-    console.log('Deleting calendar event:', id);
+    logger.info('Deleting calendar event', { id });
     const response = await fetch(`/api/calendar/${id}`, {
       method: 'DELETE',
     });
-    const result = await response.json();
-    
-    if (!response.ok) {
-      console.error('Error deleting calendar event:', result.error);
+    const result = (await response.json()) as { success?: boolean; error?: string };
+
+    if (!response.ok || result.error) {
+      logger.error('Error deleting calendar event', new Error(result.error ?? 'Unknown error'), { id });
       throw new Error(result.error || 'Failed to delete calendar event');
     }
-    
-    console.log('Successfully deleted calendar event:', id);
-    return result;
-  } catch (err) {
-    console.error('Exception in deleteCalendarEvent:', err);
-    throw err;
+
+    logger.info('Deleted calendar event', { id });
+  } catch (error) {
+    logger.error('Exception in deleteCalendarEvent', error as Error, { id });
+    throw error;
   }
 } 

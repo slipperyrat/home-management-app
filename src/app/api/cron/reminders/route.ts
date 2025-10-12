@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/logger';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -8,15 +9,15 @@ if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST() {
   try {
-    console.log('🔔 Starting reminder sending process...');
-    
+    logger.info('Starting reminder sending process');
+
     // Get current time in ISO format for timezone-aware comparison
     const now = new Date().toISOString();
-    console.log(`⏰ Current time: ${now}`);
+    logger.info('Reminder reference time', { now });
     
     // Query reminders that are due and not yet sent
     const { data: reminders, error: fetchError } = await supabase
@@ -27,12 +28,12 @@ export async function POST() {
       .order('remind_at', { ascending: true });
 
     if (fetchError) {
-      console.error('❌ Error fetching reminders:', fetchError);
+      logger.error('Error fetching reminders', fetchError);
       throw fetchError;
     }
 
     if (!reminders || reminders.length === 0) {
-      console.log('📭 No reminders to send at this time');
+      logger.info('No reminders to send at this time');
       return NextResponse.json({ 
         success: true, 
         message: 'No reminders to send',
@@ -41,7 +42,7 @@ export async function POST() {
       });
     }
 
-    console.log(`📋 Found ${reminders.length} reminder(s) to send`);
+    logger.info('Reminders ready for sending', { count: reminders.length });
 
     let sentCount = 0;
     let errorCount = 0;
@@ -49,7 +50,7 @@ export async function POST() {
     // Process each reminder
     for (const reminder of reminders) {
       try {
-        console.log(`📤 Send reminder: "${reminder.title}" for household ${reminder.household_id}`);
+        logger.info('Sending reminder', { reminderId: reminder.id, householdId: reminder.household_id });
         
         // Update the reminder to mark it as sent
         const { error: updateError } = await supabase
@@ -58,12 +59,12 @@ export async function POST() {
           .eq('id', reminder.id);
 
         if (updateError) {
-          console.error(`❌ Error updating reminder ${reminder.id}:`, updateError);
+          logger.error('Error updating reminder as sent', updateError, { reminderId: reminder.id });
           errorCount++;
           continue;
         }
 
-        console.log(`✅ Successfully sent reminder: "${reminder.title}"`);
+        logger.info('Reminder marked as sent', { reminderId: reminder.id });
         sentCount++;
 
         // TODO: Here you could add actual notification sending logic
@@ -71,14 +72,14 @@ export async function POST() {
         // await sendNotification(reminder);
 
       } catch (error) {
-        console.error(`❌ Error processing reminder ${reminder.id}:`, error);
+        logger.error('Error processing reminder', error instanceof Error ? error : new Error(String(error)), {
+          reminderId: reminder.id,
+        });
         errorCount++;
       }
     }
 
-    console.log(`🎉 Reminder sending complete!`);
-    console.log(`✅ Successfully sent: ${sentCount}`);
-    console.log(`❌ Errors: ${errorCount}`);
+    logger.info('Reminder sending complete', { sentCount, errorCount });
 
     return NextResponse.json({ 
       success: true, 
@@ -87,7 +88,7 @@ export async function POST() {
     });
 
   } catch (error) {
-    console.error('💥 Fatal error in reminder sending process:', error);
+    logger.error('Fatal error in reminder sending process', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 

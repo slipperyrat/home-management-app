@@ -1,145 +1,141 @@
-import { sb } from './supabaseAdmin'
+import { sb } from './supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
 
-/**
- * Merges duplicate items in a shopping list by combining quantities
- * @param listId - The shopping list ID to clean up
- * @returns Object with success status and merge results
- */
-export async function mergeDuplicateItems(listId: string): Promise<{ 
-  ok: boolean; 
-  mergedItems: number; 
+export async function mergeDuplicateItems(listId: string): Promise<{
+  ok: boolean;
+  mergedItems: number;
   totalItems: number;
-  error?: string 
+  error?: string;
 }> {
   try {
-    const supabase = sb()
+    const supabase = sb();
 
-    // Get all items in the list
     const { data: allItems, error: fetchError } = await supabase
       .from('shopping_items')
       .select('*')
       .eq('list_id', listId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: true });
 
     if (fetchError) {
-      console.error('❌ Error fetching items for merge:', fetchError)
-      return { 
-        ok: false, 
-        mergedItems: 0, 
+      logger.error('Error fetching shopping items before merge', fetchError, { listId });
+      return {
+        ok: false,
+        mergedItems: 0,
         totalItems: 0,
-        error: fetchError.message 
-      }
+        error: fetchError.message,
+      };
     }
 
     if (!allItems || allItems.length === 0) {
-      return { 
-        ok: true, 
-        mergedItems: 0, 
-        totalItems: 0
-      }
+      logger.info('No shopping items found to merge', { listId });
+      return {
+        ok: true,
+        mergedItems: 0,
+        totalItems: 0,
+      };
     }
 
-    console.log(`🔍 Found ${allItems.length} items to check for duplicates`)
+    logger.info('Evaluating shopping items for duplicates', { listId, itemCount: allItems.length });
 
-    // Group items by name (case-insensitive)
-    const itemsByName = new Map<string, typeof allItems>()
+    type ShoppingItem = (typeof allItems)[number];
+
+    const itemsByName = new Map<string, ShoppingItem[]>();
     for (const item of allItems) {
-      const key = item.name.toLowerCase().trim()
-      if (!itemsByName.has(key)) {
-        itemsByName.set(key, [])
-      }
-      itemsByName.get(key)!.push(item)
+      const key = item.name.toLowerCase().trim();
+      const itemsForName = itemsByName.get(key) ?? [];
+      itemsForName.push(item);
+      itemsByName.set(key, itemsForName);
     }
 
-    console.log(`🔍 Grouped into ${itemsByName.size} unique item names`)
+    logger.info('Grouped shopping items by name', { listId, uniqueNames: itemsByName.size });
 
-    let mergedItems = 0
-    const errors: string[] = []
+    let mergedItems = 0;
+    const errors: string[] = [];
 
-    // Process each group of items
     for (const [itemName, items] of itemsByName) {
       if (items.length <= 1) {
-        continue // No duplicates to merge
+        continue;
       }
 
       try {
-        console.log(`🔍 Merging ${items.length} duplicate items for "${itemName}"`)
-
-        // Calculate total quantity for this group
-        let totalQuantity = 0
+        let totalQuantity = 0;
         for (const item of items) {
-          const qty = parseFloat(item.quantity) || 0
-          totalQuantity += qty
+          const qty = Number.parseFloat(item.quantity) || 0;
+          totalQuantity += qty;
         }
 
-        // Round to 2 decimal places
-        totalQuantity = Math.round(totalQuantity * 100) / 100
+        totalQuantity = Math.round(totalQuantity * 100) / 100;
 
-        console.log(`🔍 Total quantity for "${itemName}": ${totalQuantity}`)
-
-        // Keep the first item and update its quantity
-        const firstItem = items[0]
+        const firstItem = items[0];
         const { error: updateError } = await supabase
           .from('shopping_items')
-          .update({ 
+          .update({
             quantity: totalQuantity.toString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
           })
-          .eq('id', firstItem.id)
+          .eq('id', firstItem.id);
 
         if (updateError) {
-          console.error(`❌ Error updating first item "${itemName}":`, updateError)
-          errors.push(`Error updating first item ${itemName}`)
-          continue
+          logger.error('Error updating primary shopping item during duplicate merge', updateError, { listId, itemName });
+          errors.push(`Error updating first item ${itemName}`);
+          continue;
         }
 
-        // Delete the remaining duplicate items
-        const duplicateIds = items.slice(1).map(item => item.id)
+        const duplicateIds = items.slice(1).map(item => item.id);
         const { error: deleteError } = await supabase
           .from('shopping_items')
           .delete()
-          .in('id', duplicateIds)
+          .in('id', duplicateIds);
 
         if (deleteError) {
-          console.error(`❌ Error deleting duplicate items for "${itemName}":`, deleteError)
-          errors.push(`Error deleting duplicates for ${itemName}`)
-          continue
+          logger.error('Error deleting duplicate shopping items', deleteError, { listId, itemName });
+          errors.push(`Error deleting duplicates for ${itemName}`);
+          continue;
         }
 
-        console.log(`✅ Merged ${items.length} items for "${itemName}" into quantity ${totalQuantity}`)
-        mergedItems += items.length - 1 // Count how many were merged
-
-      } catch (itemError: any) {
-        console.error(`❌ Error processing group "${itemName}":`, itemError)
-        errors.push(`Error processing ${itemName}: ${itemError.message}`)
+        mergedItems += items.length - 1;
+        logger.info('Merged duplicate shopping items', { listId, itemName, duplicatesRemoved: items.length - 1, totalQuantity });
+      } catch (itemError) {
+        logger.error('Unexpected error while merging duplicate shopping items', itemError as Error, { listId, itemName });
+        errors.push(`Error processing ${itemName}: ${itemError instanceof Error ? itemError.message : 'Unknown error'}`);
       }
     }
 
-    // Get final count
-    const { count: finalCount } = await supabase
+    const { count: finalCount, error: countError } = await supabase
       .from('shopping_items')
       .select('*', { count: 'exact', head: true })
-      .eq('list_id', listId)
+      .eq('list_id', listId);
 
-    const message = errors.length > 0 
+    if (countError) {
+      logger.error('Error retrieving shopping item count after merge', countError, { listId });
+      errors.push('Failed to retrieve final item count');
+    }
+
+    const message = errors.length > 0
       ? `Merged ${mergedItems} duplicate items with ${errors.length} errors: ${errors.join(', ')}`
-      : `Successfully merged ${mergedItems} duplicate items`
-    
-    console.log(`✅ Merge complete: ${mergedItems} items merged, ${finalCount || 0} total items remaining`)
-    
-    return { 
-      ok: true, 
-      mergedItems, 
-      totalItems: finalCount || 0
-    }
-    
-  } catch (error: any) {
-    console.error('❌ Error in mergeDuplicateItems:', error)
-    return { 
-      ok: false, 
-      mergedItems: 0, 
+      : `Successfully merged ${mergedItems} duplicate items`;
+
+    logger.info('Completed duplicate merge for shopping list', {
+      listId,
+      mergedItems,
+      totalItems: finalCount ?? 0,
+      errorCount: errors.length,
+      message,
+    });
+
+    return {
+      ok: errors.length === 0,
+      mergedItems,
+      totalItems: finalCount ?? 0,
+      ...(errors.length > 0 ? { error: message } : {}),
+    };
+  } catch (error) {
+    logger.error('Critical failure while merging duplicate shopping items', error as Error, { listId });
+    return {
+      ok: false,
+      mergedItems: 0,
       totalItems: 0,
-      error: error.message 
-    }
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }

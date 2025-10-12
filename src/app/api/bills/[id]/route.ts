@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createBillSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(
   request: NextRequest,
@@ -16,7 +17,7 @@ export async function GET(
         return createErrorResponse('Bill ID is required', 400);
       }
 
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -59,7 +60,7 @@ export async function PUT(
         return createErrorResponse('Bill ID is required', 400);
       }
 
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -70,8 +71,11 @@ export async function PUT(
         const body = await req.json();
         const tempSchema = createBillSchema.omit({ household_id: true });
         validatedData = tempSchema.parse(body);
-      } catch (validationError: any) {
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+      } catch (validationError: unknown) {
+        if (validationError instanceof Error && 'errors' in validationError) {
+          return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
+        }
+        return createErrorResponse('Invalid input', 400);
       }
 
       const supabase = getDatabaseClient();
@@ -106,7 +110,7 @@ export async function PUT(
         .single();
 
       if (updateError) {
-        console.error('Database update error:', updateError);
+        logger.error('Failed to update bill', updateError, { billId, householdId: household.id });
         return createErrorResponse('Failed to update bill in database', 500, updateError.message);
       }
 
@@ -146,7 +150,7 @@ export async function DELETE(
         return createErrorResponse('Bill ID is required', 400);
       }
 
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -174,7 +178,7 @@ export async function DELETE(
         .eq('household_id', household.id);
 
       if (deleteError) {
-        console.error('Database delete error:', deleteError);
+        logger.error('Failed to delete bill', deleteError, { billId, householdId: household.id });
         return createErrorResponse('Failed to delete bill from database', 500, deleteError.message);
       }
 

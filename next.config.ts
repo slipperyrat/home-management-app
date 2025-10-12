@@ -137,11 +137,14 @@ const nextConfig: NextConfig = {
   },
 };
 
-const pwaConfig = withPWA({
+const isVercelBuild = process.env.VERCEL === '1';
+const enablePWA = isVercelBuild || process.env.ENABLE_PWA_DEV === 'true';
+
+const pwaWrappedConfig = withPWA({
   dest: "public",
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development' && !process.env.ENABLE_PWA_DEV,
+  disable: !enablePWA,
   buildExcludes: [/middleware-manifest\.json$/],
   runtimeCaching: [
     {
@@ -191,7 +194,9 @@ const pwaConfig = withPWA({
   cacheOnFrontEndNav: true,
 })(nextConfig as any);
 
-export default withSentryConfig(pwaConfig, {
+const finalConfig = enablePWA ? pwaWrappedConfig : (nextConfig as any);
+
+export default withSentryConfig(finalConfig, {
 // For all available options, see:
 // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 

@@ -2,7 +2,9 @@
 // Uses OpenAI for intelligent shopping recommendations with easy fallback
 
 import { BaseAIService, AIResponse } from './BaseAIService';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database';
 
 export interface ShoppingSuggestion {
   type: 'frequently_bought' | 'category_based' | 'seasonal' | 'smart_templates' | 'ai_recommended';
@@ -23,9 +25,9 @@ export interface ShoppingItem {
   reasoning?: string;
 }
 
-export interface ShoppingContext {
+export interface ShoppingSuggestionsContext {
   householdId: string;
-  recentPurchases?: any[];
+  recentPurchases?: Database['public']['Tables']['shopping_items']['Row'][];
   dietaryRestrictions?: string[];
   budget?: number;
   season?: string;
@@ -33,25 +35,20 @@ export interface ShoppingContext {
 }
 
 export class ShoppingSuggestionsAIService extends BaseAIService {
-  private supabase: any;
+  private supabase = createSupabaseAdminClient();
 
   constructor() {
     super('shoppingSuggestions');
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
   }
 
-  async generateSuggestions(context: ShoppingContext): Promise<AIResponse<ShoppingSuggestion[]>> {
+  async generateSuggestions(context: ShoppingSuggestionsContext): Promise<AIResponse<ShoppingSuggestion[]>> {
     return this.executeWithFallback(
       () => this.generateAISuggestions(context),
       () => this.getMockResponse(context),
-      context
     );
   }
 
-  private async generateAISuggestions(context: ShoppingContext): Promise<ShoppingSuggestion[]> {
+  private async generateAISuggestions(context: ShoppingSuggestionsContext): Promise<ShoppingSuggestion[]> {
     if (!this.openai) {
       throw new Error('OpenAI client not initialized');
     }
@@ -82,11 +79,14 @@ export class ShoppingSuggestionsAIService extends BaseAIService {
     return this.parseAIResponse(aiContent, []);
   }
 
-  private createShoppingPrompt(context: ShoppingContext, shoppingHistory: any[]): string {
-    const recentItems = shoppingHistory.slice(0, 20).map(item => ({
+  private createShoppingPrompt(
+    context: ShoppingSuggestionsContext,
+    shoppingHistory: Database['public']['Tables']['shopping_items']['Row'][],
+  ): string {
+    const recentItems = shoppingHistory.slice(0, 20).map((item) => ({
       name: item.name,
       category: item.category || 'General',
-      date: item.created_at
+      date: item.created_at,
     }));
 
     return `Generate shopping suggestions for a household based on the following context:
@@ -142,7 +142,9 @@ Please provide 3-5 different types of shopping suggestions in this JSON format:
 Focus on practical, useful suggestions that would genuinely help with household shopping.`;
   }
 
-  private async getShoppingHistory(householdId: string): Promise<any[]> {
+  private async getShoppingHistory(
+    householdId: string,
+  ): Promise<Database['public']['Tables']['shopping_items']['Row'][]> {
     try {
       const { data, error } = await this.supabase
         .from('shopping_items')
@@ -158,14 +160,14 @@ Focus on practical, useful suggestions that would genuinely help with household 
         .limit(50);
 
       if (error) throw error;
-      return data || [];
+      return data ?? [];
     } catch (error) {
-      console.error('Error fetching shopping history:', error);
+      logger.error('Error fetching shopping history', error as Error, { householdId });
       return [];
     }
   }
 
-  protected async getMockResponse(context?: ShoppingContext): Promise<ShoppingSuggestion[]> {
+  protected async getMockResponse(_context?: ShoppingSuggestionsContext): Promise<ShoppingSuggestion[]> {
     // Enhanced mock response with better data
     const mockSuggestions: ShoppingSuggestion[] = [
       {

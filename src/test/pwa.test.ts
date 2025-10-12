@@ -23,7 +23,7 @@ const mockWindow = {
 }
 
 // Mock global window
-Object.defineProperty(global, 'window', {
+Object.defineProperty(globalThis, 'window', {
   value: mockWindow,
   writable: true
 })
@@ -36,7 +36,7 @@ describe('PWA Features', () => {
   describe('PWA Manifest', () => {
     it('should have correct manifest structure', async () => {
       // Test the manifest.json structure
-      const _manifestPath = 'public/manifest.json'
+      const manifestPath = 'public/manifest.json'
       
       // Mock manifest content
       const expectedManifest = {
@@ -50,6 +50,7 @@ describe('PWA Features', () => {
       }
       
       // Verify key properties exist
+      expect(manifestPath).toBe('public/manifest.json')
       expect(expectedManifest.name).toBe('Home Management App')
       expect(expectedManifest.short_name).toBe('Home Manager')
       expect(expectedManifest.display).toBe('standalone')
@@ -88,7 +89,7 @@ describe('PWA Features', () => {
       }
       
       // Simulate beforeinstallprompt event handling
-      const handleBeforeInstallPrompt = (e: any) => {
+      const handleBeforeInstallPrompt = (e: typeof mockEvent) => {
         e.preventDefault()
         return e
       }

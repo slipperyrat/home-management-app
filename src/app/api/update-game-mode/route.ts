@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from 'next/server';
+import { getAuth } from '@clerk/nextjs/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,19 +11,26 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+type UpdateGameModeBody = {
+  game_mode?: string;
+};
+
+const VALID_GAME_MODES = ['single', 'couple', 'family', 'roommates', 'custom'] as const;
+
+function isValidGameMode(value: unknown): value is typeof VALID_GAME_MODES[number] {
+  return typeof value === 'string' && VALID_GAME_MODES.includes(value as typeof VALID_GAME_MODES[number]);
+}
+
 export async function POST(request: NextRequest) {
-  console.log('Update game mode API called');
-  
   const { userId } = await getAuth(request);
 
   if (!userId) {
-    console.log('No userId found, unauthorized');
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     // Parse request body
-    const body = await request.json();
+    const body = (await request.json()) as UpdateGameModeBody;
     const { game_mode } = body;
 
     // Validate request body
@@ -33,14 +40,11 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const validGameModes = ['single', 'couple', 'family', 'roommates', 'custom'];
-    if (!validGameModes.includes(game_mode)) {
+    if (!isValidGameMode(game_mode)) {
       return NextResponse.json({ 
-        error: `Invalid game_mode. Must be one of: ${validGameModes.join(', ')}` 
+        error: `Invalid game_mode. Must be one of: ${VALID_GAME_MODES.join(', ')}` 
       }, { status: 400 });
     }
-
-    console.log(`User ${userId} attempting to update game_mode to ${game_mode}`);
 
     // Check if current user is part of a household
     const { data: currentUser, error: currentUserError } = await supabase
@@ -83,7 +87,6 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    console.log(`Successfully updated household ${currentUser.household_id} game_mode to ${game_mode}`);
     return NextResponse.json({ 
       success: true,
       message: `Game mode updated successfully to ${game_mode}`,

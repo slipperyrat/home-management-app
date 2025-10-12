@@ -1,23 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useUserData } from '@/hooks/useUserData';
-import { canAccessFeature } from '@/lib/entitlements';
+import { useState, useCallback, useEffect } from 'react';
+import { canAccessFeature, type Entitlements } from '@/lib/entitlements';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { 
-  Calendar, 
-  ExternalLink, 
-  RefreshCw, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  Calendar,
+  ExternalLink,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
   Clock,
   Download,
-  Settings,
-  Info
+  Info,
 } from 'lucide-react';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -25,7 +23,19 @@ import { toast } from 'sonner';
 
 interface GoogleCalendarImportProps {
   householdId: string;
-  entitlements: any;
+  entitlements: Entitlements | null;
+}
+
+interface CalendarInfo {
+  id: string;
+  summary: string;
+  accessRole: string;
+  selected: boolean;
+}
+
+interface ImportStats {
+  imported_events: number;
+  calendars_imported: number;
 }
 
 interface ImportStatus {
@@ -34,12 +44,7 @@ interface ImportStatus {
   is_token_expired: boolean;
   last_import_at: string | null;
   last_successful_import_at: string | null;
-  calendars: Array<{
-    id: string;
-    summary: string;
-    accessRole: string;
-    selected: boolean;
-  }>;
+  calendars: CalendarInfo[];
   recent_imports: {
     last_7_days: number;
     last_import: string | null;
@@ -47,38 +52,43 @@ interface ImportStatus {
   needs_reauth: boolean;
 }
 
+type ImportStatusResponse =
+  | ({ success: true; error?: undefined } & ImportStatus)
+  | { success: false; error?: string };
+
+interface AuthResponse {
+  success: boolean;
+  auth_url?: string;
+  error?: string;
+}
+
+interface ImportResponse {
+  success: boolean;
+  error?: string;
+  stats?: ImportStats;
+}
+
 export default function GoogleCalendarImport({ householdId, entitlements }: GoogleCalendarImportProps) {
-  const { userData } = useUserData();
   const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCalendars, setSelectedCalendars] = useState<string[]>([]);
 
-  // Check if user can access Google Calendar import (Pro feature)
   const canAccessGoogleImport = canAccessFeature(entitlements, 'google_import');
 
-  useEffect(() => {
-    if (canAccessGoogleImport) {
-      loadImportStatus();
-    } else {
-      setIsLoading(false);
-    }
-  }, [canAccessGoogleImport, householdId]);
-
-  const loadImportStatus = async () => {
+  const loadImportStatus = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
       
       const response = await fetch(`/api/google-calendar/status?household_id=${householdId}`);
-      const data = await response.json();
+      const data: ImportStatusResponse = await response.json();
       
       if (data.success) {
         setImportStatus(data);
-        // Set selected calendars from status
         if (data.calendars) {
-          setSelectedCalendars(data.calendars.filter((cal: any) => cal.selected).map((cal: any) => cal.id));
+          setSelectedCalendars(data.calendars.filter((cal) => cal.selected).map((cal) => cal.id));
         }
       } else {
         setError(data.error || 'Failed to load import status');
@@ -89,9 +99,9 @@ export default function GoogleCalendarImport({ householdId, entitlements }: Goog
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [householdId]);
 
-  const handleConnectGoogle = async () => {
+  const handleConnectGoogle = useCallback(async () => {
     try {
       const response = await fetch('/api/google-calendar/auth', {
         method: 'POST',
@@ -101,11 +111,15 @@ export default function GoogleCalendarImport({ householdId, entitlements }: Goog
         body: JSON.stringify({ household_id: householdId }),
       });
 
-      const data = await response.json();
+      const data: AuthResponse = await response.json();
       
       if (data.success) {
         // Redirect to Google OAuth
-        window.location.href = data.auth_url;
+        if (data.auth_url) {
+          window.location.href = data.auth_url;
+        } else {
+          toast.error('Missing redirect URL for Google authentication.');
+        }
       } else {
         if (data.error?.includes('Missing Google OAuth2 configuration')) {
           toast.error('Google Calendar integration is not configured. Please check the setup guide or contact support.');
@@ -117,9 +131,9 @@ export default function GoogleCalendarImport({ householdId, entitlements }: Goog
       console.error('Error connecting to Google Calendar:', err);
       toast.error('Failed to connect to Google Calendar');
     }
-  };
+  }, [householdId]);
 
-  const handleImportEvents = async () => {
+  const handleImportEvents = useCallback(async () => {
     if (selectedCalendars.length === 0) {
       toast.error('Please select at least one calendar to import from');
       return;
@@ -137,15 +151,19 @@ export default function GoogleCalendarImport({ householdId, entitlements }: Goog
         body: JSON.stringify({
           household_id: householdId,
           calendar_ids: selectedCalendars,
-          max_results: 100
+          max_results: 100,
         }),
       });
 
-      const data = await response.json();
+      const data: ImportResponse = await response.json();
       
       if (data.success) {
-        toast.success(`Successfully imported ${data.stats.imported_events} events from ${data.stats.calendars_imported} calendars`);
-        loadImportStatus(); // Refresh status
+        if (data.stats) {
+          toast.success(`Successfully imported ${data.stats.imported_events} events from ${data.stats.calendars_imported} calendars`);
+        } else {
+          toast.success('Events imported successfully');
+        }
+        void loadImportStatus();
       } else {
         toast.error(data.error || 'Failed to import events');
       }
@@ -155,15 +173,23 @@ export default function GoogleCalendarImport({ householdId, entitlements }: Goog
     } finally {
       setIsImporting(false);
     }
-  };
+  }, [householdId, loadImportStatus, selectedCalendars]);
 
-  const toggleCalendarSelection = (calendarId: string) => {
-    setSelectedCalendars(prev => 
-      prev.includes(calendarId) 
-        ? prev.filter(id => id !== calendarId)
+  const toggleCalendarSelection = useCallback((calendarId: string) => {
+    setSelectedCalendars((prev) =>
+      prev.includes(calendarId)
+        ? prev.filter((id) => id !== calendarId)
         : [...prev, calendarId]
     );
-  };
+  }, []);
+
+  useEffect(() => {
+    if (canAccessGoogleImport) {
+      void loadImportStatus();
+    } else {
+      setIsLoading(false);
+    }
+  }, [canAccessGoogleImport, loadImportStatus]);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never';
@@ -303,7 +329,7 @@ export default function GoogleCalendarImport({ householdId, entitlements }: Goog
               </div>
 
               {/* Calendar Selection */}
-              {importStatus.calendars && importStatus.calendars.length > 0 && (
+              {importStatus.calendars.length > 0 && (
                 <div className="space-y-4">
                   <h4 className="font-medium text-gray-900">Select Calendars to Import</h4>
                   <div className="grid gap-3">

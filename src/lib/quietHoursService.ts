@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/logger';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -148,7 +149,7 @@ export class QuietHoursService {
         return currentTime >= startTime && currentTime <= endTime;
       }
     } catch (error) {
-      console.error('Error checking quiet hours:', error);
+      logger.error('Error checking quiet hours', error as Error, { householdId });
       return false;
     }
   }
@@ -170,8 +171,6 @@ export class QuietHoursService {
       if (settings && settings.enabled) {
         const now = new Date();
         const currentTime = now.toTimeString().slice(0, 5);
-        const currentDay = now.getDay();
-
         // Calculate next change time
         if (isQuietHours) {
           // Currently in quiet hours, find when it ends

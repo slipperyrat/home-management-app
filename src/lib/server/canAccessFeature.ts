@@ -1,6 +1,8 @@
 // Server-side feature gating utility for MVP pricing structure
 // This ensures features are properly gated at the API level
 
+import type { Entitlements } from '@/lib/entitlements';
+
 export type UserPlan = 'free' | 'pro';
 
 export type FeatureKey = 
@@ -27,6 +29,7 @@ export type FeatureKey =
   | 'meal_automation'
   | 'advanced_analytics'
   | 'ai_insights'
+  | 'recipe_import_url'
   | 'automation_rules'
   | 'priority_support'
   | 'data_export'
@@ -59,6 +62,46 @@ export type FeatureKey =
   | 'unlimited_automations' // Deferred to post-MVP
   | 'unlimited_notifications'; // Deferred to post-MVP
 
+/**
+ * Resolve the current user's household and plan for server components
+ */
+export async function getCurrentHousehold(): Promise<{ id: string; plan: UserPlan } | null> {
+  const { currentUser } = await import('@clerk/nextjs/server');
+  const { createSupabaseAdminClient } = await import('./supabaseAdmin');
+  const { logger } = await import('@/lib/logging/logger');
+
+  try {
+    const user = await currentUser();
+    if (!user) {
+      return null;
+    }
+
+    const supabase = createSupabaseAdminClient();
+    const { data, error } = await supabase
+      .from('household_members')
+      .select('households:households!inner(id, plan)')
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      logger.error('getCurrentHousehold failed to fetch membership', error, { userId: user.id });
+      return null;
+    }
+
+    const household = data?.households;
+    if (!household) {
+      return null;
+    }
+
+    const plan = (household.plan ?? 'free') as UserPlan;
+    return { id: household.id, plan };
+  } catch (error) {
+    const { logger } = await import('@/lib/logging/logger');
+    logger.error('getCurrentHousehold encountered an error', error as Error);
+    return null;
+  }
+}
+
 // MVP Feature access map - defines which plan is required for each feature
 const featureAccessMap: Record<FeatureKey, UserPlan> = {
   // Free features
@@ -84,6 +127,7 @@ const featureAccessMap: Record<FeatureKey, UserPlan> = {
   meal_automation: 'pro',
   advanced_analytics: 'pro',
   ai_insights: 'pro',
+  recipe_import_url: 'pro',
   automation_rules: 'pro',
   priority_support: 'pro',
   data_export: 'pro',
@@ -218,7 +262,7 @@ export function requireFeatureAccess(userPlan: UserPlan, feature: FeatureKey): v
  * @param feature - The feature to check access for
  * @returns boolean indicating if access is allowed
  */
-export function canAccessFeatureFromEntitlements(entitlements: any, feature: FeatureKey): boolean {
+export function canAccessFeatureFromEntitlements(entitlements: Entitlements | null | undefined, feature: FeatureKey): boolean {
   if (!entitlements) {
     return false;
   }
@@ -259,7 +303,7 @@ export function canAccessFeatureFromEntitlements(entitlements: any, feature: Fea
  * @param entitlements - The user's entitlements from the database
  * @returns boolean indicating if quota is available
  */
-export function hasQuotaAvailable(entitlements: any): boolean {
+export function hasQuotaAvailable(entitlements: Entitlements | null | undefined): boolean {
   if (!entitlements) {
     return false;
   }

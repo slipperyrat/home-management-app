@@ -27,6 +27,7 @@ export function createFeatureFlagContext(userPlan: UserPlan): FeatureFlagContext
     finance_enabled: canAccessFeature(userPlan, 'finance_enabled'),
     notifications_minimal: canAccessFeature(userPlan, 'notifications_minimal'),
     ask_box_enabled: canAccessFeature(userPlan, 'ask_box_enabled'),
+    recipe_import_url: canAccessFeature(userPlan, 'recipe_import_url'),
     // Add other flags as needed
   };
 
@@ -62,7 +63,7 @@ export function addFeatureFlagHeaders(response: NextResponse, context: FeatureFl
  * @param requiredFeatures - Optional array of features that must be available
  * @returns Wrapped handler with feature flag context
  */
-export function withFeatureFlags<T = any>(
+export function withFeatureFlags<T = unknown>(
   handler: (req: NextRequest, context: FeatureFlagContext) => Promise<NextResponse<T>>,
   requiredFeatures?: FeatureKey[]
 ) {
@@ -125,5 +126,6 @@ export const FEATURE_FLAGS = {
   FINANCE_ENABLED: 'finance_enabled' as const,
   NOTIFICATIONS_MINIMAL: 'notifications_minimal' as const,
   ASK_BOX_ENABLED: 'ask_box_enabled' as const,
+  RECIPE_IMPORT_URL: 'recipe_import_url' as const,
 } as const;
 

@@ -244,7 +244,17 @@ export function getCategories(): EventTemplate['category'][] {
 /**
  * Convert template to event data for API
  */
-export function templateToEventData(template: EventTemplate, startDate: Date): any {
+export interface CalendarEventData {
+  title: string;
+  description: string;
+  start_time: string;
+  end_time: string;
+  event_type: EventTemplate['category'];
+  priority: 'medium';
+  location: string;
+}
+
+export function templateToEventData(template: EventTemplate, startDate: Date): CalendarEventData {
   const endDate = new Date(startDate.getTime() + template.duration * 60 * 1000);
   
   return {

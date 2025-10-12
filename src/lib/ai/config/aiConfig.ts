@@ -75,6 +75,16 @@ export class AIConfigManager {
     this.config = this.loadConfig();
   }
 
+  private cloneDefaultConfig(): FeatureConfig {
+    return {
+      shoppingSuggestions: { ...defaultAIConfig.shoppingSuggestions },
+      mealPlanning: { ...defaultAIConfig.mealPlanning },
+      emailProcessing: { ...defaultAIConfig.emailProcessing },
+      choreAssignment: { ...defaultAIConfig.choreAssignment },
+      learningSystem: { ...defaultAIConfig.learningSystem }
+    } as FeatureConfig;
+  }
+
   public static getInstance(): AIConfigManager {
     if (!AIConfigManager.instance) {
       AIConfigManager.instance = new AIConfigManager();
@@ -84,7 +94,7 @@ export class AIConfigManager {
 
   private loadConfig(): FeatureConfig {
     // Load from environment variables or database
-    const config = { ...defaultAIConfig };
+    const config = this.cloneDefaultConfig();
 
     // Override with environment variables
     if (process.env.AI_SHOPPING_ENABLED === 'false') {

@@ -1,7 +1,7 @@
 // WebSocket API Route for Real-time AI Processing
 // This can be easily removed if the WebSocket implementation doesn't work
 
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
@@ -10,8 +10,6 @@ import { webSocketManager } from '@/lib/websocket/WebSocketServer';
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🔌 WebSocket API called for user:', user.id);
-
       // Get user and household data
       const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
       
@@ -47,8 +45,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🔌 WebSocket POST called for user:', user.id);
-
       // Get user and household data
       const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
       
@@ -57,7 +53,7 @@ export async function POST(request: NextRequest) {
       }
 
       const body = await req.json();
-      const { action, data } = body;
+      const { action } = body as { action?: string };
 
       switch (action) {
         case 'test_connection':

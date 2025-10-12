@@ -1,18 +1,37 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { z } from 'zod';
+
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
-import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { createSuccessResponse, createValidationErrorResponse, handleApiError } from '@/lib/api/errors';
+import { createCalendarEventInputSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
+
+const calendarQuerySchema = z.object({
+  start: z.string().optional(),
+  end: z.string().optional(),
+  type: z.string().max(50).optional()
+});
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 GET: Fetching calendar events for user:', user.id);
+      const queryValidation = calendarQuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
+      if (!queryValidation.success) {
+        return createValidationErrorResponse(queryValidation.error.errors);
+      }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
-        return createErrorResponse('User not found or no household', 404);
+        return createValidationErrorResponse([
+          {
+            path: ['household'],
+            message: 'User not associated with a household',
+            code: 'custom'
+          }
+        ]);
       }
 
       const supabase = getDatabaseClient();
@@ -25,8 +44,7 @@ export async function GET(request: NextRequest) {
         .order('start_time', { ascending: true });
 
       if (eventsError) {
-        console.error('Error fetching events:', eventsError);
-        return createErrorResponse('Failed to fetch events', 500, eventsError.message);
+        throw eventsError;
       }
 
       // Filter and enhance calendar events (only show calendar.event type)
@@ -60,22 +78,27 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Creating calendar event for user:', user.id);
-
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
-        return createErrorResponse('User not found or no household', 404);
+        return createValidationErrorResponse([
+          {
+            path: ['household'],
+            message: 'User not associated with a household',
+            code: 'custom'
+          }
+        ]);
       }
 
       const body = await req.json();
-      const { title, description, start_time, end_time, event_type, priority } = body;
+      const validated = createCalendarEventInputSchema.safeParse(body);
 
-      if (!title || !start_time || !end_time) {
-        return createErrorResponse('Missing required fields: title, start_time, end_time', 400);
+      if (!validated.success) {
+        return createValidationErrorResponse(validated.error.errors);
       }
 
+      const { title, description, start_time, end_time, event_type, priority } = validated.data;
       const supabase = getDatabaseClient();
 
       // Create new event
@@ -105,8 +128,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (createError) {
-        console.error('Error creating event:', createError);
-        return createErrorResponse('Failed to create event', 500, createError.message);
+        throw createError;
       }
 
       // Add audit log entry
@@ -120,6 +142,12 @@ export async function POST(request: NextRequest) {
           household_id: household.id,
           event_type: event_type || 'general'
         }
+      });
+
+      await logger.info('Calendar event created', {
+        userId: user.id,
+        householdId: household.id,
+        eventId: newEvent.id
       });
 
       return createSuccessResponse({ event: newEvent }, 'Event created successfully');

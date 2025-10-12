@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(
   request: NextRequest,
@@ -16,7 +17,7 @@ export async function GET(
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -33,6 +34,7 @@ export async function GET(
         .single();
 
       if (listError || !list) {
+        logger.warn('Shopping list not found or access denied', { listId, householdId: household.id });
         return createErrorResponse('Shopping list not found or access denied', 404);
       }
 
@@ -61,7 +63,7 @@ export async function PUT(
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -102,7 +104,7 @@ export async function PUT(
         .single();
 
       if (updateError) {
-        console.error('Error updating shopping list:', updateError);
+        logger.error('Error updating shopping list', updateError, { listId, householdId: household.id });
         return createErrorResponse('Failed to update shopping list', 500, updateError.message);
       }
 
@@ -143,7 +145,7 @@ export async function DELETE(
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -171,7 +173,7 @@ export async function DELETE(
         .eq('household_id', household.id);
 
       if (deleteError) {
-        console.error('Error deleting shopping list:', deleteError);
+        logger.error('Error deleting shopping list', deleteError, { listId, householdId: household.id });
         return createErrorResponse('Failed to delete shopping list', 500, deleteError.message);
       }
 

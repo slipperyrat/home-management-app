@@ -4,12 +4,12 @@
 
 Use this checklist to track progress while reviewing the entire application. Mark each `[ ]` entry with `[x]` once the area is fully reviewed or upgraded. Add notes under the relevant section if partial work remains.
 
-## 1. Authentication & Session Management `[~]`
+## 1. Authentication & Session Management `[x]`
 - Clerk integration: token lifecycle, role propagation, revoked accounts
 - Supabase auth settings: service-role / anon key usage, rotation plan
 - Session expiry & refresh token behavior across devices
 - MFA / 2FA flows, password recovery, social login review
-- **Notes:** Rate limiting re-enabled in `withAPISecurity`; onboarding middleware now redirects until `users.has_onboarded` and household are set. Pending follow-up: document Clerk session lifecycle/secret rotation expectations.
+- **Notes:** Rate limiting re-enabled in `withAPISecurity`; onboarding middleware now redirects until `users.has_onboarded` and household are set. Clerk session lifecycle + secret rotation expectations documented in `docs/AUTH_SESSION_MANAGEMENT.md`; operational checklist covers monitoring and rotation workflows.
 
 ## 2. Application API Surface `[~]`
 - Edge functions & RPC endpoints – validation, auth guardrails
@@ -34,15 +34,15 @@ Use this checklist to track progress while reviewing the entire application. Mar
 - CDN/cache headers, expiration policies
 - **Notes:** Attachments upload now enforces MIME/size limits and logs storage/OCR errors via `logger`. No virus scanning yet; consider external AV integration. Signed URL expirations remain default; evaluate shorter TTLs for sensitive assets. Confirm other buckets when they appear.
 
-## 5. Frontend Security & UX `[~]`
+## 5. Frontend Security & UX `[x]`
 - Next.js route protection & middleware
 - Client vs server authorization checks
 - Form validation & CSRF/XSS coverage
 - PWA/offline cache boundaries
 - Action items / notes:
   - Middleware skip list tightened to explicit asset regex; monitor for routing regressions.
-  - Client forms adopt shared schemas via `useFormState`; replicate across CreateEventForm, onboarding selectors.
-  - Add tests for middleware onboarding redirects and critical forms (shopping list).
+  - Client forms adopt shared schemas via `useFormState`; replicated across CreateEventForm, onboarding selectors.
+  - Redirect behavior and asset exemptions now covered by `src/test/middleware.test.ts`; shopping list form validation captured in `src/test/forms.test.tsx`.
 
 ## 6. Observability & Operations `[x]`
 - Logging (PII scrubbing, structured logs)
@@ -52,7 +52,7 @@ Use this checklist to track progress while reviewing the entire application. Mar
 - Action items / notes:
   - Logger now forwards warn/error to Sentry; legacy console.error calls migrated.
   - Added frontend validation tests for critical forms and middleware asset coverage.
-  - Still pending: wire queue/job metrics and document backup/DR rehearsal (deferred).
+  - Still pending: wire queue/job metrics and schedule backup/DR rehearsal (documented in `docs/DR.md`, rehearsal execution deferred).
 
 ## 7. Performance & Scalability `[x]`
 - Query hotspots & indexes; EXPLAIN as needed

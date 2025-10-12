@@ -2,6 +2,7 @@
 *Strategic Vision + Detailed Technical Implementation Plan*
 
 ## 🎯 **CURRENT STATUS SUMMARY**
+- **October 8, 2025 Update**: Stripe pricing changes, entitlements rollout, and any cron-triggered automation remain intentionally deferred until business registration is complete and the Vercel account is upgraded. Google OAuth setup continues to be postponed for the same reasons.
 - **Weeks 1-7: 100% COMPLETED** ✅
 - **Week 8-9: 100% COMPLETED** ✅ (Calendar & Event Management - 100% Complete)
 - **Phase 1: 100% COMPLETED** ✅ (All Priority 1-4 Features Complete)
@@ -88,13 +89,13 @@
 ### **🎯 Phase 0: MVP Pricing Implementation (Weeks 1-2)**
 
 #### **Week 1: MVP Pricing Structure & Entitlements**
-- [ ] **Update Stripe Products** 🔄 **IN PROGRESS**
+- [ ] **Update Stripe Products** ⏸️ **Deferred** (waiting on business registration & Stripe account updates)
   - Remove Pro+ tier ($14.99/month)
   - Update Pro tier to $7.99/month, $59/year (38% annual discount)
   - Configure Australian GST compliance
   - Set up trial: 7 days (no card for first 24h)
 
-- [ ] **Create Entitlements Table** 🔄 **IN PROGRESS**
+- [ ] **Create Entitlements Table** ⏸️ **Deferred** (blocked on finalized Stripe product decisions)
   ```sql
   CREATE TABLE entitlements (
     household_id uuid PRIMARY KEY REFERENCES households(id) ON DELETE CASCADE,
@@ -109,7 +110,7 @@
   );
   ```
 
-- [ ] **Update Feature Gates (MVP-Specific)** 🔄 **IN PROGRESS**
+- [ ] **Update Feature Gates (MVP-Specific)** ⏸️ **Deferred** (depends on entitlements schema rollout)
   ```typescript
   // server utils/canAccessFeature.ts - MVP VERSION
   export function canAccessFeature(userPlan: 'free'|'pro', feature: string) {
@@ -138,7 +139,7 @@
   }
   ```
 
-- [ ] **Seed Free Entitlements** 🔄 **IN PROGRESS**
+- [ ] **Seed Free Entitlements** ⏸️ **Deferred** (awaits entitlements schema & Stripe setup)
   - Auto-create free tier entitlements on household creation
   - Set up RLS policies for entitlements table
   - Create migration script for existing households
@@ -177,25 +178,25 @@
   - Easy template selection in calendar creation
 
 #### **Week 3: MVP Testing & Launch Prep**
-- [ ] **Feature Gate Testing** 🔄 **IN PROGRESS**
+- [ ] **Feature Gate Testing** ⏸️ **Deferred** (resume once gating updates ship)
   - Test all MVP feature gates work correctly
   - Verify Free vs Pro feature access
   - Test upgrade/downgrade flows
 
-- [ ] **Payment Flow Testing** 🔄 **IN PROGRESS**
+- [ ] **Payment Flow Testing** ⏸️ **Deferred** (Stripe configuration pending business registration)
   - Test Stripe checkout with new pricing
   - Test annual discount (38% off)
   - Test trial period (7 days)
   - Test grace period (7 days on payment failure)
 
-- [ ] **Quota Management** 🔄 **IN PROGRESS**
+- [ ] **Quota Management** ⏸️ **Deferred** (requires entitlements rollout and cron jobs)
   - Implement 400/4,000 actions per month limits
   - Track usage in entitlements table
   - Show quota usage in UI
   - Handle quota exceeded scenarios
 
 #### **Week 4: MVP Launch**
-- [ ] **Production Deployment** 🔄 **IN PROGRESS**
+- [ ] **Production Deployment** ⏸️ **Deferred** (pending Stripe setup & cron-capable Vercel plan)
   - Deploy to Vercel with new pricing
   - Configure Stripe webhooks
   - Set up monitoring and alerts

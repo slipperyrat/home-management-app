@@ -1,16 +1,20 @@
 // Standardized Database Access Helper
 // Provides consistent database access across all API routes
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import { logger } from '@/lib/logging/logger';
+import type { AuditLogInput, Household, User } from '@/types/database';
 
-let supabaseClient: ReturnType<typeof createClient> | null = null;
+type DBClient = SupabaseClient<Database>;
+type QueryResult<T> = { data: T | null; error: PostgrestError | null };
+
+let supabaseClient: DBClient | null = null;
 
 /**
  * Get standardized Supabase client
  * @returns Supabase client instance
  */
-export function getDatabaseClient() {
+export function getDatabaseClient(): DBClient {
   if (!supabaseClient) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -19,7 +23,7 @@ export function getDatabaseClient() {
       throw new Error('Missing Supabase configuration');
     }
 
-    supabaseClient = createClient(supabaseUrl, supabaseKey, {
+    supabaseClient = createClient<Database>(supabaseUrl, supabaseKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false
@@ -37,9 +41,9 @@ export function getDatabaseClient() {
  * @returns Promise with query result
  */
 export async function executeQuery<T>(
-  queryFn: (client: ReturnType<typeof createClient>) => Promise<{ data: T | null; error: any }>,
+  queryFn: (client: DBClient) => Promise<QueryResult<T>>,
   context: { operation: string; table?: string; userId?: string }
-): Promise<{ data: T | null; error: any }> {
+): Promise<QueryResult<T>> {
   try {
     const client = getDatabaseClient();
     const result = await queryFn(client);
@@ -126,8 +130,8 @@ export async function verifyHouseholdAccess(
  * @returns Promise with user and household data
  */
 export async function getUserAndHouseholdData(userId: string): Promise<{
-  user: any;
-  household: any;
+  user: User | null;
+  household: Household | null;
   error?: string;
 }> {
   const { data: userData, error: userError } = await executeQuery(
@@ -157,7 +161,7 @@ export async function getUserAndHouseholdData(userId: string): Promise<{
 
   return {
     user: userData,
-    household: userData.households
+    household: userData.households ?? null
   };
 }
 
@@ -166,14 +170,8 @@ export async function getUserAndHouseholdData(userId: string): Promise<{
  * @param params - Audit log parameters
  * @returns Promise with audit log result
  */
-export async function createAuditLog(params: {
-  action: string;
-  targetTable: string;
-  targetId: string;
-  userId: string;
-  metadata?: any;
-}): Promise<{ success: boolean; error?: string }> {
-  const { data, error } = await executeQuery(
+export async function createAuditLog(params: AuditLogInput): Promise<{ success: boolean; error?: string }> {
+  const { error } = await executeQuery(
     (client) => client.rpc('add_audit_log', {
       p_action: params.action,
       p_target_table: params.targetTable,
@@ -255,7 +253,7 @@ export async function getUserOnboardingStatus(userId: string): Promise<boolean> 
   const { data, error } = await executeQuery(
     (client) => client
       .from('users')
-      .select('has_onboarded')
+      .select('onboarding_completed')
       .eq('id', userId)
       .single(),
     { operation: 'getUserOnboardingStatus', table: 'users', userId }
@@ -265,5 +263,5 @@ export async function getUserOnboardingStatus(userId: string): Promise<boolean> 
     return false;
   }
 
-  return Boolean(data.has_onboarded);
+  return Boolean((data as { onboarding_completed?: boolean }).onboarding_completed);
 }

@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AIEmailProcessor, EmailData } from '@/lib/ai/emailProcessor';
 import { getAIConfig } from '@/lib/ai/config/aiConfig';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, _user) => {
@@ -59,7 +65,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (queueError) {
-      console.error('Failed to add email to queue:', queueError);
+      logger.error('Failed to add email to queue', queueError, { userId, householdId });
       return NextResponse.json({ error: 'Failed to queue email' }, { status: 500 });
     }
 
@@ -126,7 +132,9 @@ export async function POST(request: NextRequest) {
     }
 
     } catch (error) {
-      console.error('Error processing email:', error);
+      logger.error('Error processing email', error instanceof Error ? error : new Error(String(error)), {
+        userId,
+      });
       return NextResponse.json({ 
         error: 'Internal server error' 
       }, { status: 500 });
@@ -141,11 +149,26 @@ export async function POST(request: NextRequest) {
 /**
  * Trigger automation rules based on parsed email items
  */
-async function triggerAutomationFromParsedItems(parsedItems: any[], householdId: string) {
+type ParsedEmailItem = {
+  itemType: 'bill' | 'receipt' | 'event' | 'appointment' | 'delivery';
+  billAmount?: number;
+  billDueDate?: string;
+  billProvider?: string;
+  billCategory?: string;
+  receiptTotal?: number;
+  receiptStore?: string;
+  receiptItems?: unknown[];
+  eventTitle?: string;
+  eventDate?: string;
+  eventLocation?: string;
+  eventDescription?: string;
+};
+
+async function triggerAutomationFromParsedItems(parsedItems: ParsedEmailItem[], householdId: string) {
   try {
     for (const item of parsedItems) {
       let eventType = '';
-      let eventData: any = {};
+      let eventData: Record<string, unknown> = {};
 
       switch (item.itemType) {
         case 'bill':
@@ -211,7 +234,10 @@ async function triggerAutomationFromParsedItems(parsedItems: any[], householdId:
       }
     }
   } catch (error) {
-    console.error('Failed to trigger automation from parsed items:', error);
+    logger.error('Failed to trigger automation from parsed items', error instanceof Error ? error : new Error(String(error)), {
+      householdId,
+      parsedItemCount: parsedItems.length,
+    });
   }
 }
 
@@ -245,8 +271,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Get parsed items if processing is complete
-    let parsedItems = [];
-    let suggestions = [];
+    let parsedItems: Database['public']['Tables']['ai_parsed_items']['Row'][] = [];
+    let suggestions: Database['public']['Tables']['ai_suggestions']['Row'][] = [];
 
     if (queueEntry.processing_status === 'completed') {
       const { data: items } = await supabase
@@ -257,7 +283,7 @@ export async function GET(request: NextRequest) {
       const { data: suggs } = await supabase
         .from('ai_suggestions')
         .select('*')
-        .eq('parsed_item_id', (items || []).map((item: { id: string }) => item.id));
+        .eq('parsed_item_id', (items || []).map((item) => item.id));
 
       parsedItems = items || [];
       suggestions = suggs || [];
@@ -273,7 +299,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error checking processing status:', error);
+    logger.error('Error checking email processing status', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ 
       error: 'Internal server error' 
     }, { status: 500 });

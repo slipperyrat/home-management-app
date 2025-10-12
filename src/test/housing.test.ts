@@ -1,30 +1,29 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getCalendarTemplates } from '@/lib/entitlements';
-
-const mockFetch = vi.fn();
-const originalFetch = global.fetch;
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { getCalendarTemplates, __testing } from '@/lib/entitlements';
 
 describe('getCalendarTemplates caching', () => {
-beforeEach(() => {
-    vi.resetModules();
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => [{ id: 'template-1' }],
-    });
-    global.fetch = mockFetch as unknown as typeof fetch;
-  });
+  const householdId = 'household-1';
 
-afterEach(() => {
-    global.fetch = originalFetch;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    __testing.calendarTemplateCache.clear();
   });
 
   it('uses cache on subsequent calls', async () => {
-    const templates1 = await getCalendarTemplates('household-1');
-    expect(templates1).toHaveLength(1);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const templateResponse = [{ id: 'template-1' }];
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(templateResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
 
-    const templates2 = await getCalendarTemplates('household-1');
-    expect(templates2).toHaveLength(1);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const first = await getCalendarTemplates(householdId);
+    const second = await getCalendarTemplates(householdId);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
   });
 });

@@ -42,7 +42,7 @@ export interface GoogleCalendarListEntry {
 
 export class GoogleCalendarService {
   private oauth2Client: OAuth2Client;
-  private calendar: any;
+  private calendar: ReturnType<typeof google.calendar>;
 
   constructor(accessToken: string) {
     this.oauth2Client = new OAuth2Client();
@@ -60,17 +60,19 @@ export class GoogleCalendarService {
         minAccessRole: 'reader'
       });
 
-      return response.data.items?.map((item: any) => ({
-        id: item.id,
-        summary: item.summary,
-        description: item.description,
-        accessRole: item.accessRole,
-        primary: item.primary,
-        selected: item.selected,
-        timeZone: item.timeZone,
-        backgroundColor: item.backgroundColor,
-        foregroundColor: item.foregroundColor
-      })) || [];
+      return (
+        response.data.items?.map((item) => ({
+          id: item?.id ?? '',
+          summary: item?.summary ?? 'Untitled Calendar',
+          description: item?.description ?? undefined,
+          accessRole: item?.accessRole ?? 'reader',
+          primary: item?.primary ?? false,
+          selected: item?.selected ?? false,
+          timeZone: item?.timeZone ?? undefined,
+          backgroundColor: item?.backgroundColor ?? undefined,
+          foregroundColor: item?.foregroundColor ?? undefined,
+        })) ?? []
+      );
     } catch (error) {
       console.error('Error fetching calendar list:', error);
       throw new Error('Failed to fetch calendar list');
@@ -108,28 +110,30 @@ export class GoogleCalendarService {
         orderBy
       });
 
-      return response.data.items?.map((item: any) => ({
-        id: item.id,
-        summary: item.summary || 'No Title',
-        description: item.description,
-        start: {
-          dateTime: item.start?.dateTime,
-          date: item.start?.date,
-          timeZone: item.start?.timeZone
-        },
-        end: {
-          dateTime: item.end?.dateTime,
-          date: item.end?.date,
-          timeZone: item.end?.timeZone
-        },
-        location: item.location,
-        attendees: item.attendees,
-        recurrence: item.recurrence,
-        status: item.status,
-        visibility: item.visibility,
-        created: item.created,
-        updated: item.updated
-      })) || [];
+      return (
+        response.data.items?.map((item) => ({
+          id: item?.id ?? '',
+          summary: item?.summary ?? 'No Title',
+          description: item?.description ?? undefined,
+          start: {
+            dateTime: item?.start?.dateTime ?? undefined,
+            date: item?.start?.date ?? undefined,
+            timeZone: item?.start?.timeZone ?? undefined,
+          },
+          end: {
+            dateTime: item?.end?.dateTime ?? undefined,
+            date: item?.end?.date ?? undefined,
+            timeZone: item?.end?.timeZone ?? undefined,
+          },
+          location: item?.location ?? undefined,
+          attendees: item?.attendees ?? [],
+          recurrence: item?.recurrence ?? undefined,
+          status: item?.status ?? undefined,
+          visibility: item?.visibility ?? undefined,
+          created: item?.created ?? undefined,
+          updated: item?.updated ?? undefined,
+        })) ?? []
+      );
     } catch (error) {
       console.error('Error fetching events:', error);
       throw new Error('Failed to fetch events');

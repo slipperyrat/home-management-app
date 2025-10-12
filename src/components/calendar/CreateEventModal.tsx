@@ -21,7 +21,6 @@ function CreateEventModal({ isOpen, onClose, onEventCreated }: CreateEventModalP
     setValue,
     reset,
     validate,
-    errors,
   } = useFormState({
     title: '',
     description: '',

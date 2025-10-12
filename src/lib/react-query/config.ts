@@ -86,7 +86,19 @@ export const queryKeys = {
     byUser: (userId: string) => ['bills', 'user', userId] as const,
     overdue: ['bills', 'overdue'] as const,
   },
-  
+
+  // Finance envelopes
+  budgets: {
+    all: ['budget-envelopes'] as const,
+    byHousehold: (householdId: string) => ['budget-envelopes', 'household', householdId] as const,
+  },
+
+  // Finance spending
+  spending: {
+    all: ['spend-entries'] as const,
+    byHousehold: (householdId: string) => ['spend-entries', 'household', householdId] as const,
+  },
+
   // AI insights
   aiInsights: {
     shopping: (householdId: string) => ['ai-insights', 'shopping', householdId] as const,

@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getDatabaseClient } from '@/lib/api/database';
 import { addRecipeIngredientsToGroceries } from '@/lib/server/addRecipeIngredients';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/logger';
 
 const addWeekIngredientsSchema = z.object({
   week_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
@@ -45,19 +46,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Collect all recipe IDs from the week's meals
+    type MealPlanDay = {
+      breakfast?: string | null;
+      lunch?: string | null;
+      dinner?: string | null;
+    };
+
     const recipeIds = new Set<string>();
-    const meals = mealPlan.meals || {};
-    
-    Object.values(meals).forEach((dayMeals: any) => {
-      if (dayMeals.breakfast && typeof dayMeals.breakfast === 'string') {
-        recipeIds.add(dayMeals.breakfast);
+    const meals = (mealPlan.meals ?? {}) as Record<string, MealPlanDay | null>;
+
+    Object.values(meals).forEach((dayMeals) => {
+      if (!dayMeals) {
+        return;
       }
-      if (dayMeals.lunch && typeof dayMeals.lunch === 'string') {
-        recipeIds.add(dayMeals.lunch);
-      }
-      if (dayMeals.dinner && typeof dayMeals.dinner === 'string') {
-        recipeIds.add(dayMeals.dinner);
-      }
+      const { breakfast, lunch, dinner } = dayMeals;
+      [breakfast, lunch, dinner].forEach((mealId) => {
+        if (typeof mealId === 'string' && mealId.trim() !== '') {
+          recipeIds.add(mealId);
+        }
+      });
     });
 
     if (recipeIds.size === 0) {
@@ -74,7 +81,7 @@ export async function POST(request: NextRequest) {
     let totalAdded = 0;
     let totalUpdated = 0;
     let recipesProcessed = 0;
-    const results = [];
+    const results: Array<{ recipeId: string; added: number; updated: number }> = [];
 
     for (const recipeId of recipeIds) {
       try {
@@ -89,10 +96,18 @@ export async function POST(request: NextRequest) {
             updated: result.updated
           });
         } else {
-          console.error(`Failed to add ingredients for recipe ${recipeId}:`, result.error);
+          logger.error('Failed to add ingredients for recipe', new Error(result.error ?? 'Unknown error'), {
+            recipeId,
+            userId,
+            householdId: userData.household_id,
+          });
         }
       } catch (error) {
-        console.error(`Error processing recipe ${recipeId}:`, error);
+        logger.error(
+          'Error processing recipe for meal planner add-week-ingredients',
+          error instanceof Error ? error : new Error(String(error)),
+          { recipeId, userId, householdId: userData.household_id },
+        );
       }
     }
 
@@ -106,7 +121,10 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in POST /api/meal-planner/add-week-ingredients:', error);
+    logger.error(
+      'Error in POST /api/meal-planner/add-week-ingredients',
+      error instanceof Error ? error : new Error(String(error)),
+    );
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid input', details: error.errors }, { status: 400 });
     }

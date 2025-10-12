@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { useUserData } from '@/hooks/useUserData';
-import { canAccessFeature } from '@/lib/server/canAccessFeature';
+import { canAccessFeature } from '@/lib/entitlements';
 import { fetchWithCSRF } from '@/lib/csrf-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function NewBillPage() {
   const router = useRouter();
@@ -33,34 +34,38 @@ export default function NewBillPage() {
   });
 
   useEffect(() => {
-    if (!isLoaded) return;
-    
-    if (!isSignedIn) {
-      router.push('/sign-in');
+    if (!isLoaded) {
       return;
     }
 
-    if (userData && userData.household) {
-      const householdPlan = userData.household.plan || 'free';
-      
-      if (!canAccessFeature(householdPlan, 'bill_management')) {
-        router.push('/upgrade');
-        return;
-      }
+    if (!isSignedIn) {
+      void router.push('/sign-in');
+      return;
     }
-  }, [isLoaded, isSignedIn, userData, router]);
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
+    if (!userData?.household) {
+      return;
+    }
+
+    const householdPlan = userData.household.plan || 'free';
+
+    if (!canAccessFeature(householdPlan, 'bill_management')) {
+      void router.push('/upgrade');
+    }
+  }, [isLoaded, isSignedIn, router, userData]);
+
+  const handleInputChange = useCallback((field: string, value: string) => {
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
-  };
+  }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     
     if (!userData?.household) {
+      toast.error('Could not determine household. Please try again.');
       return;
     }
 
@@ -77,8 +82,8 @@ export default function NewBillPage() {
           amount: parseFloat(formData.amount),
           due_date: formData.due_date || new Date().toISOString().split('T')[0],
           issued_date: formData.issued_date || new Date().toISOString().split('T')[0],
-          name: formData.name || formData.title // Use name if provided, fallback to title
-        })
+          name: formData.name || formData.title,
+        }),
       });
 
       if (response.ok) {
@@ -86,21 +91,21 @@ export default function NewBillPage() {
       } else {
         const error = await response.json();
         console.error('Error creating bill:', error);
-        alert('Failed to create bill. Please try again.');
+        toast.error('Failed to create bill. Please try again.');
       }
     } catch (error) {
       console.error('Error creating bill:', error);
-      alert('Failed to create bill. Please try again.');
+      toast.error('Failed to create bill. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData, router, userData?.household]);
 
   if (!isLoaded || isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
         </div>
       </div>
     );

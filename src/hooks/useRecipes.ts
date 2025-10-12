@@ -2,6 +2,8 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/react-query/config';
+import { toast } from 'sonner';
+import { logger } from '@/lib/logging/logger';
 
 // Types
 export interface Recipe {
@@ -190,7 +192,8 @@ export function useCreateRecipe() {
       );
     },
     onError: (error) => {
-      console.error('Failed to create recipe:', error);
+      logger.error('Failed to create recipe', error);
+      toast.error('Failed to create recipe. Please try again.');
     },
   });
 }
@@ -214,7 +217,8 @@ export function useUpdateRecipe() {
       queryClient.invalidateQueries({ queryKey: ['recipes', 'tag'] });
     },
     onError: (error) => {
-      console.error('Failed to update recipe:', error);
+      logger.error('Failed to update recipe', error);
+      toast.error('Failed to update recipe. Please try again.');
     },
   });
 }
@@ -237,8 +241,9 @@ export function useDeleteRecipe() {
       // Invalidate favorites if it was a favorite
       queryClient.invalidateQueries({ queryKey: queryKeys.recipes.favorites });
     },
-    onError: (error) => {
-      console.error('Failed to delete recipe:', error);
+    onError: (error, recipeId) => {
+      logger.error('Failed to delete recipe', error, { recipeId });
+      toast.error('Failed to delete recipe. Please try again.');
     },
   });
 }
@@ -249,23 +254,22 @@ export function useToggleFavorite() {
   return useMutation({
     mutationFn: toggleFavorite,
     onSuccess: (data, recipeId) => {
-      // Update the recipe in cache
-      queryClient.setQueryData(
-        queryKeys.recipes.byId(recipeId),
-        (oldData: any) => ({
+      queryClient.setQueryData(queryKeys.recipes.byId(recipeId), (oldData: { recipe: Recipe } | undefined) => {
+        if (!oldData) {
+          return oldData;
+        }
+        return {
           ...oldData,
           recipe: { ...oldData.recipe, is_favorite: data.is_favorite },
-        })
-      );
-      
-      // Invalidate favorites list
+        };
+      });
+
       queryClient.invalidateQueries({ queryKey: queryKeys.recipes.favorites });
-      
-      // Invalidate the main recipes list
       queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
     },
-    onError: (error) => {
-      console.error('Failed to toggle favorite:', error);
+    onError: (error, recipeId) => {
+      logger.error('Failed to toggle favorite', error, { recipeId });
+      toast.error('Unable to update favorite status. Please try again.');
     },
   });
 }
@@ -283,31 +287,41 @@ export function useOptimisticRecipes() {
       updated_at: new Date().toISOString(),
     };
     
-    queryClient.setQueryData(
-      queryKeys.recipes.all,
-      (oldData: any) => ({
+    queryClient.setQueryData(queryKeys.recipes.all, (oldData: { data?: { recipes?: Recipe[] } } | undefined) => {
+      if (!oldData?.data) {
+        return {
+          data: {
+            recipes: [optimisticRecipe],
+          },
+        };
+      }
+
+      return {
         ...oldData,
         data: {
-          ...oldData?.data,
-          recipes: [optimisticRecipe, ...(oldData?.data?.recipes || [])],
+          ...oldData.data,
+          recipes: [optimisticRecipe, ...(oldData.data.recipes || [])],
         },
-      })
-    );
+      };
+    });
     
     return tempId;
   };
   
   const removeOptimisticRecipe = (tempId: string) => {
-    queryClient.setQueryData(
-      queryKeys.recipes.all,
-      (oldData: any) => ({
+    queryClient.setQueryData(queryKeys.recipes.all, (oldData: { data?: { recipes?: Recipe[] } } | undefined) => {
+      if (!oldData?.data?.recipes) {
+        return oldData;
+      }
+
+      return {
         ...oldData,
         data: {
-          ...oldData?.data,
-          recipes: (oldData?.data?.recipes || []).filter((r: Recipe) => r.id !== tempId),
+          ...oldData.data,
+          recipes: oldData.data.recipes.filter((recipe) => recipe.id !== tempId),
         },
-      })
-    );
+      };
+    });
   };
   
   return { addOptimisticRecipe, removeOptimisticRecipe };

@@ -1,28 +1,41 @@
-import { NextResponse } from 'next/server'
-import { getUserAndHousehold } from '@/lib/server/supabaseAdmin'
-import { addRecipeIngredientsToGroceriesAuto } from '@/lib/server/addRecipeIngredientsAuto'
-import { addRecipeIngredientsAutoSchema } from '@/lib/validation/schemas'
+import { NextResponse } from 'next/server';
+import { getUserAndHousehold } from '@/lib/server/supabaseAdmin';
+import { addRecipeIngredientsToGroceriesAuto } from '@/lib/server/addRecipeIngredientsAuto';
+import { addRecipeIngredientsAutoSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
+import { z } from 'zod';
 
 export async function POST(req: Request) {
   try {
     const { userId, householdId } = await getUserAndHousehold()
     
     // Parse and validate request body using Zod schema
-    let validatedData;
+    const tempSchema = addRecipeIngredientsAutoSchema.omit({ household_id: true });
+    let validatedData: z.infer<typeof tempSchema>;
     try {
       const body = await req.json();
-      // Create a temporary schema that doesn't require household_id since it comes from user context
-      const tempSchema = addRecipeIngredientsAutoSchema.omit({ household_id: true });
       validatedData = tempSchema.parse(body);
-    } catch (validationError: any) {
-      return NextResponse.json({ 
-        error: 'Invalid input', 
-        details: validationError.errors 
-      }, { status: 400 });
+    } catch (validationError: unknown) {
+      if (validationError instanceof z.ZodError) {
+        logger.warn('Invalid add-recipe-ingredients-auto payload', {
+          userId,
+          errors: validationError.errors,
+        });
+        return NextResponse.json({
+          error: 'Invalid input',
+          details: validationError.errors,
+        }, { status: 400 });
+      }
+      logger.error('add-recipe-ingredients-auto validation error', validationError instanceof Error ? validationError : new Error(String(validationError)), {
+        userId,
+      });
+      return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
     }
 
     const { recipe_id, auto_confirm, source_meal_plan } = validatedData;
-    if (!recipe_id) return NextResponse.json({ error: 'recipe_id required' }, { status: 400 })
+    if (!recipe_id) {
+      return NextResponse.json({ error: 'recipe_id required' }, { status: 400 });
+    }
 
     const result = await addRecipeIngredientsToGroceriesAuto(
       userId, 
@@ -30,10 +43,15 @@ export async function POST(req: Request) {
       recipe_id,
       auto_confirm || false,
       source_meal_plan
-    )
+    );
     
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: 500 })
+      logger.error('addRecipeIngredientsToGroceriesAuto failed', new Error(result.error ?? 'Unknown error'), {
+        userId,
+        householdId,
+        recipeId: recipe_id,
+      });
+      return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
     return NextResponse.json({ 
@@ -43,9 +61,11 @@ export async function POST(req: Request) {
       autoAdded: result.autoAdded,
       pendingConfirmations: result.pendingConfirmations,
       list_id: result.listId 
-    })
-  } catch (e: any) {
-    console.error('❌ Error in add-recipe-ingredients-auto API:', e)
-    return NextResponse.json({ error: e.message }, { status: e.status || 500 })
+    });
+  } catch (error) {
+    logger.error('Error in add-recipe-ingredients-auto API', error instanceof Error ? error : new Error(String(error)), {
+      route: '/api/shopping-lists/add-recipe-ingredients-auto',
+    });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: error instanceof Error && 'status' in error ? Number((error as { status?: number }).status) || 500 : 500 });
   }
 }

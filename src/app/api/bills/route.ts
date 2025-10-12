@@ -1,16 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createBillSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 GET: Fetching bills for user:', user.id);
+      logger.info('Fetching bills', { userId: user.id });
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
         .order('due_date', { ascending: true });
 
       if (billsError) {
-        console.error('Error fetching bills:', billsError);
+        logger.error('Error fetching bills', billsError, { householdId: household.id });
         return createErrorResponse('Failed to fetch bills', 500, billsError.message);
       }
 
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Creating bill for user:', user.id);
+      logger.info('Creating bill', { userId: user.id });
 
       // Validate input using Zod schema
       let validatedData;
@@ -52,12 +53,15 @@ export async function POST(request: NextRequest) {
         const body = await req.json();
         const tempSchema = createBillSchema.omit({ household_id: true });
         validatedData = tempSchema.parse(body);
-      } catch (validationError: any) {
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+      } catch (validationError: unknown) {
+        if (validationError instanceof Error && 'errors' in validationError) {
+          return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
+        }
+        return createErrorResponse('Invalid input', 400);
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -82,7 +86,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (createError) {
-        console.error('Error creating bill:', createError);
+        logger.error('Error creating bill', createError, { householdId: household.id });
         return createErrorResponse('Failed to create bill', 500, createError.message);
       }
 

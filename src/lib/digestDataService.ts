@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { DigestData } from './emailService';
+import { logger } from '@/lib/logging/logger';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -105,7 +106,7 @@ export class DigestDataService {
         .single();
 
       if (!tableExists) {
-        console.log('Chores table does not exist, returning empty data');
+        logger.debug?.('Chores table does not exist, returning empty data', { householdId });
         return { pending: [], completed: [] };
       }
 
@@ -127,7 +128,7 @@ export class DigestDataService {
         .order('due_date', { ascending: true });
 
       if (pendingError) {
-        console.error('Error fetching pending chores:', pendingError);
+        logger.error('Error fetching pending chores', pendingError, { householdId });
       }
 
       // Get completed chores in date range
@@ -146,7 +147,7 @@ export class DigestDataService {
         .order('completed_at', { ascending: false });
 
       if (completedError) {
-        console.error('Error fetching completed chores:', completedError);
+        logger.error('Error fetching completed chores', completedError, { householdId });
       }
 
       return {
@@ -166,7 +167,7 @@ export class DigestDataService {
         })) || []
       };
     } catch (error) {
-      console.error('Error fetching chores data:', error);
+      logger.error('Error fetching chores data', error as Error, { householdId });
       return { pending: [], completed: [] };
     }
   }
@@ -185,7 +186,7 @@ export class DigestDataService {
         .single();
 
       if (!tableExists) {
-        console.log('Meal plans table does not exist, returning empty data');
+        logger.debug?.('Meal plans table does not exist, returning empty data', { householdId });
         return { today: [], this_week: [] };
       }
 
@@ -205,7 +206,7 @@ export class DigestDataService {
         .order('planned_time', { ascending: true });
 
       if (mealsError) {
-        console.error('Error fetching meals data:', mealsError);
+        logger.error('Error fetching meals data', mealsError, { householdId });
         return { today: [], this_week: [] };
       }
 
@@ -228,7 +229,7 @@ export class DigestDataService {
         }))
       };
     } catch (error) {
-      console.error('Error fetching meals data:', error);
+      logger.error('Error fetching meals data', error as Error, { householdId });
       return { today: [], this_week: [] };
     }
   }
@@ -247,7 +248,7 @@ export class DigestDataService {
         .single();
 
       if (!tableExists) {
-        console.log('Shopping items table does not exist, returning empty data');
+        logger.debug?.('Shopping items table does not exist, returning empty data', { householdId });
         return { pending: [], completed: [] };
       }
 
@@ -268,7 +269,7 @@ export class DigestDataService {
         .order('name', { ascending: true });
 
       if (pendingError) {
-        console.error('Error fetching pending shopping items:', pendingError);
+        logger.error('Error fetching pending shopping items', pendingError, { householdId });
       }
 
       // Get recently completed items (last 7 days)
@@ -288,7 +289,7 @@ export class DigestDataService {
         .order('completed_at', { ascending: false });
 
       if (completedError) {
-        console.error('Error fetching completed shopping items:', completedError);
+        logger.error('Error fetching completed shopping items', completedError, { householdId });
       }
 
       return {
@@ -306,7 +307,7 @@ export class DigestDataService {
         })) || []
       };
     } catch (error) {
-      console.error('Error fetching shopping data:', error);
+      logger.error('Error fetching shopping data', error as Error, { householdId });
       return { pending: [], completed: [] };
     }
   }
@@ -325,7 +326,7 @@ export class DigestDataService {
         .single();
 
       if (!tableExists) {
-        console.log('Events table does not exist, returning empty data');
+        logger.debug?.('Events table does not exist, returning empty data', { householdId });
         return { today: [], upcoming: [] };
       }
 
@@ -344,7 +345,7 @@ export class DigestDataService {
         .order('start_at', { ascending: true });
 
       if (eventsError) {
-        console.error('Error fetching events data:', eventsError);
+        logger.error('Error fetching events data', eventsError, { householdId });
         return { today: [], upcoming: [] };
       }
 
@@ -376,7 +377,7 @@ export class DigestDataService {
         }))
       };
     } catch (error) {
-      console.error('Error fetching events data:', error);
+      logger.error('Error fetching events data', error as Error, { householdId });
       return { today: [], upcoming: [] };
     }
   }
@@ -395,7 +396,7 @@ export class DigestDataService {
         .single();
 
       if (!tableExists) {
-        console.log('Achievements table does not exist, returning empty data');
+        logger.debug?.('Achievements table does not exist, returning empty data', { householdId });
         return [];
       }
 
@@ -415,7 +416,7 @@ export class DigestDataService {
         .order('earned_at', { ascending: false });
 
       if (achievementsError) {
-        console.error('Error fetching achievements data:', achievementsError);
+        logger.error('Error fetching achievements data', achievementsError, { householdId });
         return [];
       }
 
@@ -427,7 +428,7 @@ export class DigestDataService {
         xp: achievement.xp_reward || 0
       })) || [];
     } catch (error) {
-      console.error('Error fetching achievements data:', error);
+      logger.error('Error fetching achievements data', error as Error, { householdId });
       return [];
     }
   }
@@ -446,7 +447,7 @@ export class DigestDataService {
         .single();
 
       if (!tableExists) {
-        console.log('AI insights table does not exist, returning empty data');
+        logger.debug?.('AI insights table does not exist, returning empty data', { householdId });
         return [];
       }
 
@@ -466,7 +467,7 @@ export class DigestDataService {
         .order('created_at', { ascending: false });
 
       if (insightsError) {
-        console.error('Error fetching insights data:', insightsError);
+        logger.error('Error fetching insights data', insightsError, { householdId });
         return [];
       }
 
@@ -477,7 +478,7 @@ export class DigestDataService {
         confidence: insight.confidence || 0
       })) || [];
     } catch (error) {
-      console.error('Error fetching insights data:', error);
+      logger.error('Error fetching insights data', error as Error, { householdId });
       return [];
     }
   }

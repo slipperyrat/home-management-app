@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { logger } from '@/lib/logging/logger';
 
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Claiming reward for user:', user.id);
+      logger.info('Claiming reward', { userId: user.id });
 
       // Parse and validate request body using Zod schema
       let validatedData;
@@ -15,15 +16,18 @@ export async function POST(request: NextRequest) {
         const { claimRewardSchema } = await import('@/lib/validation/schemas');
         const tempSchema = claimRewardSchema.omit({ household_id: true });
         validatedData = tempSchema.parse(body);
-      } catch (validationError: any) {
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+      } catch (validationError: unknown) {
+        if (validationError instanceof Error && 'errors' in validationError) {
+          return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
+        }
+        return createErrorResponse('Invalid input', 400);
       }
 
       const { reward_id: rewardId } = validatedData;
-      console.log(`🎯 Claiming reward ${rewardId} for user ${user.id}`);
+      logger.info('Processing reward claim', { rewardId, userId: user.id });
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -39,11 +43,9 @@ export async function POST(request: NextRequest) {
         });
 
       if (claimError) {
-        console.error('❌ Error claiming reward:', claimError);
+        logger.error('Error claiming reward', claimError, { rewardId, userId: user.id });
         return createErrorResponse('Failed to claim reward', 500, claimError.message);
       }
-
-      console.log('✅ Reward claimed successfully');
 
       // 2. Fetch the full reward row by ID
       const { data: reward, error: rewardError } = await supabase
@@ -53,21 +55,18 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (rewardError) {
-        console.error('❌ Error fetching reward details:', rewardError);
+        logger.error('Error fetching reward details', rewardError, { rewardId });
         return createErrorResponse('Failed to fetch reward details', 500, rewardError.message);
       }
 
       if (!reward) {
-        console.error('❌ Reward not found:', rewardId);
+        logger.warn('Reward not found', { rewardId });
         return createErrorResponse('Reward not found', 404);
       }
 
-      console.log('📦 Reward details:', { name: reward.name, type: reward.type });
-
       // 3. Check if reward has a recognized type and handle power-ups
       if (reward.type) {
-        console.log(`🎁 Processing power-up for type: ${reward.type}`);
-        
+        logger.info('Processing configured power-up type', { rewardType: reward.type });
         let expiresAt = null;
         
         // Set expiration based on type
@@ -83,7 +82,7 @@ export async function POST(request: NextRequest) {
             expiresAt = null; // Permanent
             break;
           default:
-            console.log(`⚠️ Unknown reward type: ${reward.type}`);
+          logger.warn('Unknown reward type', { rewardType: reward.type });
             return createSuccessResponse({ success: true }, 'Reward claimed successfully');
         }
 
@@ -99,13 +98,17 @@ export async function POST(request: NextRequest) {
           });
 
         if (powerUpError) {
-          console.error('❌ Error creating power-up:', powerUpError);
+        logger.error('Error creating power-up', powerUpError, { rewardType: reward.type, userId: user.id });
           return createErrorResponse('Failed to create power-up', 500, powerUpError.message);
         }
 
-        console.log(`✅ Power-up created: ${reward.type}${expiresAt ? ` (expires: ${expiresAt})` : ' (permanent)'}`);
+      logger.info('Power-up created', {
+        rewardType: reward.type,
+        expiresAt,
+        userId: user.id,
+      });
       } else {
-        console.log('ℹ️ No power-up type specified for this reward');
+        logger.info('Reward has no power-up type; skipping power-up', { rewardId });
       }
 
       // Add audit log entry

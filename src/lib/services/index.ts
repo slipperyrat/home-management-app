@@ -1,5 +1,6 @@
 // Import only implemented services
 import { MealService } from './meal/MealService';
+import { logger } from '@/lib/logging/logger';
 
 // Service container for organizing business logic
 export class ServiceContainer {
@@ -25,19 +26,21 @@ export class ServiceContainer {
 
 // Base service class with common functionality
 export abstract class BaseService {
-  protected log(level: 'info' | 'warn' | 'error', message: string, data?: any): void {
-    const timestamp = new Date().toISOString();
-    
+  protected log(level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>): void {
     switch (level) {
       case 'info':
-        console.log(`[${timestamp}] INFO: ${message}`, data || '');
+        logger.info(message, data);
         break;
       case 'warn':
-        console.warn(`[${timestamp}] WARN: ${message}`, data || '');
+        logger.warn(message, undefined, data);
         break;
-      case 'error':
-        console.error(`[${timestamp}] ERROR: ${message}`, data || '');
+      case 'error': {
+        const error = data?.error instanceof Error ? data.error : undefined;
+        logger.error(message, error, data);
         break;
+      }
+      default:
+        logger.info(message, data);
     }
   }
   
@@ -48,7 +51,7 @@ export abstract class BaseService {
     try {
       return await operation();
     } catch (error) {
-      this.log('error', `Failed in ${context}`, error);
+      this.log('error', `Failed in ${context}`, { error: error instanceof Error ? error : new Error(String(error)) });
       throw error;
     }
   }

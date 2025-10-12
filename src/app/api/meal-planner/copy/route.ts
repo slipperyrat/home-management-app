@@ -1,23 +1,31 @@
 import { NextResponse } from 'next/server';
 import { sb, getUserAndHousehold } from '@/lib/server/supabaseAdmin';
 import { mealPlannerCopySchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
+import { z } from 'zod';
 
 export async function POST(req: Request) {
   try {
     const { householdId } = await getUserAndHousehold();
     
     // Parse and validate request body using Zod schema
-    let validatedData;
+    const tempSchema = mealPlannerCopySchema.omit({ household_id: true });
+    let validatedData: z.infer<typeof tempSchema>;
     try {
       const body = await req.json();
-      // Create a temporary schema that doesn't require household_id since it comes from user context
-      const tempSchema = mealPlannerCopySchema.omit({ household_id: true });
       validatedData = tempSchema.parse(body);
-    } catch (validationError: any) {
-      return NextResponse.json({ 
-        error: 'Invalid input', 
-        details: validationError.errors 
-      }, { status: 400 });
+    } catch (validationError: unknown) {
+      if (validationError instanceof z.ZodError) {
+        logger.warn('Meal planner copy validation failed', { errors: validationError.errors, householdId });
+        return NextResponse.json({
+          error: 'Invalid input',
+          details: validationError.errors,
+        }, { status: 400 });
+      }
+      logger.error('Meal planner copy validation error', validationError instanceof Error ? validationError : new Error(String(validationError)), {
+        householdId,
+      });
+      return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
     }
 
     const { from_week: fromWeek, to_week: toWeek } = validatedData;
@@ -33,7 +41,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (fetchError) {
-      console.error('Error fetching source meal plan:', fetchError);
+      logger.error('Error fetching source meal plan', fetchError, { householdId, fromWeek });
       return NextResponse.json({ error: 'Failed to fetch source meal plan' }, { status: 500 });
     }
 
@@ -50,7 +58,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (checkError) {
-      console.error('Error checking target meal plan:', checkError);
+      logger.error('Error checking target meal plan', checkError, { householdId, toWeek });
       return NextResponse.json({ error: 'Failed to check target meal plan' }, { status: 500 });
     }
 
@@ -67,7 +75,7 @@ export async function POST(req: Request) {
         .single();
 
       if (updateError) {
-        console.error('Error updating target meal plan:', updateError);
+        logger.error('Error updating target meal plan', updateError, { householdId, toWeek });
         return NextResponse.json({ error: 'Failed to update target meal plan' }, { status: 500 });
       }
 
@@ -91,7 +99,7 @@ export async function POST(req: Request) {
         .single();
 
       if (insertError) {
-        console.error('Error creating target meal plan:', insertError);
+        logger.error('Error creating target meal plan', insertError, { householdId, toWeek });
         return NextResponse.json({ error: 'Failed to create target meal plan' }, { status: 500 });
       }
 
@@ -101,8 +109,8 @@ export async function POST(req: Request) {
         plan: newPlan
       });
     }
-  } catch (e: any) {
-    console.error('Error in copy week API:', e);
-    return NextResponse.json({ error: e.message || 'Internal server error' }, { status: 500 });
+  } catch (error) {
+    logger.error('Error in meal planner copy API', error instanceof Error ? error : new Error(String(error)), { householdId: null });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 });
   }
 }

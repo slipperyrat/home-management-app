@@ -99,13 +99,22 @@ async function fetchMealPlan(weekStart: string): Promise<MealPlan | null> {
   return null;
 }
 
-async function assignMeal(data: AssignMealData): Promise<{ plan: MealPlan; ingredients?: any }> {
+interface AssignMealResponse {
+  plan: MealPlan;
+  ingredients?: {
+    added: number;
+    updated: number;
+  };
+}
+
+async function assignMeal(data: AssignMealData): Promise<AssignMealResponse> {
   // Import the CSRF utility
   const { fetchWithCSRF } = await import('@/lib/csrf-client');
   
   const response = await fetchWithCSRF('/api/meal-planner/assign', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(data),
   });
 
@@ -123,6 +132,7 @@ async function copyWeek(data: CopyWeekData): Promise<{ success: boolean; message
   const response = await fetchWithCSRF('/api/meal-planner/copy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(data),
   });
 
@@ -140,6 +150,7 @@ async function clearWeek(data: ClearWeekData): Promise<{ success: boolean; messa
   const response = await fetchWithCSRF('/api/meal-planner/clear', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(data),
   });
 
@@ -161,6 +172,7 @@ async function addWeekIngredients(data: AddWeekIngredientsData): Promise<{
   const response = await fetch('/api/meal-planner/add-week-ingredients', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(data),
   });
 
@@ -187,14 +199,14 @@ export function useMealPlan(weekStart?: Date) {
 export function useAssignMeal() {
   const queryClient = useQueryClient();
   
-  return useMutation({
+  return useMutation<AssignMealResponse, Error, AssignMealData, { previousMealPlan: MealPlan | null | undefined }>({
     mutationFn: assignMeal,
     onMutate: async (data) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['mealPlan', data.week] });
       
       // Snapshot the previous value
-      const previousMealPlan = queryClient.getQueryData(['mealPlan', data.week]);
+      const previousMealPlan = queryClient.getQueryData<MealPlan | null>(['mealPlan', data.week]);
       
       // Optimistically update to the new value
       queryClient.setQueryData(['mealPlan', data.week], (old: MealPlan | null) => {
@@ -233,10 +245,11 @@ export function useAssignMeal() {
       // Return a context object with the snapshotted value
       return { previousMealPlan };
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (data) => {
       // Show success message with ingredient information
-      if (data.data && data.data.ingredients) {
-        const { added, updated } = data.data.ingredients;
+      const ingredients = data.data?.ingredients;
+      if (ingredients) {
+        const { added, updated } = ingredients;
         if (added > 0 || updated > 0) {
           let message = 'Meal assigned successfully!';
           if (added > 0 && updated > 0) {
@@ -254,17 +267,18 @@ export function useAssignMeal() {
         toast.success('Meal assigned successfully!');
       }
     },
-    onError: (err, data, context) => {
+    onError: (err, variables, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
       if (context?.previousMealPlan) {
-        queryClient.setQueryData(['mealPlan', data.week], context.previousMealPlan);
+        queryClient.setQueryData(['mealPlan', variables.week], context.previousMealPlan);
       }
       toast.error(`Failed to assign meal: ${err.message}`);
     },
     onSettled: (data) => {
       // Always refetch after error or success
-      if (data && data.data && data.data.plan) {
-        queryClient.invalidateQueries({ queryKey: ['mealPlan', data.data.plan.week_start_date] });
+      const plan = data?.data?.plan;
+      if (plan) {
+        queryClient.invalidateQueries({ queryKey: ['mealPlan', plan.week_start_date] });
       }
     },
   });
@@ -304,8 +318,6 @@ export function useClearWeek() {
 }
 
 export function useAddWeekIngredients() {
-  const queryClient = useQueryClient();
-  
   return useMutation({
     mutationFn: addWeekIngredients,
     onSuccess: (data) => {

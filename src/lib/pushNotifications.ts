@@ -1,11 +1,13 @@
 // Push notification service using VAPID keys
+import { logger } from '@/lib/logging/logger';
+
 interface PushNotificationData {
   title: string;
   body: string;
   icon?: string;
   badge?: string;
   tag?: string;
-  data?: any;
+  data?: Record<string, unknown>;
   actions?: NotificationAction[];
 }
 
@@ -28,7 +30,7 @@ class PushNotificationService {
     this.vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null;
 
     if (!this.vapidPublicKey) {
-      console.warn('VAPID public key not found. Push notifications will not work.');
+      logger.warn('VAPID public key not found. Push notifications will not work.');
       return;
     }
 
@@ -36,16 +38,16 @@ class PushNotificationService {
     if ('serviceWorker' in navigator) {
       try {
         this.registration = await navigator.serviceWorker.ready;
-        console.log('Service worker ready for push notifications');
+        logger.info('Service worker ready for push notifications');
       } catch (error) {
-        console.error('Failed to register service worker:', error);
+        logger.error('Failed to register service worker', error as Error);
       }
     }
   }
 
   async requestPermission(): Promise<NotificationPermission> {
     if (!('Notification' in window)) {
-      console.warn('This browser does not support notifications');
+      logger.warn('This browser does not support notifications');
       return 'denied';
     }
 
@@ -63,7 +65,7 @@ class PushNotificationService {
 
   async subscribe(): Promise<PushSubscription | null> {
     if (!this.registration || !this.vapidPublicKey) {
-      console.warn('Service worker or VAPID key not available');
+      logger.warn('Service worker or VAPID key not available');
       return null;
     }
 
@@ -76,10 +78,10 @@ class PushNotificationService {
       // Send subscription to server
       await this.sendSubscriptionToServer(subscription);
       
-      console.log('Push subscription successful');
+      logger.info('Push subscription successful');
       return subscription;
     } catch (error) {
-      console.error('Failed to subscribe to push notifications:', error);
+      logger.error('Failed to subscribe to push notifications', error as Error);
       return null;
     }
   }
@@ -92,12 +94,12 @@ class PushNotificationService {
       if (subscription) {
         await subscription.unsubscribe();
         await this.removeSubscriptionFromServer(subscription);
-        console.log('Push subscription removed');
+        logger.info('Push subscription removed');
         return true;
       }
       return false;
     } catch (error) {
-      console.error('Failed to unsubscribe from push notifications:', error);
+      logger.error('Failed to unsubscribe from push notifications', error as Error);
       return false;
     }
   }
@@ -109,14 +111,14 @@ class PushNotificationService {
       const subscription = await this.registration.pushManager.getSubscription();
       return !!subscription;
     } catch (error) {
-      console.error('Failed to check subscription status:', error);
+      logger.error('Failed to check subscription status', error as Error);
       return false;
     }
   }
 
   async showNotification(data: PushNotificationData): Promise<void> {
     if (!this.registration) {
-      console.warn('Service worker not available');
+      logger.warn('Service worker not available');
       return;
     }
 
@@ -160,7 +162,7 @@ class PushNotificationService {
         body: JSON.stringify(subscription),
       });
     } catch (error) {
-      console.error('Failed to send subscription to server:', error);
+      logger.error('Failed to send subscription to server', error as Error);
     }
   }
 
@@ -174,7 +176,7 @@ class PushNotificationService {
         body: JSON.stringify(subscription),
       });
     } catch (error) {
-      console.error('Failed to remove subscription from server:', error);
+      logger.error('Failed to remove subscription from server', error as Error);
     }
   }
 }

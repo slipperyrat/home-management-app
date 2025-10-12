@@ -1,7 +1,15 @@
+import { logger } from '@/lib/logging/logger';
 import { supabase } from './supabaseClient';
 
-export async function debugUser(userId: string) {
-  console.log(`🔍 Debugging user: ${userId}`);
+interface DebugUserResult {
+  users: unknown;
+  members: unknown;
+  usersError: Error | null;
+  membersError: Error | null;
+}
+
+export async function debugUser(userId: string): Promise<DebugUserResult> {
+  logger.info('Debugging user', { userId });
   
   // Check users table
   const { data: users, error: usersError } = await supabase
@@ -9,7 +17,12 @@ export async function debugUser(userId: string) {
     .select('*')
     .eq('id', userId);
   
-  console.log('Users table results:', { users, error: usersError });
+  logger.info('Users table results', {
+    hasUsers: Boolean(users?.length),
+    userCount: users?.length ?? 0,
+    hasError: Boolean(usersError),
+    userId,
+  });
   
   // Check household_members table
   const { data: members, error: membersError } = await supabase
@@ -17,7 +30,17 @@ export async function debugUser(userId: string) {
     .select('*')
     .eq('user_id', userId);
   
-  console.log('Household members results:', { members, error: membersError });
+  logger.info('Household members results', {
+    hasMembers: Boolean(members?.length),
+    memberCount: members?.length ?? 0,
+    hasError: Boolean(membersError),
+    userId,
+  });
   
-  return { users, members, usersError, membersError };
+  return {
+    users,
+    members,
+    usersError: usersError ? new Error(usersError.message) : null,
+    membersError: membersError ? new Error(membersError.message) : null,
+  };
 } 

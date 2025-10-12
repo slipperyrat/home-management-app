@@ -4,8 +4,11 @@ import { useState } from 'react';
 
 export default function TestSyncButton() {
   const [isLoading, setIsLoading] = useState(false);
+  const [lastDuration, setLastDuration] = useState<number | null>(null);
 
   const handleSyncUser = async () => {
+    const start = performance.now();
+
     try {
       setIsLoading(true);
       const response = await fetch('/api/sync-user', {
@@ -14,11 +17,14 @@ export default function TestSyncButton() {
           'Content-Type': 'application/json',
         },
       });
-      
-      const result = await response.json();
-      console.log('Sync user response:', result);
+
+      const duration = performance.now() - start;
+      setLastDuration(duration);
+
+      await response.json();
     } catch (error) {
       console.error('Error syncing user:', error);
+      setLastDuration(null);
     } finally {
       setIsLoading(false);
     }
@@ -40,6 +46,11 @@ export default function TestSyncButton() {
           '🔄 Test Sync User'
         )}
       </button>
+      {lastDuration !== null ? (
+        <p className="mt-2 text-sm text-gray-600">
+          Last sync completed in {Math.round(lastDuration)}ms
+        </p>
+      ) : null}
     </div>
   );
-} 
+}

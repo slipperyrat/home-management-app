@@ -4,8 +4,8 @@ import { NextRequest } from 'next/server';
 const mockAuthState = vi.hoisted(() => ({ userId: 'user-123' as string | null }));
 
 vi.mock('@clerk/nextjs/server', () => ({
-  clerkMiddleware: (handler: any) => (req: NextRequest) =>
-    handler(async () => mockAuthState, req),
+  clerkMiddleware: (handler: (getAuth: () => Promise<typeof mockAuthState>, req: NextRequest) => Promise<Response>) =>
+    (req: NextRequest) => handler(async () => mockAuthState, req),
 }));
 
 import middleware from '@/middleware';
@@ -24,28 +24,28 @@ describe('middleware onboarding checks', () => {
   });
 
   it('redirects to onboarding when household missing', async () => {
-    (getUserHouseholdId as vi.Mock).mockResolvedValue(null);
-    (getUserOnboardingStatus as vi.Mock).mockResolvedValue(false);
+    vi.mocked(getUserHouseholdId).mockResolvedValue(null);
+    vi.mocked(getUserOnboardingStatus).mockResolvedValue(false);
 
     const request = new NextRequest('https://example.com/dashboard');
-    const response = await middleware(request as any);
+    const response = await middleware(request as NextRequest);
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toContain('/onboarding');
   });
 
   it('allows access when onboarding complete', async () => {
-    (getUserHouseholdId as vi.Mock).mockResolvedValue('household-1');
-    (getUserOnboardingStatus as vi.Mock).mockResolvedValue(true);
+    vi.mocked(getUserHouseholdId).mockResolvedValue('household-1');
+    vi.mocked(getUserOnboardingStatus).mockResolvedValue(true);
 
     const request = new NextRequest('https://example.com/dashboard');
-    const response = await middleware(request as any);
+    const response = await middleware(request as NextRequest);
     expect(response.headers.get('location')).toBeNull();
   });
 
   it('does not redirect static asset requests', async () => {
     mockAuthState.userId = 'user-123';
-    (getUserHouseholdId as vi.Mock).mockResolvedValue('household-1');
-    (getUserOnboardingStatus as vi.Mock).mockResolvedValue(false);
+    vi.mocked(getUserHouseholdId).mockResolvedValue('household-1');
+    vi.mocked(getUserOnboardingStatus).mockResolvedValue(false);
 
     const assetPaths = [
       'https://example.com/fonts/font.woff2',
@@ -56,18 +56,18 @@ describe('middleware onboarding checks', () => {
 
     for (const path of assetPaths) {
       const request = new NextRequest(path);
-      const response = await middleware(request as any);
+      const response = await middleware(request as NextRequest);
       expect(response.headers.get('location')).toBeNull();
     }
   });
 
   it('allows onboarding page when user unfinished', async () => {
     mockAuthState.userId = 'user-123';
-    (getUserHouseholdId as vi.Mock).mockResolvedValue(null);
-    (getUserOnboardingStatus as vi.Mock).mockResolvedValue(false);
+    vi.mocked(getUserHouseholdId).mockResolvedValue(null);
+    vi.mocked(getUserOnboardingStatus).mockResolvedValue(false);
 
     const request = new NextRequest('https://example.com/onboarding');
-    const response = await middleware(request as any);
+    const response = await middleware(request as NextRequest);
     expect(response.headers.get('location')).toBeNull();
   });
 });

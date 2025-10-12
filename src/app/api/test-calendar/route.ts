@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabaseClient } from '@/lib/api/database';
+import { logger } from '@/lib/logging/logger';
 
-export async function GET(request: NextRequest) {
+export async function GET(_: NextRequest) {
   try {
     const supabase = getDatabaseClient();
     
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
       .select('*')
       .limit(1);
     
-    console.log('Events table test:', { events, eventsError });
+    logger.info('Events table test', { hasRows: Boolean(events?.length), error: eventsError?.message });
     
     // Test if calendars table exists
     const { data: calendars, error: calendarsError } = await supabase
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
       .select('*')
       .limit(1);
     
-    console.log('Calendars table test:', { calendars, calendarsError });
+    logger.info('Calendars table test', { hasRows: Boolean(calendars?.length), error: calendarsError?.message });
     
     return NextResponse.json({
       events: { exists: !eventsError, error: eventsError?.message },
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     });
     
   } catch (error) {
-    console.error('Test calendar error:', error);
+    logger.error('Test calendar error', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ 
       error: 'Test failed', 
       details: error instanceof Error ? error.message : 'Unknown error' 

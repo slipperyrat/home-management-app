@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { z } from 'zod';
 
 export interface FormFieldError {
@@ -18,8 +18,8 @@ export interface FormValidation {
   errors: FormFieldError[];
   isValid: boolean;
   touched: Set<string>;
-  validateField: (field: string, value: any, schema: z.ZodSchema) => boolean;
-  validateForm: (data: any, schema: z.ZodSchema) => boolean;
+  validateField: (field: string, value: unknown, schema: z.AnyZodObject) => boolean;
+  validateForm: (data: Record<string, unknown>, schema: z.AnyZodObject) => boolean;
   setFieldTouched: (field: string) => void;
   clearErrors: () => void;
   getFieldError: (field: string) => string | undefined;
@@ -30,34 +30,32 @@ export function useFormValidation(): FormValidation {
   const [state, setState] = useState<FormValidationState>({
     errors: [],
     isValid: true,
-    touched: new Set()
+    touched: new Set(),
   });
 
-  const validateField = useCallback((field: string, value: any, schema: z.ZodSchema): boolean => {
+  const validateField = useCallback((field: string, value: unknown, schema: z.AnyZodObject): boolean => {
     try {
-      // Create a partial schema for just this field
-      const fieldSchema = schema.pick({ [field]: true } as any);
+      const fieldSchema = schema.pick({ [field]: true });
       fieldSchema.parse({ [field]: value });
-      
-      // Remove error for this field if validation passes
-      setState(prev => ({
+
+      setState((prev) => ({
         ...prev,
-        errors: prev.errors.filter(error => error.field !== field),
-        isValid: prev.errors.filter(error => error.field !== field).length === 0
+        errors: prev.errors.filter((error) => error.field !== field),
+        isValid: prev.errors.filter((error) => error.field !== field).length === 0,
       }));
-      
+
       return true;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const fieldError = error.errors.find(err => err.path.includes(field));
+        const fieldError = error.errors.find((err) => err.path.includes(field));
         if (fieldError) {
-          setState(prev => ({
+          setState((prev) => ({
             ...prev,
             errors: [
-              ...prev.errors.filter(err => err.field !== field),
-              { field, message: fieldError.message }
+              ...prev.errors.filter((err) => err.field !== field),
+              { field, message: fieldError.message },
             ],
-            isValid: false
+            isValid: false,
           }));
         }
       }
@@ -65,26 +63,26 @@ export function useFormValidation(): FormValidation {
     }
   }, []);
 
-  const validateForm = useCallback((data: any, schema: z.ZodSchema): boolean => {
+  const validateForm = useCallback((data: Record<string, unknown>, schema: z.AnyZodObject): boolean => {
     try {
       schema.parse(data);
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         errors: [],
-        isValid: true
+        isValid: true,
       }));
       return true;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const errors: FormFieldError[] = error.errors.map(err => ({
+        const errors: FormFieldError[] = error.errors.map((err) => ({
           field: err.path.join('.'),
-          message: err.message
+          message: err.message,
         }));
-        
-        setState(prev => ({
+
+        setState((prev) => ({
           ...prev,
           errors,
-          isValid: false
+          isValid: false,
         }));
       }
       return false;
@@ -92,26 +90,26 @@ export function useFormValidation(): FormValidation {
   }, []);
 
   const setFieldTouched = useCallback((field: string) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
-      touched: new Set([...prev.touched, field])
+      touched: new Set([...prev.touched, field]),
     }));
   }, []);
 
   const clearErrors = useCallback(() => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       errors: [],
-      isValid: true
+      isValid: true,
     }));
   }, []);
 
   const getFieldError = useCallback((field: string): string | undefined => {
-    return state.errors.find(error => error.field === field)?.message;
+    return state.errors.find((error) => error.field === field)?.message;
   }, [state.errors]);
 
   const hasFieldError = useCallback((field: string): boolean => {
-    return state.errors.some(error => error.field === field);
+    return state.errors.some((error) => error.field === field);
   }, [state.errors]);
 
   return {
@@ -123,22 +121,20 @@ export function useFormValidation(): FormValidation {
     setFieldTouched,
     clearErrors,
     getFieldError,
-    hasFieldError
+    hasFieldError,
   };
 }
 
-// Hook for form state management with validation
-export function useFormState<T extends Record<string, any>>(
+export function useFormState<T extends Record<string, unknown>>(
   initialValues: T,
-  validationSchema?: z.ZodSchema
+  validationSchema?: z.AnyZodObject,
 ) {
   const [values, setValues] = useState<T>(initialValues);
   const validation = useFormValidation();
 
-  const setValue = useCallback((field: keyof T, value: any) => {
-    setValues(prev => ({ ...prev, [field]: value }));
-    
-    // Auto-validate if schema is provided
+  const setValue = useCallback((field: keyof T, value: unknown) => {
+    setValues((prev) => ({ ...prev, [field]: value }));
+
     if (validationSchema) {
       validation.validateField(field as string, value, validationSchema);
     }
@@ -166,6 +162,6 @@ export function useFormState<T extends Record<string, any>>(
     setFieldTouched,
     reset,
     validate,
-    ...validation
+    ...validation,
   };
 }

@@ -1,18 +1,26 @@
 // WebSocket Server for Real-time AI Processing
 // This can be easily removed if the WebSocket implementation doesn't work
 
-import { Server as SocketIOServer } from 'socket.io';
+import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
-import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
-import { getUserAndHouseholdData } from '@/lib/api/database';
-import { createErrorResponse, createSuccessResponse } from '@/lib/api/errors';
 import { isAIEnabled } from '@/lib/ai/config/aiConfig';
-import { RealTimeAIProcessor } from '@/lib/ai/services/RealTimeAIProcessor';
+import {
+  RealTimeAIProcessor,
+  type RealTimeAIRequest,
+} from '@/lib/ai/services/RealTimeAIProcessor';
+import { logger } from '@/lib/logging/logger';
+import { getUserAndHouseholdData } from '@/lib/api/database';
 
-export interface WebSocketMessage {
-  type: 'ai_processing_start' | 'ai_processing_progress' | 'ai_processing_complete' | 'ai_processing_error' | 'ai_suggestion' | 'ai_insight' | 'ai_learning_update';
-  data: any;
+export interface WebSocketMessage<TData = unknown> {
+  type:
+    | 'ai_processing_start'
+    | 'ai_processing_progress'
+    | 'ai_processing_complete'
+    | 'ai_processing_error'
+    | 'ai_suggestion'
+    | 'ai_insight'
+    | 'ai_learning_update';
+  data: TData;
   timestamp: string;
   requestId: string;
   userId: string;
@@ -26,9 +34,9 @@ export interface AIProcessingProgress {
   estimatedTimeRemaining?: number; // in seconds
 }
 
-export interface AIProcessingResult {
+export interface AIProcessingResult<TData = unknown> {
   success: boolean;
-  data?: any;
+  data?: TData;
   error?: string;
   processingTime: number;
   provider: string;
@@ -47,12 +55,12 @@ export class WebSocketManager {
 
   private initializeWebSocket() {
     // WebSocket will be initialized when the server starts
-    console.log('🔌 WebSocket Manager initialized');
+    logger.info('WebSocket Manager initialized');
   }
 
   public initialize(server: HTTPServer) {
     if (this.io) {
-      console.log('⚠️ WebSocket server already initialized');
+      logger.warn('WebSocket server already initialized');
       return;
     }
 
@@ -69,20 +77,20 @@ export class WebSocketManager {
     this.realTimeProcessor = new RealTimeAIProcessor(this);
 
     this.setupEventHandlers();
-    console.log('🚀 WebSocket server initialized');
+    logger.info('WebSocket server initialized');
   }
 
   private setupEventHandlers() {
     if (!this.io) return;
 
     this.io.on('connection', (socket) => {
-      console.log(`🔌 Client connected: ${socket.id}`);
+      logger.info('WebSocket client connected', { socketId: socket.id });
 
       // Handle user authentication and room joining
       socket.on('join_household', async (data: { userId: string; householdId: string }) => {
         try {
           // Verify user has access to household
-          const { user, household, error } = await getUserAndHouseholdData(data.userId);
+          const { household, error } = await getUserAndHouseholdData(data.userId);
           
           if (error || !household || household.id !== data.householdId) {
             socket.emit('error', { message: 'Unauthorized access to household' });
@@ -105,42 +113,38 @@ export class WebSocketManager {
           this.householdRooms.get(data.householdId)!.add(socket.id);
 
           socket.emit('joined_household', { householdId: data.householdId });
-          console.log(`👤 User ${data.userId} joined household ${data.householdId}`);
+          logger.info('User joined household via WebSocket', {
+            userId: data.userId,
+            householdId: data.householdId,
+            socketId: socket.id,
+          });
 
         } catch (error) {
-          console.error('Error joining household:', error);
+          logger.error('Error joining household via WebSocket', error as Error, {
+            userId: data.userId,
+            householdId: data.householdId,
+          });
           socket.emit('error', { message: 'Failed to join household' });
         }
       });
 
       // Handle AI processing requests
-      socket.on('ai_process_request', async (data: {
-        type: string;
-        context: any;
-        requestId: string;
-        userId: string;
-        householdId: string;
-        priority?: string;
-      }) => {
+      socket.on('ai_process_request', async (data: RealTimeAIRequest) => {
         await this.handleAIProcessingRequest(socket, data);
       });
 
       // Handle disconnection
       socket.on('disconnect', () => {
-        console.log(`🔌 Client disconnected: ${socket.id}`);
+        logger.info('WebSocket client disconnected', { socketId: socket.id });
         this.cleanupUserConnection(socket.id);
       });
     });
   }
 
-  private async handleAIProcessingRequest(socket: any, data: {
-    type: string;
-    context: any;
-    requestId: string;
-    userId: string;
-    householdId: string;
-    priority?: string;
-  }) {
+  private async handleAIProcessingRequest(
+    socket: Socket,
+    data: RealTimeAIRequest
+  ) {
     const { type, context, requestId, userId, householdId, priority = 'medium' } = data;
 
     try {
@@ -157,12 +161,8 @@ export class WebSocketManager {
       // Use real-time AI processor if available
       if (this.realTimeProcessor) {
         const result = await this.realTimeProcessor.processRequest({
-          type: type as any,
-          context,
-          requestId,
-          userId,
-          householdId,
-          priority: priority as any
+          ...data,
+          priority,
         });
 
         // Emit completion
@@ -185,11 +185,16 @@ export class WebSocketManager {
         await this.simulateAIProcessing(socket, requestId, type, context, userId, householdId);
       }
 
-    } catch (error: any) {
-      console.error('AI processing error:', error);
+    } catch (error) {
+      logger.error('AI processing error via WebSocket', error as Error, {
+        userId,
+        householdId,
+        requestId,
+        type,
+      });
       this.emitToUser(userId, {
         type: 'ai_processing_error',
-        data: { requestId, error: error.message },
+        data: { requestId, error: error instanceof Error ? error.message : 'Unknown error' },
         timestamp: new Date().toISOString(),
         requestId,
         userId,
@@ -199,10 +204,10 @@ export class WebSocketManager {
   }
 
   private async simulateAIProcessing(
-    socket: any,
+    _socket: Socket,
     requestId: string,
-    type: string,
-    context: any,
+    type: RealTimeAIRequest['type'],
+    context: RealTimeAIRequest['context'],
     userId: string,
     householdId: string
   ) {
@@ -254,7 +259,7 @@ export class WebSocketManager {
     });
   }
 
-  private generateMockResults(type: string, context: any): any {
+  private generateMockResults(type: RealTimeAIRequest['type'], context: RealTimeAIRequest['context']): Record<string, unknown> {
     switch (type) {
       case 'shopping_suggestions':
         return {

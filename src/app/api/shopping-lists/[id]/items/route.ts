@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(
   request: NextRequest,
@@ -16,7 +17,7 @@ export async function GET(
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -44,16 +45,13 @@ export async function GET(
         .order('created_at', { ascending: true });
 
       if (itemsError) {
-        console.error('Error fetching items:', itemsError);
+        logger.error('Error fetching shopping items', itemsError, { listId, householdId: household.id });
         return createErrorResponse('Failed to fetch items', 500, itemsError.message);
       }
 
-      console.log(`🔍 Fetched ${items?.length || 0} items for list ${listId}:`, items);
-
-      return NextResponse.json({
-        success: true,
-        items: items || []
-      }, { status: 200 });
+      return createSuccessResponse({
+        items: items || [],
+      }, 'Shopping list items fetched successfully');
 
     } catch (error) {
       return handleApiError(error, { route: '/api/shopping-lists/[id]/items', method: 'GET', userId: user.id });
@@ -78,7 +76,7 @@ export async function POST(
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -122,7 +120,7 @@ export async function POST(
         .single();
 
       if (createError) {
-        console.error('Error creating item:', createError);
+        logger.error('Error creating shopping item', createError, { listId, householdId: household.id });
         return createErrorResponse('Failed to create item', 500, createError.message);
       }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { useUserData } from '@/hooks/useUserData';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface BudgetEnvelope {
   id: string;
@@ -38,6 +39,19 @@ export default function NewSpendingPage() {
     source: 'manual' as 'manual' | 'receipt_ocr' | 'bill_payment' | 'import'
   });
 
+  const fetchEnvelopes = useCallback(async () => {
+    try {
+      const response = await fetch('/api/finance/budget-envelopes');
+      if (response.ok) {
+        const data = await response.json();
+        setEnvelopes(data.envelopes || []);
+      }
+    } catch (error) {
+      console.error('Error fetching envelopes:', error);
+      toast.error('Failed to load budget envelopes.');
+    }
+  }, []);
+
   useEffect(() => {
     if (!isLoaded) return;
     
@@ -46,7 +60,7 @@ export default function NewSpendingPage() {
       return;
     }
 
-    if (userData && userData.household) {
+    if (userData?.household) {
       const householdPlan = userData.household.plan || 'free';
       
       if (!canAccessFeature(householdPlan, 'spending_tracking')) {
@@ -56,22 +70,10 @@ export default function NewSpendingPage() {
 
       // Fetch budget envelopes if user has access
       if (canAccessFeature(householdPlan, 'budget_envelopes')) {
-        fetchEnvelopes();
+        void fetchEnvelopes();
       }
     }
-  }, [isLoaded, isSignedIn, userData, router]);
-
-  const fetchEnvelopes = async () => {
-    try {
-      const response = await fetch('/api/finance/budget-envelopes');
-      if (response.ok) {
-        const data = await response.json();
-        setEnvelopes(data.envelopes || []);
-      }
-    } catch (error) {
-      console.error('Error fetching envelopes:', error);
-    }
-  };
+  }, [fetchEnvelopes, isLoaded, isSignedIn, router, userData]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -107,11 +109,11 @@ export default function NewSpendingPage() {
       } else {
         const error = await response.json();
         console.error('Error creating spend entry:', error);
-        alert('Failed to create expense. Please try again.');
+        toast.error('Failed to create expense. Please try again.');
       }
     } catch (error) {
       console.error('Error creating spend entry:', error);
-      alert('Failed to create expense. Please try again.');
+      toast.error('Failed to create expense. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -121,7 +123,7 @@ export default function NewSpendingPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
         </div>
       </div>
     );

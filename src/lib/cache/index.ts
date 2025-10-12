@@ -1,7 +1,8 @@
 // Multi-level caching system for improved performance
 import { createClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/logger';
 
-export interface CacheEntry<T = any> {
+export interface CacheEntry<T = unknown> {
   value: T;
   timestamp: number;
   ttl: number;
@@ -34,7 +35,7 @@ export class CacheManager {
       const memoryResult = this.memoryCache.get(key);
       if (memoryResult && !this.isExpired(memoryResult)) {
         this.log('info', `Cache hit in memory: ${key}`);
-        return memoryResult.value;
+        return memoryResult.value as T;
       }
 
       // Remove expired entry from memory
@@ -55,7 +56,7 @@ export class CacheManager {
       this.log('info', `Cache miss: ${key}`);
       return null;
     } catch (error) {
-      this.log('error', `Error getting from cache: ${key}`, error);
+      this.log('error', `Error getting from cache: ${key}`, { error });
       return null;
     }
   }
@@ -73,12 +74,12 @@ export class CacheManager {
 
       // Store in Supabase cache (async, don't wait)
       this.supabaseCache.set(key, value, ttl, tags).catch(error => {
-        this.log('error', `Failed to store in Supabase cache: ${key}`, error);
+        this.log('error', `Failed to store in Supabase cache: ${key}`, { error });
       });
 
       this.log('info', `Cached: ${key}`, { ttl, tags });
     } catch (error) {
-      this.log('error', `Error setting cache: ${key}`, error);
+      this.log('error', `Error setting cache: ${key}`, { error });
     }
   }
 
@@ -99,7 +100,7 @@ export class CacheManager {
 
       this.log('info', `Deleted from cache: ${key}`);
     } catch (error) {
-      this.log('error', `Error deleting from cache: ${key}`, error);
+      this.log('error', `Error deleting from cache: ${key}`, { error });
     }
   }
 
@@ -125,7 +126,7 @@ export class CacheManager {
 
       this.log('info', `Invalidated cache by tags: ${tags.join(', ')}`, { count: keysToDelete.size });
     } catch (error) {
-      this.log('error', `Error invalidating cache by tags: ${tags.join(', ')}`, error);
+      this.log('error', `Error invalidating cache by tags: ${tags.join(', ')}`, { error });
     }
   }
 
@@ -140,7 +141,7 @@ export class CacheManager {
 
       this.log('info', 'Cache cleared');
     } catch (error) {
-      this.log('error', 'Error clearing cache', error);
+      this.log('error', 'Error clearing cache', { error });
     }
   }
 
@@ -244,19 +245,19 @@ export class CacheManager {
     });
   }
 
-  private log(level: 'info' | 'warn' | 'error', message: string, data?: any): void {
-    const timestamp = new Date().toISOString();
-    
+  private log(level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>): void {
     switch (level) {
       case 'info':
-        console.log(`[${timestamp}] CACHE INFO: ${message}`, data || '');
+        logger.info(message, data);
         break;
       case 'warn':
-        console.warn(`[${timestamp}] CACHE WARN: ${message}`, data || '');
+        logger.warn(message, undefined, data);
         break;
       case 'error':
-        console.error(`[${timestamp}] CACHE ERROR: ${message}`, data || '');
+        logger.error(message, data?.error instanceof Error ? data.error : undefined, data);
         break;
+      default:
+        logger.info(message, data);
     }
   }
 }
@@ -289,13 +290,13 @@ class SupabaseCache {
 
       this.stats.supabaseHits++;
       return {
-        value: data.cache_value,
+        value: data.cache_value as T,
         timestamp: new Date(data.created_at).getTime(),
         ttl: data.ttl,
         tags: data.tags || []
       };
     } catch (error) {
-      console.warn('Supabase cache get error:', error);
+      logger.warn('Supabase cache get error', error as Error, { key });
       return null;
     }
   }
@@ -316,7 +317,7 @@ class SupabaseCache {
         throw error;
       }
     } catch (error) {
-      console.warn('Supabase cache set error:', error);
+      logger.warn('Supabase cache set error', error as Error, { key });
     }
   }
 
@@ -327,7 +328,7 @@ class SupabaseCache {
         .delete()
         .eq('cache_key', key);
     } catch (error) {
-      console.warn('Supabase cache delete error:', error);
+      logger.warn('Supabase cache delete error', error as Error, { key });
     }
   }
 
@@ -336,9 +337,9 @@ class SupabaseCache {
       await this.supabase
         .from('cache_entries')
         .delete()
-        .neq('cache_key', ''); // Delete all entries
+        .neq('cache_key', '');
     } catch (error) {
-      console.warn('Supabase cache clear error:', error);
+      logger.warn('Supabase cache clear error', error as Error);
     }
   }
 }
@@ -348,11 +349,15 @@ export const cacheManager = new CacheManager();
 
 // Cache decorator for methods
 export function Cached(ttl: number = 5 * 60 * 1000, tags: string[] = []) {
-  return function (target: any, propertyName: string, descriptor: PropertyDescriptor) {
+  return function (target: unknown, propertyName: string, descriptor: PropertyDescriptor) {
     const method = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
-      const cacheKey = `${target.constructor.name}:${propertyName}:${JSON.stringify(args)}`;
+    descriptor.value = async function (...args: unknown[]) {
+      const cacheKey = `${
+        target instanceof Object && 'constructor' in target
+          ? (target as { constructor: { name: string } }).constructor.name
+          : 'Function'
+      }:${propertyName}:${JSON.stringify(args)}`;
       
       // Try to get from cache
       const cached = await cacheManager.get(cacheKey);

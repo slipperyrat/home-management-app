@@ -1,8 +1,80 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
-import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { createErrorResponse, handleApiError } from '@/lib/api/errors';
 import { logger, createRequestLogger } from '@/lib/logging/logger';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database.types';
+
+type SupabaseClientType = SupabaseClient<Database>;
+
+type UsersRow = Database['public']['Tables']['users']['Row'];
+type ChoresRow = Database['public']['Tables']['chores']['Row'];
+type RewardRedemptionRow = Database['public']['Tables']['reward_redemptions']['Row'];
+type ShoppingListRow = Database['public']['Tables']['shopping_lists']['Row'];
+type MealPlanRow = Database['public']['Tables']['meal_plans']['Row'];
+type MealPlanIngredientRow = Database['public']['Tables']['meal_plan_ingredients']['Row'] & {
+  meal_plans?: MealPlanRow | null;
+};
+type RecipeRow = Database['public']['Tables']['recipes']['Row'];
+type BillRow = Database['public']['Tables']['bills']['Row'];
+type ShoppingItemRow = Database['public']['Tables']['shopping_items']['Row'];
+
+interface UserProfileExport {
+  id: string;
+  email: string | null;
+  name: string | null;
+  xp: number | null;
+  created_at: string | null;
+}
+
+interface UserChoreExport {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string | null;
+  assigned_to: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+interface UserDataExport {
+  profile?: UserProfileExport;
+  chores?: UserChoreExport[];
+  rewards?: RewardRedemptionRow[];
+}
+
+interface HouseholdDataExport {
+  info?: {
+    id: string;
+    name: string | null;
+    game_mode: string | null;
+    created_at: string | null;
+  };
+  shopping_lists?: ShoppingListRow[];
+  meal_plans?: MealPlanRow[];
+  recipes?: RecipeRow[];
+  bills?: BillRow[];
+}
+
+interface MissingIngredient {
+  ingredient_name: string;
+  meal_name: string;
+  meal_type: string;
+  quantity_needed: string;
+}
+
+type AuditTrailEntry = Record<string, unknown>;
+
+interface ExportPayload {
+  export_date: string;
+  user_id: string;
+  user_data: UserDataExport;
+  household_data: HouseholdDataExport;
+  audit_trail: AuditTrailEntry[];
+  export_format: 'json';
+  privacy_notice: string;
+}
 
 export async function GET(req: NextRequest) {
   return withAPISecurity(req, async (request, user) => {
@@ -12,8 +84,6 @@ export async function GET(req: NextRequest) {
     try {
       log.apiCall('GET', '/api/user-data/export');
       
-      console.log('🚀 GET: Exporting user data for user:', user.id);
-
       // Get user and household data
       const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
       
@@ -26,7 +96,7 @@ export async function GET(req: NextRequest) {
       log.info('Starting data export', { userId: user.id, householdId: household.id });
 
       // Export user's personal data
-      const userDataExport = await exportUserData(supabase, user.id, household.id);
+      const userDataExport = await exportUserData(supabase, user.id);
       
       // Export household data (if user is a member)
       const householdData = await exportHouseholdData(supabase, household.id);
@@ -34,7 +104,7 @@ export async function GET(req: NextRequest) {
       // Export audit trail
       const auditData = await exportAuditData(supabase, user.id);
 
-      const exportData = {
+      const exportData: ExportPayload = {
         export_date: new Date().toISOString(),
         user_id: user.id,
         user_data: userDataExport,
@@ -82,8 +152,11 @@ export async function GET(req: NextRequest) {
 }
 
 // Export user's personal data
-async function exportUserData(supabase: any, userId: string, householdId: string | null) {
-  const userData: any = {};
+async function exportUserData(
+  supabase: SupabaseClientType,
+  userId: string,
+): Promise<UserDataExport> {
+  const userData: UserDataExport = {};
 
   // User profile
   const { data: userProfile } = await supabase
@@ -109,7 +182,7 @@ async function exportUserData(supabase: any, userId: string, householdId: string
     .eq('assigned_to', userId);
   
   if (userChores) {
-    userData.chores = userChores.map((chore: any) => ({
+    userData.chores = userChores.map((chore) => ({
       id: chore.id,
       title: chore.title,
       description: chore.description,
@@ -134,8 +207,11 @@ async function exportUserData(supabase: any, userId: string, householdId: string
 }
 
 // Export household data
-async function exportHouseholdData(supabase: any, householdId: string) {
-  const householdData: any = {};
+async function exportHouseholdData(
+  supabase: SupabaseClientType,
+  householdId: string,
+): Promise<HouseholdDataExport> {
+  const householdData: HouseholdDataExport = {};
 
   // Household info
   const { data: household } = await supabase
@@ -197,7 +273,7 @@ async function exportHouseholdData(supabase: any, householdId: string) {
 }
 
 // Export audit trail
-async function exportAuditData(supabase: any, userId: string) {
+async function exportAuditData(supabase: SupabaseClientType, userId: string): Promise<AuditTrailEntry[]> {
   const { data: auditTrail } = await supabase
     .rpc('get_user_audit_trail', { p_user_id: userId, p_limit: 1000 });
   

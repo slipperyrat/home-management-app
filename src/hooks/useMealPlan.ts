@@ -2,11 +2,17 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+interface RecipeIngredient {
+  name: string;
+  quantity: string | number;
+  unit?: string;
+}
+
 interface Recipe {
   id: string;
   title: string;
   description: string;
-  ingredients: any[];
+  ingredients: RecipeIngredient[];
   instructions: string[];
   prep_time: number;
   cook_time: number;
@@ -15,48 +21,46 @@ interface Recipe {
   tags: string[];
 }
 
+interface MealPlanDay {
+  breakfast?: Recipe | string | null;
+  lunch?: Recipe | string | null;
+  dinner?: Recipe | string | null;
+}
+
 interface MealPlan {
   id: string;
   household_id: string;
   week_start_date: string;
-  meals: {
-    [day: string]: {
-      breakfast?: Recipe | string | null;
-      lunch?: Recipe | string | null;
-      dinner?: Recipe | string | null;
-    };
-  };
+  meals: Record<string, MealPlanDay>;
 }
 
 const fetchMealPlan = async (weekStart: string): Promise<MealPlan | null> => {
   const response = await fetch(`/api/meal-planner?week_start_date=${weekStart}`);
-  
+
   if (!response.ok) {
     if (response.status === 404) {
-      return null; // No meal plan exists for this week
+      return null;
     }
     throw new Error(`Failed to fetch meal plan: ${response.status}`);
   }
-  
+
   const data = await response.json();
-  
-  // Handle the API response structure
+
   if (data.success && data.mealPlan) {
-    return data.mealPlan;
+    return data.mealPlan as MealPlan;
   }
-  
-  // Return null if no meal plan exists
+
   return null;
 };
 
 export const useMealPlan = (weekStart?: Date) => {
   const weekStartString = weekStart?.toISOString().split('T')[0];
-  
+
   return useQuery({
     queryKey: ['mealPlan', weekStartString],
     queryFn: () => fetchMealPlan(weekStartString!),
-    enabled: !!weekStartString, // Only run if weekStart exists
-    staleTime: 5 * 60 * 1000, // 5 minutes - meal plans change more frequently
-    gcTime: 15 * 60 * 1000, // 15 minutes in cache
+    enabled: Boolean(weekStartString),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
 };

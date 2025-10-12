@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getUserPowerUps } from '@/lib/supabase/rewards';
+import { logger } from '@/lib/logging/logger';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,7 +31,7 @@ export async function awardPoints({
   reason
 }: AwardPointsParams): Promise<AwardPointsResult> {
   try {
-    console.log(`🎯 Awarding ${amount} ${type} to user ${userId}${reason ? ` (${reason})` : ''}`);
+    logger.info('Awarding points', { userId, amount, type, reason });
 
     // Validate inputs
     if (!userId) {
@@ -67,7 +68,7 @@ export async function awardPoints({
       };
     }
 
-    const currentValue = (currentData as any)[type] || 0;
+    const currentValue = (currentData?.[type as keyof typeof currentData] as number | null) ?? 0;
     const newValue = currentValue + amount;
 
     // Update the user's points/coins
@@ -79,7 +80,7 @@ export async function awardPoints({
       .single();
 
     if (error) {
-      console.error(`❌ Error awarding ${type} to user ${userId}:`, error);
+      logger.error('Error awarding points', error, { userId, type, amount });
       return { 
         success: false, 
         error: `Failed to award ${type}: ${error.message}` 
@@ -93,8 +94,8 @@ export async function awardPoints({
       };
     }
 
-    const newTotal = (data as any)[type];
-    console.log(`✅ Successfully awarded ${amount} ${type} to user ${userId}. New total: ${newTotal}`);
+    const newTotal = data?.[type as keyof typeof data] as number | undefined;
+    logger.info('Award points operation complete', { userId, amount, type, newTotal });
 
     return {
       success: true,
@@ -102,7 +103,7 @@ export async function awardPoints({
     };
 
   } catch (error) {
-    console.error(`❌ Exception awarding ${type} to user ${userId}:`, error);
+    logger.error('Exception awarding points', error as Error, { userId, amount, type });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -129,9 +130,9 @@ export async function awardCoins(userId: string, amount: number, reason?: string
     let coinReward = 1;
     if (hasDoubleCoin) {
       coinReward = 2;
-      console.log(`🎯 User ${userId} has active double_coin power-up - doubling coin reward`);
+      logger.info('Double coin power-up active; doubling reward', { userId, amount });
     } else {
-      console.log(`🎯 User ${userId} has no active double_coin power-up - using default coin reward`);
+      logger.info('No double coin power-up; using default reward', { userId, amount });
     }
 
     // Apply the coin reward multiplier
@@ -144,7 +145,7 @@ export async function awardCoins(userId: string, amount: number, reason?: string
       ...(reason && { reason: `${reason}${hasDoubleCoin ? ' (doubled by power-up)' : ''}` })
     });
   } catch (error) {
-    console.error(`❌ Error checking power-ups for user ${userId}:`, error);
+    logger.error('Error checking user power-ups', error as Error, { userId });
     // Fall back to default behavior if power-up check fails
     return awardPoints({ 
       userId, 

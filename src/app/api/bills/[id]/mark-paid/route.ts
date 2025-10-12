@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { markBillPaidSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
 
 export async function POST(
   request: NextRequest,
@@ -13,10 +14,10 @@ export async function POST(
       const resolvedParams = await params;
       const billId = resolvedParams.id;
       
-      console.log('🚀 POST: Marking bill as paid for user:', user.id, 'bill:', billId);
+      logger.info('Marking bill as paid', { userId: user.id, billId });
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -29,8 +30,11 @@ export async function POST(
         // Add the bill ID to the validation data
         const validationData = { id: billId, ...body };
         validatedData = markBillPaidSchema.parse(validationData);
-      } catch (validationError: any) {
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+      } catch (validationError: unknown) {
+        if (validationError instanceof Error && 'errors' in validationError) {
+          return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
+        }
+        return createErrorResponse('Invalid input', 400);
       }
 
       // First, verify the bill exists and belongs to the user's household
@@ -47,7 +51,7 @@ export async function POST(
       }
 
       // Update the bill to mark it as paid with validated data
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         status: 'paid',
         paid_date: validatedData.paid_date || new Date().toISOString().split('T')[0],
       };
@@ -73,7 +77,7 @@ export async function POST(
         .single();
 
       if (updateError) {
-        console.error('Error updating bill:', updateError);
+        logger.error('Error updating bill as paid', updateError, { billId, householdId: household.id });
         return createErrorResponse('Failed to mark bill as paid', 500, updateError.message);
       }
 

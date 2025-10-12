@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(_request: NextRequest) {
   try {
@@ -35,12 +41,12 @@ export async function GET(_request: NextRequest) {
       .order('start_time', { ascending: true });
 
     if (eventsError) {
-      console.error('Error fetching events:', eventsError);
+      logger.error('Error fetching events', eventsError, { householdId, userId });
       return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
     }
 
     // Calculate AI insights
-    const insights = calculateAICalendarInsights(events || []);
+    const insights = calculateAICalendarInsights(events ?? []);
 
     return NextResponse.json({
       success: true,
@@ -48,12 +54,33 @@ export async function GET(_request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in calendar insights API:', error);
+    logger.error('Error in calendar insights API', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-function calculateAICalendarInsights(events: any[]): any {
+type CalendarEvent = Database['public']['Tables']['household_events']['Row'];
+
+type CalendarInsightStats = {
+  totalEvents: number;
+  upcomingCount: number;
+  mostCommonEventTypes: string[];
+};
+
+type CalendarInsights = {
+  total_events: number;
+  upcoming_events: number;
+  conflicts_resolved: number;
+  ai_suggestions_count: number;
+  most_common_event_types: string[];
+  optimal_scheduling_times: string[];
+  household_patterns: string[];
+  suggested_improvements: string[];
+  ai_learning_progress: number;
+  next_optimal_scheduling: string;
+};
+
+function calculateAICalendarInsights(events: CalendarEvent[]): CalendarInsights {
   const now = new Date();
   const upcomingEvents = events.filter(event => new Date(event.start_time) > now);
   
@@ -62,7 +89,7 @@ function calculateAICalendarInsights(events: any[]): any {
   const upcomingCount = upcomingEvents.length;
   
   // Analyze event types
-  const eventTypeCounts: { [key: string]: number } = {};
+  const eventTypeCounts: Record<string, number> = {};
   events.forEach(event => {
     const type = event.event_type || 'unknown';
     eventTypeCounts[type] = (eventTypeCounts[type] || 0) + 1;
@@ -74,7 +101,7 @@ function calculateAICalendarInsights(events: any[]): any {
     .map(([type]) => type);
 
   // Analyze scheduling patterns
-  const timeSlots: { [key: string]: number } = {};
+  const timeSlots: Record<string, number> = {};
   events.forEach(event => {
     const hour = new Date(event.start_time).getHours();
     const timeSlot = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
@@ -104,7 +131,7 @@ function calculateAICalendarInsights(events: any[]): any {
   }
 
   // Generate suggestions
-  const suggestedImprovements = generateSuggestedImprovements(events, {
+  const suggestedImprovements = generateSuggestedImprovements({
     totalEvents,
     upcomingCount,
     mostCommonEventTypes: mostCommonEventTypes.length
@@ -133,7 +160,7 @@ function calculateAICalendarInsights(events: any[]): any {
   };
 }
 
-function generateSuggestedImprovements(_events: any[], stats: any): string[] {
+function generateSuggestedImprovements(stats: CalendarInsightStats): string[] {
   const suggestions: string[] = [];
 
   if (stats.totalEvents < 3) {

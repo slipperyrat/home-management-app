@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { canAccessFeature } from '@/lib/server/canAccessFeature';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/logger';
 
 // Validation schemas
 const createEnvelopeSchema = z.object({
@@ -19,21 +20,10 @@ const createEnvelopeSchema = z.object({
   path: ['period_end'],
 });
 
-const updateEnvelopeSchema = z.object({
-  id: z.string().uuid('Invalid envelope ID'),
-  name: z.string().min(1, 'Name is required').max(255, 'Name too long').optional(),
-  description: z.string().optional(),
-  allocated_amount: z.number().positive('Allocated amount must be positive').optional(),
-  period_start: z.string().refine((date) => !isNaN(Date.parse(date)), 'Invalid date format').optional(),
-  period_end: z.string().refine((date) => !isNaN(Date.parse(date)), 'Invalid date format').optional(),
-  category: z.string().optional(),
-  color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid color format').optional(),
-});
-
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -79,7 +69,7 @@ export async function GET(request: NextRequest) {
       const { data: envelopes, error } = await query;
 
       if (error) {
-        console.error('Error fetching budget envelopes:', error);
+        logger.error('Error fetching budget envelopes', error, { householdId: household.id });
         return createErrorResponse('Failed to fetch budget envelopes', 500);
       }
 
@@ -116,7 +106,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -153,7 +143,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) {
-        console.error('Error creating budget envelope:', error);
+        logger.error('Error creating budget envelope', error, { householdId: household.id, userId: user.id });
         return createErrorResponse('Failed to create budget envelope', 500);
       }
 

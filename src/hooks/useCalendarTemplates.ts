@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { CalendarTemplate, getCalendarTemplates } from '@/lib/entitlements';
+import { logger } from '@/lib/logging/logger';
 
 interface UseCalendarTemplatesProps {
   householdId: string;
@@ -11,19 +12,19 @@ export function useCalendarTemplates({ householdId, templateType }: UseCalendarT
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
       const data = await getCalendarTemplates(householdId);
       setTemplates(data);
     } catch (err) {
-      console.error('Error loading calendar templates:', err);
+      logger.error('Error loading calendar templates', err as Error, { householdId });
       setError('Failed to load calendar templates');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [householdId]);
 
   const createTemplate = async (templateData: Omit<CalendarTemplate, 'id' | 'created_at' | 'updated_at'>) => {
     try {
@@ -47,7 +48,7 @@ export function useCalendarTemplates({ householdId, templateType }: UseCalendarT
       setTemplates(prev => [newTemplate, ...prev]);
       return newTemplate;
     } catch (err) {
-      console.error('Error creating template:', err);
+      logger.error('Error creating calendar template', err as Error, { householdId });
       setError(err instanceof Error ? err.message : 'Failed to create template');
       throw err;
     }
@@ -69,14 +70,14 @@ export function useCalendarTemplates({ householdId, templateType }: UseCalendarT
       }
 
       const updatedTemplate = await response.json();
-      setTemplates(prev => 
-        prev.map(template => 
+      setTemplates(prev =>
+        prev.map(template =>
           template.id === templateId ? updatedTemplate : template
         )
       );
       return updatedTemplate;
     } catch (err) {
-      console.error('Error updating template:', err);
+      logger.error('Error updating calendar template', err as Error, { householdId, templateId });
       setError(err instanceof Error ? err.message : 'Failed to update template');
       throw err;
     }
@@ -95,7 +96,7 @@ export function useCalendarTemplates({ householdId, templateType }: UseCalendarT
 
       setTemplates(prev => prev.filter(template => template.id !== templateId));
     } catch (err) {
-      console.error('Error deleting template:', err);
+      logger.error('Error deleting calendar template', err as Error, { householdId, templateId });
       setError(err instanceof Error ? err.message : 'Failed to delete template');
       throw err;
     }
@@ -103,11 +104,9 @@ export function useCalendarTemplates({ householdId, templateType }: UseCalendarT
 
   const createEventsFromTemplate = async (template: CalendarTemplate) => {
     try {
-      // This would integrate with your calendar event creation API
-      // For now, we'll just return the template events
       return template.events;
     } catch (err) {
-      console.error('Error creating events from template:', err);
+      logger.error('Error creating events from template', err as Error, { householdId, templateId: template.id });
       setError(err instanceof Error ? err.message : 'Failed to create events from template');
       throw err;
     }
@@ -117,10 +116,9 @@ export function useCalendarTemplates({ householdId, templateType }: UseCalendarT
     if (householdId) {
       loadTemplates();
     }
-  }, [householdId, templateType]);
+  }, [householdId, templateType, loadTemplates]);
 
-  // Filter templates by type if specified
-  const filteredTemplates = templateType 
+  const filteredTemplates = templateType
     ? templates.filter(template => template.template_type === templateType)
     : templates;
 

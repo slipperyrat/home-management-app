@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getAuth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { canAccessFeatureFromEntitlements } from '@/lib/server/canAccessFeature';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,7 +13,7 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase: SupabaseClient<Database> = createClient(supabaseUrl, supabaseKey);
 
 const GetTemplatesSchema = z.object({
   household_id: z.string().uuid().optional(),
@@ -88,13 +90,13 @@ export async function GET(request: NextRequest) {
     const { data: templates, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching calendar templates:', error);
+      logger.error('Error fetching calendar templates', error, { userId, householdId: household_id });
       return NextResponse.json({ error: 'Failed to fetch templates' }, { status: 500 });
     }
 
     return NextResponse.json(templates || []);
   } catch (error) {
-    console.error('Error in GET /api/calendar-templates:', error);
+    logger.error('Error in GET /api/calendar-templates', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -116,31 +118,25 @@ const CreateTemplateSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔍 POST /api/calendar-templates called');
+    logger.info('Creating calendar template');
     const body = await request.json();
-    console.log('🔍 Request body:', body);
     const { household_id, name, description, template_type, rrule, events } = CreateTemplateSchema.parse(body);
 
     // Get user and verify household access
     const { userId } = await getAuth(request);
-    console.log('🔍 User ID from auth:', userId);
     if (!userId) {
-      console.log('❌ No user ID from auth');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Verify user has access to this household
-    console.log('🔍 Checking membership for user:', userId, 'household:', household_id);
     const { data: membership, error: membershipError } = await supabase
       .from('household_members')
       .select('household_id, role')
       .eq('household_id', household_id)
       .eq('user_id', userId)
       .single();
-    
-    console.log('🔍 Membership result:', { membership, membershipError });
+
     if (membershipError || !membership) {
-      console.log('❌ Membership check failed');
       return NextResponse.json({ error: 'Household not found or access denied' }, { status: 404 });
     }
 
@@ -181,7 +177,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (createError) {
-      console.error('Error creating calendar template:', createError);
+      logger.error('Error creating calendar template', createError, { userId, householdId: household_id });
       return NextResponse.json({ error: 'Failed to create template' }, { status: 500 });
     }
 
@@ -202,7 +198,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(template);
   } catch (error) {
-    console.error('Error in POST /api/calendar-templates:', error);
+    logger.error('Error in POST /api/calendar-templates', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

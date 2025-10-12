@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleCalendarService } from '@/lib/googleCalendar';
+import { logger } from '@/lib/logging/logger';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('🔄 Starting Google Calendar cron import...');
+    logger.info('Starting Google Calendar cron import');
 
     // Get all active Google Calendar imports
     const { data: importSettings, error: importError } = await supabase
@@ -34,12 +35,12 @@ export async function POST(request: NextRequest) {
       .eq('import_status', 'active');
 
     if (importError) {
-      console.error('Error fetching import settings:', importError);
+      logger.error('Error fetching Google Calendar import settings', importError);
       return NextResponse.json({ error: 'Failed to fetch import settings' }, { status: 500 });
     }
 
     if (!importSettings || importSettings.length === 0) {
-      console.log('ℹ️ No active Google Calendar imports found');
+      logger.info('No active Google Calendar imports found');
       return NextResponse.json({ 
         success: true, 
         message: 'No active imports to process',
@@ -54,16 +55,16 @@ export async function POST(request: NextRequest) {
     // Process each household's Google Calendar import
     for (const importSetting of importSettings) {
       try {
-        console.log(`📅 Processing import for household ${importSetting.household_id}`);
+        logger.info('Processing Google Calendar import for household', { householdId: importSetting.household_id });
 
         // Check if token is expired
         if (importSetting.token_expires_at && new Date(importSetting.token_expires_at) < new Date()) {
-          console.log(`⚠️ Token expired for household ${importSetting.household_id}, skipping`);
+          logger.warn('Google Calendar token expired; skipping household', { householdId: importSetting.household_id });
           continue;
         }
 
         if (!importSetting.access_token) {
-          console.log(`⚠️ No access token for household ${importSetting.household_id}, skipping`);
+          logger.warn('No Google Calendar access token; skipping household', { householdId: importSetting.household_id });
           continue;
         }
 
@@ -73,11 +74,11 @@ export async function POST(request: NextRequest) {
         // Get selected calendars
         const calendars = importSetting.calendars || [];
         const selectedCalendars = calendars
-          .filter((cal: any) => cal.selected !== false)
-          .map((cal: any) => cal.id);
+          .filter((cal: { id: string; selected?: boolean }) => cal.selected !== false)
+          .map((cal) => cal.id);
 
         if (selectedCalendars.length === 0) {
-          console.log(`ℹ️ No calendars selected for household ${importSetting.household_id}`);
+          logger.info('No calendars selected for Google import; skipping household', { householdId: importSetting.household_id });
           continue;
         }
 
@@ -127,14 +128,17 @@ export async function POST(request: NextRequest) {
                 });
 
               if (insertError) {
-                console.error(`Error inserting event for household ${importSetting.household_id}:`, insertError);
+                logger.error('Error inserting Google Calendar event', insertError, { householdId: importSetting.household_id, calendarId });
                 continue;
               }
 
               householdImported++;
 
             } catch (error) {
-              console.error(`Error processing event for household ${importSetting.household_id}:`, error);
+              logger.error('Error processing Google Calendar event', error instanceof Error ? error : new Error(String(error)), {
+                householdId: importSetting.household_id,
+                calendarId,
+              });
             }
           }
         }
@@ -168,15 +172,25 @@ export async function POST(request: NextRequest) {
         totalProcessed++;
         totalImported += householdImported;
 
-        console.log(`✅ Household ${importSetting.household_id}: ${householdImported} imported, ${householdSkipped} skipped`);
+        logger.info('Google Calendar import complete for household', {
+          householdId: importSetting.household_id,
+          importedCount: householdImported,
+          skippedCount: householdSkipped,
+        });
 
       } catch (error) {
-        console.error(`Error processing household ${importSetting.household_id}:`, error);
+        logger.error('Error processing Google Calendar import for household', error instanceof Error ? error : new Error(String(error)), {
+          householdId: importSetting.household_id,
+        });
         errors.push(`Household ${importSetting.household_id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
-    console.log(`🎉 Cron import completed: ${totalProcessed} households processed, ${totalImported} events imported`);
+    logger.info('Google Calendar cron import completed', {
+      householdsProcessed: totalProcessed,
+      eventsImported: totalImported,
+      errorCount: errors.length,
+    });
 
     return NextResponse.json({
       success: true,
@@ -190,7 +204,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in Google Calendar cron job:', error);
+    logger.error('Error in Google Calendar cron job', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import { logger } from '@/lib/logging/logger';
 
 export async function DELETE(
   request: NextRequest,
@@ -16,7 +17,7 @@ export async function DELETE(
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -56,7 +57,7 @@ export async function DELETE(
         .eq('list_id', listId);
 
       if (deleteError) {
-        console.error('Error deleting item:', deleteError);
+        logger.error('Error deleting shopping list item', deleteError, { listId, itemId, householdId: household.id });
         return createErrorResponse('Failed to delete item', 500, deleteError.message);
       }
 

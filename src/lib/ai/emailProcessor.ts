@@ -1,21 +1,28 @@
-import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
-import { getAIConfig } from './config/aiConfig';
+import { AIConfig, getAIConfig } from './config/aiConfig';
 import { AISuggestionProcessor } from './suggestionProcessor';
+import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
 
 // Types for AI email processing
+export interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
 export interface EmailData {
   subject: string;
   body: string;
   from: string;
   date: string;
-  attachments?: any[];
+  attachments?: EmailAttachment[];
 }
 
 export interface ParsedItem {
   itemType: 'bill' | 'receipt' | 'event' | 'appointment' | 'delivery' | 'other';
   confidenceScore: number;
-  extractedData: any;
+  extractedData: Record<string, unknown>;
   // Review status based on confidence
   reviewStatus: 'auto_approved' | 'needs_review' | 'manual_review';
   reviewReason?: string;
@@ -26,7 +33,7 @@ export interface ParsedItem {
   receiptTotal?: number;
   receiptDate?: string;
   receiptStore?: string;
-  receiptItems?: any[];
+  receiptItems?: Array<Record<string, unknown>>;
   eventTitle?: string;
   eventDate?: string;
   eventLocation?: string;
@@ -41,15 +48,16 @@ export interface ParsedItem {
 export interface AIProcessingResult {
   success: boolean;
   parsedItems: ParsedItem[];
-  suggestions: any[];
+  suggestions: Array<Record<string, unknown>>;
   processingTime: number;
   error?: string;
 }
 
 export class AIEmailProcessor {
-  private openai: OpenAI;
-  private supabase: any;
+  private openai?: OpenAI;
+  private supabase = createSupabaseAdminClient();
   private suggestionProcessor: AISuggestionProcessor;
+  private readonly config: AIConfig;
 
   // Confidence thresholds for AI extraction quality
   private static readonly HIGH_CONFIDENCE_THRESHOLD = 0.9;
@@ -239,22 +247,26 @@ export class AIEmailProcessor {
       // If all else fails, return null
       return null;
     } catch (error) {
-      console.warn(`Failed to parse date: ${dateString}`, error);
+      logger.warn('Failed to parse delivery date', error as Error, { dateString });
       return null;
     }
   }
 
   constructor() {
-    const emailAIConfig = getAIConfig('emailProcessing');
-    this.openai = new OpenAI({
-      apiKey: emailAIConfig.apiKey,
-      timeout: emailAIConfig.timeout
-    });
-    
-    this.supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    this.config = getAIConfig('emailProcessing');
+
+    if (this.config.enabled && this.config.provider === 'openai') {
+      if (!this.config.apiKey) {
+        throw new Error('OpenAI API key is not configured for email processing');
+      }
+
+      this.openai = new OpenAI({
+        apiKey: this.config.apiKey,
+        timeout: this.config.timeout
+      });
+    }
+
+    this.supabase = createSupabaseAdminClient();
     
     this.suggestionProcessor = new AISuggestionProcessor();
   }
@@ -264,7 +276,27 @@ export class AIEmailProcessor {
    */
   async processEmail(emailData: EmailData, householdId: string): Promise<AIProcessingResult> {
     const startTime = Date.now();
-    
+
+    if (!this.config.enabled) {
+      return {
+        success: false,
+        parsedItems: [],
+        suggestions: [],
+        processingTime: 0,
+        error: 'Email processing AI is disabled'
+      };
+    }
+
+    if (this.config.provider !== 'openai' || !this.openai) {
+      return {
+        success: false,
+        parsedItems: [],
+        suggestions: [],
+        processingTime: 0,
+        error: 'Email processing AI provider is not configured'
+      };
+    }
+
     try {
       // Log the processing start
       await this.logProcessing(householdId, 'info', 'Starting AI email processing', {
@@ -277,9 +309,8 @@ export class AIEmailProcessor {
       const prompt = this.createAnalysisPrompt(emailData);
       
       // Process with OpenAI
-      const emailAIConfig = getAIConfig('emailProcessing');
       const aiResponse = await this.openai.chat.completions.create({
-        model: emailAIConfig.model,
+        model: this.config.model,
         messages: [
           {
             role: 'system',
@@ -328,7 +359,7 @@ export class AIEmailProcessor {
 
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      
+
       // Log the error
       await this.logProcessing(householdId, 'error', 'AI email processing failed', {
         emailSubject: emailData.subject,
@@ -410,72 +441,59 @@ Only include fields that are relevant to the item type. Be as accurate as possib
         throw new Error('AI response is not an array');
       }
 
-      // Validate and transform each item
       const transformed = parsed.map(item => this.validateAndTransformItem(item));
-      console.log('✅ Transformed items:', transformed);
+      logger.debug?.('AI email items transformed', { count: transformed.length });
       return transformed;
       
     } catch (error) {
-      console.error('Failed to parse AI response:', error);
+      logger.error('Failed to parse AI response', error as Error);
       throw new Error(`Failed to parse AI response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  /**
-   * Validate and transform an AI response item
-   */
-  private validateAndTransformItem(item: any): ParsedItem {
-    // Ensure required fields exist
+  private validateAndTransformItem(item: Record<string, unknown>): ParsedItem {
     if (!item.itemType || !item.confidenceScore || !item.extractedData) {
       throw new Error('Missing required fields in AI response item');
     }
 
-    // Validate item type
-    const validTypes = ['bill', 'receipt', 'event', 'appointment', 'delivery', 'other'];
-    if (!validTypes.includes(item.itemType)) {
+    const validTypes: ParsedItem['itemType'][] = ['bill', 'receipt', 'event', 'appointment', 'delivery', 'other'];
+    if (!validTypes.includes(item.itemType as ParsedItem['itemType'])) {
       throw new Error(`Invalid item type: ${item.itemType}`);
     }
 
-    // Validate confidence score
     if (typeof item.confidenceScore !== 'number' || item.confidenceScore < 0 || item.confidenceScore > 1) {
       throw new Error(`Invalid confidence score: ${item.confidenceScore}`);
     }
 
-    // Assess confidence and determine review status
     const confidenceAssessment = this.assessConfidence(item.confidenceScore);
 
     return {
-      itemType: item.itemType,
+      itemType: item.itemType as ParsedItem['itemType'],
       confidenceScore: item.confidenceScore,
-      extractedData: item.extractedData,
-      // Review status based on confidence
+      extractedData: item.extractedData as Record<string, unknown>,
       reviewStatus: confidenceAssessment.reviewStatus,
       reviewReason: confidenceAssessment.reviewReason,
-      billAmount: item.billAmount,
-      billDueDate: item.billDueDate,
-      billProvider: item.billProvider,
-      billCategory: item.billCategory,
-      receiptTotal: item.receiptTotal,
-      receiptDate: item.receiptDate,
-      receiptStore: item.receiptStore,
-      receiptItems: item.receiptItems,
-      eventTitle: item.eventTitle,
-      eventDate: item.eventDate,
-      eventLocation: item.eventLocation,
-      eventDescription: item.eventDescription,
-             // Parse and validate delivery fields
-       deliveryDate: item.itemType === 'delivery' ? this.parseDeliveryDate(item.deliveryDate) : null,
-      deliveryProvider: item.deliveryProvider,
-      deliveryTrackingNumber: item.deliveryTrackingNumber,
-      deliveryStatus: item.deliveryStatus,
+      billAmount: item.billAmount as number | undefined,
+      billDueDate: item.billDueDate as string | undefined,
+      billProvider: item.billProvider as string | undefined,
+      billCategory: item.billCategory as string | undefined,
+      receiptTotal: item.receiptTotal as number | undefined,
+      receiptDate: item.receiptDate as string | undefined,
+      receiptStore: item.receiptStore as string | undefined,
+      receiptItems: item.receiptItems as Array<Record<string, unknown>> | undefined,
+      eventTitle: item.eventTitle as string | undefined,
+      eventDate: item.eventDate as string | undefined,
+      eventLocation: item.eventLocation as string | undefined,
+      eventDescription: item.eventDescription as string | undefined,
+      deliveryDate: item.itemType === 'delivery' ? this.parseDeliveryDate(item.deliveryDate as string | undefined) : null,
+      deliveryProvider: item.deliveryProvider as string | undefined,
+      deliveryTrackingNumber: item.deliveryTrackingNumber as string | undefined,
+      deliveryStatus: item.deliveryStatus as string | undefined,
     };
   }
 
-  /**
-   * Generate AI suggestions based on parsed data
-   */
-  private async generateSuggestions(parsedItems: ParsedItem[], _householdId: string): Promise<any[]> {
-    const suggestions = [];
+  private async generateSuggestions(parsedItems: ParsedItem[], _householdId: string): Promise<Array<Record<string, unknown>>> {
+    const suggestions: Array<Record<string, unknown>> = [];
 
     for (const item of parsedItems) {
       switch (item.itemType) {
@@ -492,7 +510,6 @@ Only include fields that are relevant to the item type. Be as accurate as possib
             reasoning: `Detected bill from ${item.billProvider} for $${item.billAmount} due ${item.billDueDate}. Suggest scheduling payment.`
           });
           break;
-
         case 'receipt':
           suggestions.push({
             type: 'shopping_list_update',
@@ -502,39 +519,36 @@ Only include fields that are relevant to the item type. Be as accurate as possib
               items: item.receiptItems,
               total: item.receiptTotal,
             },
-            reasoning: `Receipt from ${item.receiptStore} shows grocery purchase. Suggest updating pantry inventory.`
+            reasoning: `Receipt from ${item.receiptStore} totaling $${item.receiptTotal}. Update pantry inventory?`
           });
           break;
-
         case 'event':
         case 'appointment':
           suggestions.push({
             type: 'calendar_event',
             data: {
-              action: 'create_event',
               title: item.eventTitle,
               date: item.eventDate,
               location: item.eventLocation,
               description: item.eventDescription,
             },
-            reasoning: `Detected ${item.itemType}: ${item.eventTitle} on ${item.eventDate}. Suggest adding to calendar.`
+            reasoning: `Detected an event (${item.eventTitle}) on ${item.eventDate}. Add to calendar?`
           });
           break;
-
         case 'delivery':
           suggestions.push({
-            type: 'chore_creation',
+            type: 'delivery_tracking',
             data: {
-              action: 'schedule_delivery_tasks',
-              deliveryDate: item.deliveryDate,
-              description: `Prepare for delivery: ${item.eventDescription || 'Package delivery'}`,
               provider: item.deliveryProvider,
               trackingNumber: item.deliveryTrackingNumber,
               status: item.deliveryStatus,
+              expectedDelivery: item.deliveryDate,
             },
-            reasoning: `Delivery ${item.deliveryDate ? `scheduled for ${item.deliveryDate}` : 'detected'} from ${item.deliveryProvider || 'delivery service'}. Suggest creating preparation tasks.`
+            reasoning: `Delivery update from ${item.deliveryProvider} (${item.deliveryStatus}). Track package?`
           });
           break;
+        default:
+          suggestions.push(this.createFallbackSuggestion(item, _householdId));
       }
     }
 
@@ -548,7 +562,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
     householdId: string, 
     level: 'debug' | 'info' | 'warn' | 'error',
     message: string,
-    data: any
+    data: Record<string, unknown>
   ): Promise<void> {
     try {
       await this.supabase
@@ -561,8 +575,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
           processing_step: data.step || 'unknown'
         });
     } catch (error) {
-      // Don't fail the main process if logging fails
-      console.error('Failed to log AI processing:', error);
+      logger.warn('Failed to log AI processing', error as Error, { householdId });
     }
   }
 
@@ -615,7 +628,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
           .single();
 
         if (error) {
-          console.error('Failed to store parsed item:', error);
+          logger.warn('Failed to store parsed item', error, { emailQueueId, householdId });
           continue;
         }
 
@@ -624,7 +637,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
         }
 
       } catch (error) {
-        console.error('Error storing parsed item:', error);
+        logger.warn('Error storing parsed item', error as Error, { emailQueueId, householdId });
       }
     }
 
@@ -637,11 +650,11 @@ Only include fields that are relevant to the item type. Be as accurate as possib
   async storeSuggestions(
     householdId: string,
     parsedItemIds: string[],
-    suggestions: any[],
+    suggestions: Array<Record<string, unknown>>,
     userId?: string
   ): Promise<void> {
-    console.log('💾 Storing suggestions:', { householdId, parsedItemIds, suggestions, userId });
-    const storedSuggestions: any[] = [];
+    logger.debug?.('Storing AI suggestions', { householdId, parsedItemCount: parsedItemIds.length, suggestionCount: suggestions.length, userId });
+    const storedSuggestions: Array<Record<string, unknown>> = [];
 
     // First, store all suggestions
     for (let i = 0; i < suggestions.length; i++) {
@@ -663,7 +676,7 @@ Only include fields that are relevant to the item type. Be as accurate as possib
           .single();
 
         if (error) {
-          console.error('Failed to store suggestion:', error);
+          logger.warn('Failed to store suggestion', error, { householdId, suggestionType: suggestion.type });
           continue;
         }
 
@@ -671,14 +684,14 @@ Only include fields that are relevant to the item type. Be as accurate as possib
           storedSuggestions.push(storedSuggestion);
         }
       } catch (error) {
-        console.error('Failed to store suggestion:', error);
+        logger.warn('Error storing suggestion', error as Error, { householdId, suggestionType: suggestion.type });
       }
     }
 
     // Then, automatically process suggestions if we have a user ID
     if (userId && storedSuggestions.length > 0) {
       try {
-        console.log(`🔄 Auto-processing ${storedSuggestions.length} AI suggestions...`);
+        logger.info('Auto-processing AI suggestions', { householdId, count: storedSuggestions.length });
         
         const processingResults = await this.suggestionProcessor.processSuggestions(
           storedSuggestions,
@@ -693,13 +706,13 @@ Only include fields that are relevant to the item type. Be as accurate as possib
         const successfulCount = processingResults.filter(r => r.success).length;
         const failedCount = processingResults.filter(r => !r.success).length;
         
-        console.log(`✅ Auto-processed ${successfulCount} suggestions successfully`);
+        logger.info('AI suggestions auto-processed', { householdId, successfulCount, failedCount });
         if (failedCount > 0) {
-          console.log(`❌ Failed to process ${failedCount} suggestions`);
+          logger.warn('Some AI suggestions failed during auto-processing', { householdId, failedCount });
         }
 
       } catch (error) {
-        console.error('Failed to auto-process suggestions:', error);
+        logger.warn('Failed to auto-process suggestions', error as Error, { householdId });
         // Don't fail the main process if auto-processing fails
       }
     }

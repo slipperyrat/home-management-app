@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { exchangeCodeForTokens, GoogleCalendarService } from '@/lib/googleCalendar';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/logger';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -29,7 +30,10 @@ export async function GET(request: NextRequest) {
     });
 
     // Decode state to get household_id and user_id
-    const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
+    const stateData = JSON.parse(Buffer.from(state, 'base64').toString()) as {
+      household_id: string;
+      user_id: string;
+    };
     const { household_id, user_id } = stateData;
 
     // Exchange code for tokens
@@ -70,7 +74,10 @@ export async function GET(request: NextRequest) {
       });
 
     if (insertError) {
-      console.error('Error storing Google Calendar tokens:', insertError);
+      logger.error('Error storing Google Calendar tokens', insertError, {
+        householdId: household_id,
+        userId: user_id,
+      });
       return NextResponse.json({ error: 'Failed to store authentication' }, { status: 500 });
     }
 
@@ -80,7 +87,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
 
   } catch (error) {
-    console.error('Error in Google Calendar callback:', error);
+    logger.error('Error in Google Calendar callback', error instanceof Error ? error : new Error(String(error)));
     
     // Redirect back to the app with error
     const redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL}/calendar/sync?error=authentication_failed`;

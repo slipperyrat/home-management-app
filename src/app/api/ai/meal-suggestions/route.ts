@@ -1,23 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { MealPlanningAIService, MealPlanningContext } from '@/lib/ai/services/MealPlanningAIService';
 import { isAIEnabled } from '@/lib/ai/config/aiConfig';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 GET: Fetching AI meal suggestions for user:', user.id);
+      logger.info('Fetching AI meal suggestions', { userId: user.id });
 
       // Check if AI is enabled
       if (!isAIEnabled('mealPlanning')) {
-        console.log('⚠️ Meal planning AI is disabled, returning empty suggestions');
+        logger.info('Meal planning AI disabled, returning empty suggestions');
         return createSuccessResponse({ suggestions: [] }, 'AI meal planning disabled');
       }
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -66,11 +67,21 @@ export async function GET(request: NextRequest) {
       const result = await aiService.generateMealSuggestions(context);
 
       if (!result.success) {
-        console.error('AI service failed:', result.error);
+        logger.error('AI meal suggestion generation failed', result.error instanceof Error ? result.error : new Error(String(result.error)), {
+          userId: user.id,
+          householdId: household.id,
+        });
         return createErrorResponse(result.error || 'Failed to generate meal suggestions', 500);
       }
 
-      console.log(`✅ Generated ${result.data?.length || 0} AI meal suggestions using ${result.provider}`);
+      logger.info('Generated AI meal suggestions', {
+        userId: user.id,
+        householdId: household.id,
+        provider: result.provider,
+        count: result.data?.length ?? 0,
+        fallbackUsed: result.fallbackUsed,
+        processingTime: result.processingTime,
+      });
 
       return createSuccessResponse({
         suggestions: result.data || [],

@@ -2,8 +2,8 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logging/logger';
 
-// Types
 export interface Attachment {
   id: string;
   file_name: string;
@@ -14,7 +14,7 @@ export interface Attachment {
   receipt_total?: number;
   receipt_date?: string;
   receipt_store?: string;
-  receipt_items?: any[];
+  receipt_items?: Array<Record<string, unknown>>;
   created_at: string;
   updated_at: string;
 }
@@ -39,11 +39,10 @@ export interface ReceiptItem {
   };
 }
 
-// API functions
-async function fetchAttachments(params?: { 
-  limit?: number; 
-  offset?: number; 
-  ocr_status?: string; 
+async function fetchAttachments(params?: {
+  limit?: number;
+  offset?: number;
+  ocr_status?: string;
 }): Promise<{ attachments: Attachment[]; count: number }> {
   const searchParams = new URLSearchParams();
   if (params?.limit) searchParams.set('limit', params.limit.toString());
@@ -51,17 +50,17 @@ async function fetchAttachments(params?: {
   if (params?.ocr_status) searchParams.set('ocr_status', params.ocr_status);
 
   const response = await fetch(`/api/attachments?${searchParams.toString()}`);
-  
+
   if (!response.ok) {
     throw new Error(`Failed to fetch attachments: ${response.status}`);
   }
-  
+
   const data = await response.json();
-  
+
   if (data.success) {
     return { attachments: data.attachments || [], count: data.count || 0 };
   }
-  
+
   throw new Error(data.error || 'Failed to fetch attachments');
 }
 
@@ -76,17 +75,17 @@ async function fetchReceiptItems(params?: {
   if (params?.offset) searchParams.set('offset', params.offset.toString());
 
   const response = await fetch(`/api/receipt-items?${searchParams.toString()}`);
-  
+
   if (!response.ok) {
     throw new Error(`Failed to fetch receipt items: ${response.status}`);
   }
-  
+
   const data = await response.json();
-  
+
   if (data.success) {
     return { receipt_items: data.receipt_items || [], count: data.count || 0 };
   }
-  
+
   throw new Error(data.error || 'Failed to fetch receipt items');
 }
 
@@ -121,34 +120,16 @@ async function addReceiptItemsToShoppingList(data: {
   return response.json();
 }
 
-async function updateReceiptItem(data: {
-  item_id: string;
-  updates: Partial<ReceiptItem>;
-}): Promise<{ success: boolean; receipt_item: ReceiptItem }> {
-  const response = await fetch('/api/receipt-items', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to update receipt item: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-// Custom hooks
-export function useAttachments(params?: { 
-  limit?: number; 
-  offset?: number; 
-  ocr_status?: string; 
+export function useAttachments(params?: {
+  limit?: number;
+  offset?: number;
+  ocr_status?: string;
 }) {
   return useQuery({
     queryKey: ['attachments', params],
     queryFn: () => fetchAttachments(params),
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes in cache
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -158,62 +139,48 @@ export function useReceiptItems(params?: {
   offset?: number;
 }) {
   return useQuery({
-    queryKey: ['receipt-items', params],
+    queryKey: ['receiptItems', params],
     queryFn: () => fetchReceiptItems(params),
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes in cache
-    enabled: !!params?.attachment_id, // Only run if attachment_id is provided
+    enabled: Boolean(params?.attachment_id),
+    staleTime: 60 * 1000,
   });
 }
 
 export function useDeleteAttachment() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: deleteAttachment,
-    onSuccess: (data) => {
-      // Invalidate attachments query to refresh the list
+    onSuccess: (_, attachmentId) => {
       queryClient.invalidateQueries({ queryKey: ['attachments'] });
-      toast.success(data.message || 'Attachment deleted successfully');
+      toast.success('Attachment deleted successfully');
+      logger.info('Attachment deleted', { attachmentId });
     },
     onError: (error) => {
-      toast.error(`Failed to delete attachment: ${error.message}`);
+      toast.error('Failed to delete attachment');
+      logger.error('Failed to delete attachment', error as Error);
     },
   });
 }
 
-export function useAddReceiptItemsToShoppingList() {
+export function useAddReceiptItems() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: addReceiptItemsToShoppingList,
     onSuccess: (data, variables) => {
-      // Invalidate receipt items query to refresh the data
-      queryClient.invalidateQueries({ queryKey: ['receipt-items'] });
-      // Also invalidate shopping lists to show updated items
+      queryClient.invalidateQueries({ queryKey: ['receiptItems'] });
       queryClient.invalidateQueries({ queryKey: ['shoppingLists'] });
-      
-      toast.success(data.message || `Added ${data.added_items} items to shopping list`);
+      toast.success(data.message);
+      logger.info('Receipt items added to shopping list', {
+        addedItems: data.added_items,
+        shoppingListId: data.shopping_list_id,
+        itemIds: variables.item_ids,
+      });
     },
     onError: (error) => {
-      toast.error(`Failed to add items to shopping list: ${error.message}`);
-    },
-  });
-}
-
-export function useUpdateReceiptItem() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: updateReceiptItem,
-    onSuccess: (data, variables) => {
-      // Invalidate receipt items query to refresh the data
-      queryClient.invalidateQueries({ queryKey: ['receipt-items'] });
-      
-      toast.success('Item updated successfully');
-    },
-    onError: (error) => {
-      toast.error(`Failed to update item: ${error.message}`);
+      toast.error('Failed to add items to shopping list');
+      logger.error('Failed to add receipt items to shopping list', error as Error);
     },
   });
 }

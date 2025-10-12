@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sb, getUserAndHousehold, createErrorResponse, ServerError } from '@/lib/server/supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 export async function GET(_request: NextRequest) {
   try {
@@ -27,17 +29,17 @@ export async function GET(_request: NextRequest) {
     ]);
 
     if (mealPlansResponse.error) {
-      console.error('Error fetching meal plans:', mealPlansResponse.error);
+      logger.error('Failed to fetch meal plans', mealPlansResponse.error, { householdId });
       throw new ServerError('Failed to fetch meal plans', 500);
     }
 
     if (recipesResponse.error) {
-      console.error('Error fetching recipes:', recipesResponse.error);
+      logger.error('Failed to fetch recipes', recipesResponse.error, { householdId });
       throw new ServerError('Failed to fetch recipes', 500);
     }
 
     if (householdResponse.error) {
-      console.error('Error fetching household:', householdResponse.error);
+      logger.error('Failed to fetch household', householdResponse.error, { householdId });
       throw new ServerError('Failed to fetch household', 500);
     }
 
@@ -53,57 +55,116 @@ export async function GET(_request: NextRequest) {
     if (error instanceof ServerError) {
       return createErrorResponse(error);
     }
-    
-    console.error('Unexpected error in GET /api/ai/meal-insights:', error);
+
+    logger.error('Unexpected error in GET /api/ai/meal-insights:', error instanceof Error ? error : new Error(String(error)));
     return createErrorResponse(new ServerError('Internal server error'));
   }
 }
 
-function calculateAIMealInsights(mealPlans: any[], recipes: any[], household: any) {
+type MealPlanRecord = Database['public']['Tables']['meal_plans']['Row'];
+type RecipeRecord = Database['public']['Tables']['recipes']['Row'];
+type HouseholdRecord = Database['public']['Tables']['households']['Row'];
+
+type MealType = 'breakfast' | 'lunch' | 'dinner';
+
+type MealPlanMeals = Record<string, Partial<Record<MealType, string | null>>> | null;
+
+type PopularRecipe = {
+  id: string;
+  title: string;
+  usage_count: number;
+  category: string;
+};
+
+type NutritionalInsights = {
+  protein_heavy_meals: number;
+  carb_heavy_meals: number;
+  balanced_meals: number;
+  vegetarian_meals: number;
+};
+
+type MealInsights = {
+  total_weeks_planned: number;
+  total_meals_planned: number;
+  planning_consistency: number;
+  meal_type_distribution: Record<MealType, number>;
+  popular_recipes: PopularRecipe[];
+  nutritional_insights: NutritionalInsights;
+  suggested_improvements: string[];
+  ai_learning_progress: number;
+  household_preferences: {
+    preferred_meal_types: MealType[];
+    average_meals_per_week: number;
+  };
+  seasonal_recommendations: ReturnType<typeof generateSeasonalRecommendations>;
+  nutritional_goals: ReturnType<typeof generateNutritionalGoals>;
+};
+
+function calculateAIMealInsights(
+  mealPlans: MealPlanRecord[],
+  recipes: RecipeRecord[],
+  household: HouseholdRecord,
+): MealInsights {
   // Analyze meal planning patterns
   const totalWeeks = mealPlans.length;
   const totalMeals = mealPlans.reduce((sum, plan) => {
-    if (plan.meals) {
-      return sum + Object.values(plan.meals).reduce((daySum: number, day: any) => {
-        if (day) {
-          return daySum + Object.values(day).filter(Boolean).length;
-        }
-        return daySum;
-      }, 0);
+    const meals = plan.meals as MealPlanMeals;
+    if (!meals) {
+      return sum;
     }
-    return sum;
+
+    const dayTotal = Object.values(meals).reduce((daySum, dayMeals) => {
+      if (!dayMeals) {
+        return daySum;
+      }
+
+      return daySum + Object.values(dayMeals).filter(Boolean).length;
+    }, 0);
+
+    return sum + dayTotal;
   }, 0);
 
   // Calculate meal type distribution
-  const mealTypeCounts = { breakfast: 0, lunch: 0, dinner: 0 };
-  mealPlans.forEach(plan => {
-    if (plan.meals) {
-      Object.values(plan.meals).forEach((day: any) => {
-        if (day) {
-          Object.entries(day).forEach(([mealType, recipeId]) => {
-            if (recipeId) {
-              mealTypeCounts[mealType as keyof typeof mealTypeCounts]++;
-            }
-          });
+  const mealTypeCounts: Record<MealType, number> = { breakfast: 0, lunch: 0, dinner: 0 };
+  mealPlans.forEach((plan) => {
+    const meals = plan.meals as MealPlanMeals;
+    if (!meals) {
+      return;
+    }
+
+    Object.values(meals).forEach((dayMeals) => {
+      if (!dayMeals) {
+        return;
+      }
+
+      (Object.entries(dayMeals) as Array<[MealType, string | null]>).forEach(([mealType, recipeId]) => {
+        if (recipeId) {
+          mealTypeCounts[mealType] += 1;
         }
       });
-    }
+    });
   });
 
   // Analyze recipe preferences
   const recipeUsage = new Map<string, number>();
-  mealPlans.forEach(plan => {
-    if (plan.meals) {
-      Object.values(plan.meals).forEach((day: any) => {
-        if (day) {
-          Object.values(day).forEach((recipeId: any) => {
-            if (recipeId) {
-              recipeUsage.set(recipeId, (recipeUsage.get(recipeId) || 0) + 1);
-            }
-          });
+  mealPlans.forEach((plan) => {
+    const meals = plan.meals as MealPlanMeals;
+    if (!meals) {
+      return;
+    }
+
+    Object.values(meals).forEach((dayMeals) => {
+      if (!dayMeals) {
+        return;
+      }
+
+      Object.values(dayMeals).forEach((recipeId) => {
+        if (recipeId) {
+          const recipeIdString = String(recipeId);
+          recipeUsage.set(recipeIdString, (recipeUsage.get(recipeIdString) || 0) + 1);
         }
       });
-    }
+    });
   });
 
   // Get most popular recipes
@@ -111,28 +172,28 @@ function calculateAIMealInsights(mealPlans: any[], recipes: any[], household: an
     .sort(([, a], [, b]) => b - a)
     .slice(0, 5)
     .map(([recipeId, count]) => {
-      const recipe = recipes.find(r => r.id === recipeId);
+      const recipe = recipes.find((r) => r.id === recipeId);
       return {
         id: recipeId,
-        title: recipe?.title || 'Unknown Recipe',
+        title: recipe?.title ?? 'Unknown Recipe',
         usage_count: count,
-        category: recipe?.tags?.[0] || 'general'
+        category: recipe?.tags?.[0] ?? 'general',
       };
     });
 
   // Calculate nutritional balance (if recipe data includes nutrition info)
-  const nutritionalInsights = {
+  const nutritionalInsights: NutritionalInsights = {
     protein_heavy_meals: 0,
     carb_heavy_meals: 0,
     balanced_meals: 0,
-    vegetarian_meals: 0
+    vegetarian_meals: 0,
   };
 
   // Analyze meal planning consistency
   const planningConsistency = totalWeeks > 0 ? (totalMeals / (totalWeeks * 21)) * 100 : 0; // 21 meals per week
 
   // Generate improvement suggestions
-  const suggestions = [];
+  const suggestions: string[] = [];
   if (planningConsistency < 50) {
     suggestions.push('Consider planning more meals in advance to improve consistency');
   }
@@ -157,8 +218,8 @@ function calculateAIMealInsights(mealPlans: any[], recipes: any[], household: an
     ai_learning_progress: Math.round(dataCompleteness),
     household_preferences: {
       preferred_meal_types: Object.entries(mealTypeCounts)
-        .sort(([, a], [, b]) => (b as number) - (a as number))
-        .map(([type]) => type),
+        .sort(([, a], [, b]) => b - a)
+        .map(([type]) => type as MealType),
       average_meals_per_week: totalWeeks > 0 ? Math.round(totalMeals / totalWeeks) : 0
     },
     seasonal_recommendations: generateSeasonalRecommendations(),
@@ -196,7 +257,7 @@ function generateSeasonalRecommendations() {
   };
 }
 
-function generateNutritionalGoals(household: any) {
+function generateNutritionalGoals(household: HouseholdRecord) {
   // This could be enhanced with actual household nutritional preferences
   return {
     balanced_meals: 'Aim for protein, carbs, and vegetables in each meal',

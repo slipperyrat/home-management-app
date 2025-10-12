@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useUserData } from '@/hooks/useUserData';
-import { canAccessFeature } from '@/lib/entitlements';
+import { canAccessFeature, type Entitlements } from '@/lib/entitlements';
 import GoogleCalendarImport from '@/components/GoogleCalendarImport';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function CalendarSyncPage() {
   const { userData, isLoading } = useUserData();
   const searchParams = useSearchParams();
-  const [entitlements, setEntitlements] = useState<any>(null);
+  const [entitlements, setEntitlements] = useState<Entitlements | null>(null);
   const [entitlementsLoading, setEntitlementsLoading] = useState(true);
 
   // Check for success/error messages from OAuth callback
@@ -29,13 +30,7 @@ export default function CalendarSyncPage() {
   }, [searchParams]);
 
   // Load entitlements
-  useEffect(() => {
-    if (userData?.household_id) {
-      loadEntitlements();
-    }
-  }, [userData?.household_id]);
-
-  const loadEntitlements = async () => {
+  const loadEntitlements = useCallback(async () => {
     try {
       setEntitlementsLoading(true);
       const response = await fetch(`/api/entitlements/${userData.household_id}`);
@@ -51,7 +46,18 @@ export default function CalendarSyncPage() {
     } finally {
       setEntitlementsLoading(false);
     }
-  };
+  }, [userData?.household_id]);
+
+  useEffect(() => {
+    if (userData?.household_id) {
+      void loadEntitlements();
+    }
+  }, [userData?.household_id, loadEntitlements]);
+
+  const canUseSync = useMemo(() => {
+    if (!entitlements) return false;
+    return canAccessFeature(entitlements, 'calendar_templates') || canAccessFeature(entitlements, 'google_import');
+  }, [entitlements]);
 
   if (isLoading || entitlementsLoading) {
     return (
@@ -60,7 +66,7 @@ export default function CalendarSyncPage() {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
                 <span className="ml-2 text-gray-600">Loading...</span>
               </div>
             </CardContent>
@@ -104,10 +110,24 @@ export default function CalendarSyncPage() {
         </div>
 
         {/* Google Calendar Import */}
-        <GoogleCalendarImport 
-          householdId={userData.household_id}
-          entitlements={entitlements}
-        />
+        {canUseSync && entitlements ? (
+          <GoogleCalendarImport 
+            householdId={userData.household_id}
+            entitlements={entitlements}
+          />
+        ) : (
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-center">
+                <AlertCircle className="mx-auto mb-4 h-12 w-12 text-yellow-500" />
+                <h2 className="mb-2 text-xl font-semibold text-gray-900">Upgrade Required</h2>
+                <p className="text-gray-600">
+                  Calendar sync is available on the Pro plan. Visit the plan page to upgrade and unlock Google Calendar integrations.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Additional Sync Options */}
         <Card>
@@ -124,18 +144,18 @@ export default function CalendarSyncPage() {
                 <p className="text-sm text-gray-600 mb-3">
                   Share your household calendar with external applications using our public ICS feed.
                 </p>
-                <a 
-                  href={`/calendar/sync/export`}
+                <Link
+                  href="/calendar/sync/export"
                   className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                 >
                   View Export Options →
-                </a>
+                </Link>
               </div>
               
               <div className="p-4 border rounded-lg">
                 <h4 className="font-medium text-gray-900 mb-2">Coming Soon</h4>
                 <p className="text-sm text-gray-600">
-                  We're working on additional calendar sync options including Apple Calendar, 
+                  We&apos;re working on additional calendar sync options including Apple Calendar, 
                   Outlook, and other popular calendar applications.
                 </p>
               </div>

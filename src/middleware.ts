@@ -16,13 +16,14 @@ export default clerkMiddleware(async (auth, req) => {
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   
   // Content Security Policy - Re-enabled with proper Clerk domains
-  response.headers.set('Content-Security-Policy', 
+  response.headers.set('Content-Security-Policy',
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.com https://*.clerk.accounts.dev; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.com https://*.clerk.accounts.dev https://va.vercel-scripts.com; " +
+    "worker-src 'self' blob:; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
     "img-src 'self' data: https: blob:; " +
     "font-src 'self' https://fonts.gstatic.com data:; " +
-    "connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://*.supabase.co https://*.vercel.com; " +
+    "connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://*.supabase.co https://*.vercel.com https://va.vercel-analytics.com; " +
     "frame-src 'self' https://*.clerk.com https://*.clerk.accounts.dev; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
@@ -36,7 +37,7 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
   
   // Skip onboarding check for specific routes
-  const staticAssetPattern = /\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|xml|json|map)$/i;
+  const staticAssetPattern = /\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|xml|json|map|woff|woff2|ttf|otf)$/i;
   const skipOnboardingCheck = 
     url.pathname.startsWith('/dev/') ||
     url.pathname === '/onboarding' ||
@@ -47,14 +48,15 @@ export default clerkMiddleware(async (auth, req) => {
     url.pathname === '/favicon.ico' ||
     staticAssetPattern.test(url.pathname) ||
     url.pathname === '/' ||
-    url.pathname.startsWith('/user-button');
+    url.pathname.startsWith('/user-button') ||
+    url.pathname.startsWith('/fonts/');
 
   // Protected routes that require authentication
   const protectedRoutes = [
     '/dashboard',
     '/shopping-lists',
     '/chores',
-    '/bills',
+    '/finance',
     '/meal-planner',
     '/recipes',
     '/rewards',

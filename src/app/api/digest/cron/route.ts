@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { DigestDataService } from '@/lib/digestDataService';
 import { EmailService } from '@/lib/emailService';
+import { logger } from '@/lib/logging/logger';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -10,7 +11,7 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 
 /**
  * Cron job for sending daily and weekly digests
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('🔄 Starting digest cron job...');
+    logger.info('Starting digest cron job');
 
     const now = new Date();
     const currentHour = now.getHours();
@@ -49,12 +50,12 @@ export async function POST(request: NextRequest) {
       .eq('entitlements.daily_digests_enabled', true);
 
     if (householdsError) {
-      console.error('Error fetching households:', householdsError);
+      logger.error('Error fetching households for digest cron', householdsError);
       return NextResponse.json({ error: 'Failed to fetch households' }, { status: 500 });
     }
 
     if (!households || households.length === 0) {
-      console.log('ℹ️ No households with digest enabled found');
+      logger.info('No households with digest enabled found');
       return NextResponse.json({ 
         success: true, 
         message: 'No households to process',
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
     // Process each household
     for (const household of households) {
       try {
-        console.log(`📧 Processing digests for household ${household.id}`);
+        logger.info('Processing household digests', { householdId: household.id });
 
         // Get digest preferences for this household
         const { data: preferences, error: prefsError } = await supabase
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (prefsError || !preferences) {
-          console.log(`⚠️ No digest preferences found for household ${household.id}, skipping`);
+          logger.warn('No digest preferences found for household; skipping', { householdId: household.id });
           continue;
         }
 
@@ -98,14 +99,14 @@ export async function POST(request: NextRequest) {
 
           if (!todayDigests || todayDigests.length === 0) {
             // Check quota
-            const entitlements = household.entitlements;
+            const { entitlements } = household;
             if (!entitlements || todayDigests.length >= entitlements.digest_max_per_day) {
-              console.log(`⚠️ Daily digest quota exceeded for household ${household.id}, skipping`);
+              logger.warn('Daily digest quota exceeded; skipping household', { householdId: household.id });
               continue;
             }
 
             // Send daily digest
-            await sendDigestToHousehold(household.id, household.name, 'daily', preferences);
+            await sendDigestToHousehold(household.id, household.name, 'daily');
             dailyDigestsSent++;
           }
         }
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
 
             if (!weekDigests || weekDigests.length === 0) {
               // Send weekly digest
-              await sendDigestToHousehold(household.id, household.name, 'weekly', preferences);
+              await sendDigestToHousehold(household.id, household.name, 'weekly');
               weeklyDigestsSent++;
             }
           }
@@ -139,12 +140,19 @@ export async function POST(request: NextRequest) {
         totalProcessed++;
 
       } catch (error) {
-        console.error(`Error processing household ${household.id}:`, error);
+        logger.error('Error processing household for digest cron', error instanceof Error ? error : new Error(String(error)), {
+          householdId: household.id,
+        });
         errors.push(`Household ${household.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
-    console.log(`🎉 Digest cron completed: ${totalProcessed} households processed, ${dailyDigestsSent} daily digests sent, ${weeklyDigestsSent} weekly digests sent`);
+    logger.info('Digest cron completed', {
+      householdsProcessed: totalProcessed,
+      dailyDigestsSent,
+      weeklyDigestsSent,
+      errorCount: errors.length,
+    });
 
     return NextResponse.json({
       success: true,
@@ -159,7 +167,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in digest cron job:', error);
+    logger.error('Error in digest cron job', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -170,8 +178,7 @@ export async function POST(request: NextRequest) {
 async function sendDigestToHousehold(
   householdId: string, 
   householdName: string, 
-  type: 'daily' | 'weekly',
-  preferences: any
+  type: 'daily' | 'weekly'
 ) {
   try {
     // Get all household members
@@ -189,7 +196,7 @@ async function sendDigestToHousehold(
 
     const users = members
       .map(member => member.users)
-      .filter(user => user && user.email);
+      .filter((user): user is NonNullable<typeof user> => Boolean(user?.email));
 
     if (users.length === 0) {
       throw new Error('No users found in household');
@@ -234,16 +241,28 @@ async function sendDigestToHousehold(
               created_at: new Date().toISOString()
             });
 
-          console.log(`✅ ${type} digest sent to ${user.email}`);
+          logger.info('Digest email sent', { type, userId: user.id, email: user.email, householdId });
         } else {
-          console.error(`❌ Failed to send ${type} digest to ${user.email}:`, emailResult.error);
+          logger.error('Failed to send digest email', emailResult.error ?? new Error('Unknown error'), {
+            type,
+            userId: user.id,
+            email: user.email,
+            householdId,
+          });
         }
       } catch (error) {
-        console.error(`Error sending ${type} digest to user ${user.id}:`, error);
+        logger.error('Error sending digest email to user', error instanceof Error ? error : new Error(String(error)), {
+          type,
+          userId: user.id,
+          householdId,
+        });
       }
     }
   } catch (error) {
-    console.error(`Error sending ${type} digest to household ${householdId}:`, error);
+    logger.error('Error sending digest emails for household', error instanceof Error ? error : new Error(String(error)), {
+      householdId,
+      type,
+    });
     throw error;
   }
 }

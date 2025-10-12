@@ -1,30 +1,31 @@
 // Test endpoint for Shopping AI Service
 // This can be easily removed if the AI implementation doesn't work
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { testShoppingAI, testAIConfig } from '@/lib/ai/test/testShoppingAI';
+import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🧪 Testing Shopping AI Service for user:', user.id);
+      logger.info('Testing shopping AI service', { userId: user.id });
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
 
       // Run configuration test
-      console.log('📊 Running configuration test...');
+      logger.info('Running shopping AI configuration test');
       testAIConfig();
 
       // Run AI service test
-      console.log('🤖 Running AI service test...');
+      logger.info('Running shopping AI service test');
       const aiResult = await testShoppingAI();
 
       if (!aiResult) {

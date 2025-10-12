@@ -1,3 +1,5 @@
+type RequestUser = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
+type AuthenticatedHandler = (request: NextRequest, user: RequestUser | null) => Promise<NextResponse>;
 // Standardized API Protection Wrapper
 // Provides consistent security checks for all API routes
 
@@ -6,11 +8,10 @@ import { currentUser } from '@clerk/nextjs/server';
 import { RateLimiter, getRateLimitConfig } from './rateLimiter';
 import { validateRequestCSRF } from './csrf';
 import { logger } from '@/lib/logging/logger';
-import { 
-  logRateLimitExceeded, 
-  logCSRFFailure, 
+import {
+  logRateLimitExceeded,
+  logCSRFFailure,
   logUnauthorizedAccess,
-  logAuthenticationFailure 
 } from './monitoring';
 
 /**
@@ -40,9 +41,11 @@ const DEFAULT_CONFIG: APISecurityConfig = {
  * @param config - Optional security configuration
  * @returns Response from the handler or security error response
  */
+type AuthenticatedHandler = (request: NextRequest, user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) => Promise<NextResponse>;
+
 export async function withAPISecurity(
   request: NextRequest,
-  handler: (request: NextRequest, user: any) => Promise<NextResponse>,
+  handler: AuthenticatedHandler,
   config: APISecurityConfig = {}
 ): Promise<NextResponse> {
   const securityConfig = { ...DEFAULT_CONFIG, ...config };
@@ -157,7 +160,7 @@ export async function withAPISecurity(
  */
 export async function withReadOnlyAPISecurity(
   request: NextRequest,
-  handler: (request: NextRequest, user: any) => Promise<NextResponse>
+  handler: AuthenticatedHandler
 ): Promise<NextResponse> {
   return withAPISecurity(request, handler, {
     requireAuth: true,
@@ -193,7 +196,7 @@ export async function withPublicAPISecurity(
  */
 export async function withAdminAPISecurity(
   request: NextRequest,
-  handler: (request: NextRequest, user: any) => Promise<NextResponse>
+  handler: AuthenticatedHandler
 ): Promise<NextResponse> {
   return withAPISecurity(request, handler, {
     requireAuth: true,
@@ -208,7 +211,7 @@ export async function withAdminAPISecurity(
  * @param user - The authenticated user
  * @returns CSRF token response
  */
-export async function generateCSRFTokenResponse(user: any) {
+export async function generateCSRFTokenResponse(user: RequestUser) {
   const { createCSRFResponse } = await import('./csrf');
   return createCSRFResponse(user.id);
 }

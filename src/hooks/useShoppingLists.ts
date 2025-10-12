@@ -1,236 +1,81 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/lib/react-query/config';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-// Types
-interface ShoppingList {
-  id: string;
-  name: string;
-  household_id: string;
-  created_by: string;
-  created_at: string;
-  is_completed: boolean;
-  total_items: number;
-  completed_items: number;
-  ai_suggestions_count: number;
-  ai_confidence: number;
+import type { ShoppingList } from "@/types/shopping";
+
+const SHOPPING_LISTS_QUERY_KEY = ["shopping-lists", "all"] as const;
+
+async function fetchShoppingLists(): Promise<ShoppingList[]> {
+  const response = await fetch("/api/shopping-lists", { cache: "no-store" });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error?.error ?? "Failed to load shopping lists");
+  }
+
+  const payload = (await response.json()) as { data?: { shoppingLists?: ShoppingList[] } };
+  return payload.data?.shoppingLists ?? [];
 }
 
-interface ShoppingItem {
-  id: string;
-  name: string;
-  quantity: number;
-  unit: string;
-  completed: boolean;
-  completed_by?: string;
-  completed_at?: string;
-  list_id: string;
-  created_at: string;
+async function postShoppingList(input: { name: string; description?: string }): Promise<ShoppingList> {
+  const response = await fetch("/api/shopping-lists", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: input.name, description: input.description }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error?.error ?? "Failed to create shopping list");
+  }
+
+  const payload = (await response.json()) as { data?: { shoppingList?: ShoppingList } };
+  return payload.data?.shoppingList as ShoppingList;
 }
 
-interface CreateShoppingListData {
-  name: string;
-  household_id: string;
-}
-
-interface AddItemData {
-  name: string;
-  quantity: number;
-  unit: string;
-  list_id: string;
-}
-
-// API functions
-const fetchShoppingLists = async (): Promise<{ success: boolean; data: { shoppingLists: ShoppingList[]; plan: string } }> => {
-  const response = await fetch('/api/shopping-lists', {
-    credentials: 'include', // Ensure authentication cookies are sent
-  });
-  if (!response.ok) {
-    throw new Error('Failed to fetch shopping lists');
-  }
-  return response.json();
-};
-
-const createShoppingList = async (data: CreateShoppingListData): Promise<{ success: boolean; shoppingList: ShoppingList; plan: string }> => {
-  const response = await fetch('/api/shopping-lists', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-    credentials: 'include', // Ensure authentication cookies are sent
-  });
-  if (!response.ok) {
-    throw new Error('Failed to create shopping list');
-  }
-  return response.json();
-};
-
-const addShoppingItem = async (data: AddItemData): Promise<{ success: boolean; item: ShoppingItem }> => {
-  const response = await fetch('/api/shopping-items', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-    credentials: 'include', // Ensure authentication cookies are sent
-  });
-  if (!response.ok) {
-    throw new Error('Failed to add shopping item');
-  }
-  return response.json();
-};
-
-const toggleShoppingItem = async (itemId: string): Promise<{ success: boolean; item: ShoppingItem; rewards?: { xp: number; coins: number } }> => {
-  const response = await fetch('/api/shopping-items/toggle', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ itemId }),
-    credentials: 'include', // Ensure authentication cookies are sent
-  });
-  if (!response.ok) {
-    throw new Error('Failed to toggle shopping item');
-  }
-  return response.json();
-};
-
-const deleteShoppingList = async (id: string): Promise<{ success: boolean }> => {
-  const response = await fetch(`/api/shopping-lists/${id}`, {
-    method: 'DELETE',
-    credentials: 'include', // Ensure authentication cookies are sent
-  });
-  if (!response.ok) {
-    throw new Error('Failed to delete shopping list');
-  }
-  return response.json();
-};
-
-// Custom hooks
 export function useShoppingLists() {
   return useQuery({
-    queryKey: queryKeys.shoppingLists.all,
+    queryKey: SHOPPING_LISTS_QUERY_KEY,
     queryFn: fetchShoppingLists,
-    staleTime: 2 * 60 * 1000, // 2 minutes - shopping lists change frequently
-    gcTime: 5 * 60 * 1000, // 5 minutes
   });
 }
 
 export function useCreateShoppingList() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: createShoppingList,
-    onSuccess: (data) => {
-      // Optimistically update the cache
-      queryClient.setQueryData(queryKeys.shoppingLists.all, (oldData: any) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          data: {
-            ...oldData.data,
-            shoppingLists: [...oldData.data.shoppingLists, data.shoppingList],
-          },
-        };
+    mutationFn: postShoppingList,
+    onSuccess: (createdList) => {
+      queryClient.setQueryData<ShoppingList[] | undefined>(SHOPPING_LISTS_QUERY_KEY, (existing) => {
+        if (!existing) {
+          return [createdList];
+        }
+        return [createdList, ...existing];
       });
-      
-      // Invalidate and refetch to ensure consistency
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists.all });
-    },
-    onError: (error) => {
-      console.error('Failed to create shopping list:', error);
+      queryClient.invalidateQueries({ queryKey: SHOPPING_LISTS_QUERY_KEY });
     },
   });
 }
 
-export function useAddShoppingItem() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: addShoppingItem,
-    onSuccess: (_, variables) => {
-      // Invalidate the specific list's items
-      queryClient.invalidateQueries({ 
-        queryKey: queryKeys.shoppingLists.items(variables.list_id) 
-      });
-      
-      // Also invalidate the main lists to update counts
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists.all });
-    },
-    onError: (error) => {
-      console.error('Failed to add shopping item:', error);
-    },
-  });
-}
-
-export function useToggleShoppingItem() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: toggleShoppingItem,
-    onSuccess: (_, _itemId) => {
-      // Invalidate all shopping list queries to ensure consistency
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists.all });
-    },
-    onError: (error) => {
-      console.error('Failed to toggle shopping item:', error);
-    },
-  });
-}
-
-export function useDeleteShoppingList() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: deleteShoppingList,
-    onSuccess: (_, variables) => {
-      // Optimistically remove from cache
-      queryClient.setQueryData(queryKeys.shoppingLists.all, (oldData: any) => {
-        if (!oldData) return oldData;
-        return {
-          ...oldData,
-          shoppingLists: oldData.shoppingLists.filter(
-            (list: ShoppingList) => list.id !== variables
-          ),
-        };
-      });
-      
-      // Invalidate to ensure consistency
-      queryClient.invalidateQueries({ queryKey: queryKeys.shoppingLists.all });
-    },
-    onError: (error) => {
-      console.error('Failed to delete shopping list:', error);
-    },
-  });
-}
-
-// Utility hook for optimistic updates
 export function useOptimisticShoppingLists() {
   const queryClient = useQueryClient();
-  
-  const addOptimisticList = (newList: Omit<ShoppingList, 'id' | 'created_at'>) => {
-    const optimisticList: ShoppingList = {
-      ...newList,
-      id: `temp-${Date.now()}`,
-      created_at: new Date().toISOString(),
-    };
-    
-    queryClient.setQueryData(queryKeys.shoppingLists.all, (oldData: any) => {
-      if (!oldData) return oldData;
-      return {
-        ...oldData,
-        shoppingLists: [...oldData.shoppingLists, optimisticList],
-      };
-    });
-    
-    return optimisticList.id;
-  };
-  
-  const removeOptimisticList = (tempId: string) => {
-    queryClient.setQueryData(queryKeys.shoppingLists.all, (oldData: any) => {
-      if (!oldData) return oldData;
-      return {
-        ...oldData,
-        shoppingLists: oldData.shoppingLists.filter(
-          (list: ShoppingList) => list.id !== tempId
-        ),
-      };
+
+  const addOptimisticList = (list: ShoppingList) => {
+    queryClient.setQueryData<ShoppingList[] | undefined>(SHOPPING_LISTS_QUERY_KEY, (existing) => {
+      if (!existing) {
+        return [list];
+      }
+      return [list, ...existing];
     });
   };
-  
+
+  const removeOptimisticList = (id: string) => {
+    queryClient.setQueryData<ShoppingList[] | undefined>(SHOPPING_LISTS_QUERY_KEY, (existing) => {
+      if (!existing) {
+        return existing;
+      }
+      return existing.filter((list) => list.id !== id);
+    });
+  };
+
   return { addOptimisticList, removeOptimisticList };
 }

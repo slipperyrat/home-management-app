@@ -1,21 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, verifyHouseholdAccess, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createAutomationRuleSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logging/logger';
 
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Creating automation rule for user:', user.id);
+      logger.info('Creating automation rule', { userId: user.id });
 
       // Parse and validate request body using Zod schema
       let validatedData;
       try {
         const body = await req.json();
         validatedData = createAutomationRuleSchema.parse(body);
-      } catch (validationError: any) {
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+      } catch (validationError: unknown) {
+        if (validationError instanceof Error && 'errors' in validationError) {
+          return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
+        }
+        return createErrorResponse('Invalid input', 400);
       }
 
       const { household_id, name, description, trigger_types, actions } = validatedData;
@@ -49,7 +53,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (ruleError) {
-        console.error('Error creating automation rule:', ruleError);
+        logger.error('Error creating automation rule', ruleError, { householdId: household_id, userId: user.id });
         return createErrorResponse('Failed to create automation rule', 500, ruleError.message);
       }
 
@@ -67,7 +71,7 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      console.log(`✅ Created automation rule "${name}" for household: ${household_id}`);
+      logger.info('Automation rule created', { householdId: household_id, userId: user.id, ruleId: rule.id });
 
       return createSuccessResponse({
         rule: {

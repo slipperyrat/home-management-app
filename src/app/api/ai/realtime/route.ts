@@ -1,13 +1,14 @@
 // Real-time AI Processing API Route
 // This can be easily removed if the real-time processing doesn't work
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { RealTimeAIProcessor, RealTimeAIRequest } from '@/lib/ai/services/RealTimeAIProcessor';
 import { webSocketManager } from '@/lib/websocket/WebSocketServer';
 import { isAIEnabled } from '@/lib/ai/config/aiConfig';
+import { logger } from '@/lib/logging/logger';
 
 // Initialize the real-time AI processor
 const realTimeProcessor = new RealTimeAIProcessor(webSocketManager);
@@ -15,10 +16,10 @@ const realTimeProcessor = new RealTimeAIProcessor(webSocketManager);
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 POST: Real-time AI processing request for user:', user.id);
+      logger.info('Real-time AI processing request received', { userId: user.id });
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -57,7 +58,14 @@ export async function POST(request: NextRequest) {
       // Process the request
       const result = await realTimeProcessor.processRequest(aiRequest);
 
-      console.log(`✅ Real-time AI processing completed for request ${requestId}`);
+      logger.info('Real-time AI processing completed', {
+        requestId,
+        userId: user.id,
+        householdId: household.id,
+        provider: result.provider,
+        success: result.success,
+        processingTime: result.processingTime,
+      });
 
       return createSuccessResponse({
         requestId: result.requestId,
@@ -82,10 +90,10 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      console.log('🚀 GET: Real-time AI processing status for user:', user.id);
+      logger.info('Real-time AI status request received', { userId: user.id });
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);

@@ -1,16 +1,28 @@
 // @/lib/supabase/rewardHistory.ts
 
 import { supabase } from '@/lib/supabaseClient'
+import { logger } from '@/lib/logging/logger'
 
 /**
  * Get all rewards claimed by a specific user, with reward info
  */
-export async function getRewardHistory(userId: string) {
+interface RewardHistoryEntry {
+  created_at: string;
+  reward_id: string;
+  rewards: {
+    name: string;
+    xp_cost: number;
+    coin_cost: number;
+    pro_only: boolean;
+  } | null;
+}
+
+export async function getRewardHistory(userId: string): Promise<RewardHistoryEntry[]> {
   try {
-    console.log('🔍 Fetching reward history for user:', userId)
+    logger.info('Fetching reward history for user', { userId })
     
     if (!userId) {
-      console.error('❌ No user ID provided')
+      logger.warn('No user ID provided when fetching reward history')
       return []
     }
     
@@ -21,20 +33,19 @@ export async function getRewardHistory(userId: string) {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('❌ Error fetching reward history:', error)
-      console.error('❌ Error details:', {
-        message: error.message,
+      logger.error('Error fetching reward history', error, {
+        userId,
         code: error.code,
         details: error.details,
-        hint: error.hint
+        hint: error.hint,
       })
       return []
     }
 
-    console.log('✅ Reward history data:', data)
-    return data || []
+    logger.info('Fetched reward history data', { userId, count: data?.length ?? 0 })
+    return data ?? []
   } catch (error) {
-    console.error('❌ Unexpected error in getRewardHistory:', error)
+    logger.error('Unexpected error in getRewardHistory', error as Error, { userId })
     return []
   }
 } 

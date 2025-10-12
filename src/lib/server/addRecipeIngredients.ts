@@ -1,4 +1,6 @@
-import { sb } from './supabaseAdmin'
+import { sb } from './supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
+import type { Database, RecipeRow } from '@/types/database';
 
 // Helper to normalize ingredient names for comparison
 function normalizeName(name: string): string {
@@ -22,14 +24,20 @@ interface ParsedQuantity {
 }
 
 // Helper to parse quantity from various formats
-function parseQuantity(ingredient: any): ParsedQuantity {
-  if (ingredient && typeof ingredient === 'object') {
-    const amount = parseFloat(ingredient.amount);
-    const unit = String(ingredient.unit || '').trim();
+function parseQuantity(ingredient: unknown): ParsedQuantity {
+  if (
+    ingredient &&
+    typeof ingredient === 'object' &&
+    'amount' in ingredient &&
+    'unit' in ingredient
+  ) {
+    const { amount, unit } = ingredient as { amount: unknown; unit?: unknown };
+    const numericAmount = parseFloat(String(amount));
+    const normalizedUnit = String(unit ?? '').trim();
     return {
-      amount: isNaN(amount) ? null : amount,
-      unit: unit || null,
-      originalText: `${isNaN(amount) ? '' : amount} ${unit}`.trim()
+      amount: Number.isNaN(numericAmount) ? null : numericAmount,
+      unit: normalizedUnit || null,
+      originalText: `${Number.isNaN(numericAmount) ? '' : numericAmount} ${normalizedUnit}`.trim(),
     };
   }
   if (typeof ingredient === 'string') {
@@ -39,7 +47,7 @@ function parseQuantity(ingredient: any): ParsedQuantity {
       const amount = parseFloat(match[1]);
       const unit = match[3] || null;
       return {
-        amount: isNaN(amount) ? null : amount,
+        amount: Number.isNaN(amount) ? null : amount,
         unit: unit ? unit.toLowerCase() : null,
         originalText: ingredient
       };
@@ -49,9 +57,14 @@ function parseQuantity(ingredient: any): ParsedQuantity {
 }
 
 // Helper to extract item name from ingredient
-function getIngredientName(ingredient: any): string {
-  if (ingredient && typeof ingredient === 'object' && ingredient.name) {
-    return ingredient.name;
+function getIngredientName(ingredient: unknown): string {
+  if (
+    ingredient &&
+    typeof ingredient === 'object' &&
+    'name' in ingredient &&
+    typeof (ingredient as { name: unknown }).name === 'string'
+  ) {
+    return (ingredient as { name: string }).name;
   }
   if (typeof ingredient === 'string') {
     // For string ingredients like "2 cups flour", extract the name part
@@ -71,150 +84,197 @@ function getIngredientName(ingredient: any): string {
  * @param recipeId - The recipe ID to get ingredients from
  * @returns Object with success status and counts
  */
+type ShoppingItem = Database['public']['Tables']['shopping_items']['Row'] & {
+  quantity?: number | string | null;
+  completed?: boolean | null;
+};
+
+type InsertShoppingItem = Omit<ShoppingItem, 'id' | 'created_at' | 'shopping_list_id'> & {
+  list_id: string;
+  quantity: number | string;
+  completed: boolean;
+};
+
+type RecipeWithIngredients = RecipeRow & { ingredients: unknown };
+
 export async function addRecipeIngredientsToGroceries(
   userId: string,
-  householdId: string, 
+  householdId: string,
   recipeId: string
 ): Promise<{ ok: boolean; added: number; updated: number; listId?: string; error?: string }> {
   try {
-    const supabase = sb()
+    const supabase = sb();
 
-    // Get recipe - note: database uses 'title' field, not 'title'
-    const { data: recipe, error: rErr } = await supabase
-      .from('recipes').select('id, ingredients, title')
-      .eq('id', recipeId).eq('household_id', householdId).single()
-    if (rErr) return { ok: false, added: 0, updated: 0, error: rErr.message }
+    const { data: recipe, error: recipeError } = await supabase
+      .from('recipes')
+      .select('id, ingredients, title')
+      .eq('id', recipeId)
+      .eq('household_id', householdId)
+      .single();
 
-    // Get or create Groceries list
-    const { data: list, error: lErr } = await supabase
+    if (recipeError) {
+      return { ok: false, added: 0, updated: 0, error: recipeError.message };
+    }
+
+    const typedRecipe = recipe as RecipeWithIngredients;
+
+    const { data: list, error: listError } = await supabase
       .from('shopping_lists')
       .select('*')
       .eq('household_id', householdId)
       .eq('title', 'Groceries')
-      .maybeSingle()
-    if (lErr) return { ok: false, added: 0, updated: 0, error: lErr.message }
+      .maybeSingle();
 
-    let listId = list?.id
+    if (listError) {
+      return { ok: false, added: 0, updated: 0, error: listError.message };
+    }
+
+    let listId = list?.id;
     if (!listId) {
-      const { data: created, error: cErr } = await supabase
+      const { data: created, error: createError } = await supabase
         .from('shopping_lists')
         .insert([{ household_id: householdId, title: 'Groceries', created_by: userId }])
         .select('id')
-        .single()
-      if (cErr) return { ok: false, added: 0, updated: 0, error: cErr.message }
-      listId = created.id
+        .single();
+
+      if (createError || !created) {
+        return { ok: false, added: 0, updated: 0, error: createError?.message ?? 'Failed to create shopping list' };
+      }
+
+      listId = created.id;
     }
 
-    const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : []
-    console.log(`🔍 Recipe "${recipe.title}" ingredients:`, ingredients)
-    if (!ingredients.length) {
-      console.log('❌ No ingredients found in recipe')
-      return { ok: true, added: 0, updated: 0, listId }
+    const ingredients = Array.isArray(typedRecipe.ingredients) ? typedRecipe.ingredients : [];
+    logger.info('Processing recipe ingredients', {
+      recipeId: typedRecipe.id,
+      title: typedRecipe.title,
+      ingredientCount: ingredients.length,
+    });
+
+    if (ingredients.length === 0) {
+      logger.warn('No ingredients found in recipe', { recipeId: typedRecipe.id, title: typedRecipe.title });
+      return { ok: true, added: 0, updated: 0, listId };
     }
 
-    // Get existing shopping items for this list
-    const { data: existingItems, error: existingErr } = await supabase
+    const { data: existingItems, error: existingError } = await supabase
       .from('shopping_items')
       .select('*')
       .eq('list_id', listId)
-      .eq('completed', false) // Only consider incomplete items for merging
-    if (existingErr) return { ok: false, added: 0, updated: 0, error: existingErr.message }
+      .eq('is_complete', false);
 
-    // Create a map of existing items by normalized name
-    const existingItemsMap = new Map()
+    if (existingError) {
+      return { ok: false, added: 0, updated: 0, error: existingError.message };
+    }
+
+    const existingItemsMap = new Map<string, ShoppingItem>();
     existingItems?.forEach(item => {
-      existingItemsMap.set(normalizeName(item.name), item)
-    })
+      existingItemsMap.set(normalizeName(item.name), item as ShoppingItem);
+    });
 
-    let addedCount = 0
-    let updatedCount = 0
+    let addedCount = 0;
+    let updatedCount = 0;
 
     for (const ingredient of ingredients) {
       const parsedIngredient = parseQuantity(ingredient);
       const name = getIngredientName(ingredient);
       const normalizedIngName = normalizeName(name);
-      
+
       const existingItem = existingItemsMap.get(normalizedIngName);
 
       if (existingItem) {
-        // Update existing item - note: shopping_items.quantity is INTEGER, not TEXT
-        // We'll store the quantity as a number if possible, otherwise use the original text
         let quantityValue: number | string;
-        
+
         if (parsedIngredient.amount !== null && typeof existingItem.quantity === 'number') {
-          // If existing item has numeric quantity and we can parse the new quantity, sum them
           quantityValue = existingItem.quantity + parsedIngredient.amount;
+        } else if (parsedIngredient.amount !== null && typeof existingItem.quantity === 'string') {
+          quantityValue = `${existingItem.quantity} + ${parsedIngredient.amount}${parsedIngredient.unit ? ` ${parsedIngredient.unit}` : ''}`.trim();
         } else {
-          // Otherwise, concatenate the text representations
-          const currentQuantity = existingItem.quantity?.toString() || '';
-          const newQuantity = parsedIngredient.originalText;
-          quantityValue = `${currentQuantity} + ${newQuantity}`.trim();
+          const currentQuantity = existingItem.quantity?.toString().trim() ?? '';
+          const newQuantityText = parsedIngredient.originalText.trim();
+          quantityValue = [currentQuantity, newQuantityText].filter(Boolean).join(' + ');
         }
 
         const { error: updateErr } = await supabase
           .from('shopping_items')
           .update({ quantity: quantityValue })
-          .eq('id', existingItem.id)
-        
+          .eq('id', existingItem.id);
+
         if (updateErr) {
-          console.error('Error updating shopping item:', updateErr)
+          logger.error('Error updating shopping item quantity', updateErr, { itemId: existingItem.id, name });
         } else {
-          updatedCount++
-          console.log(`✅ Updated "${name}" quantity: ${existingItem.quantity} → ${quantityValue}`)
+          updatedCount += 1;
+          logger.info('Updated shopping item quantity', {
+            name,
+            previousQuantity: existingItem.quantity,
+            newQuantity: quantityValue,
+          });
         }
       } else {
-        // Insert new item - convert quantity to appropriate format
-        let quantityValue: number | string;
-        
+        let quantityValue: number | string = parsedIngredient.originalText;
+
         if (parsedIngredient.amount !== null) {
-          // If we have a numeric amount, use it (shopping_items.quantity is INTEGER)
           quantityValue = parsedIngredient.amount;
-        } else {
-          // Otherwise, use the original text (this might cause issues with INTEGER field)
-          quantityValue = parsedIngredient.originalText;
         }
+
+        const newItem: InsertShoppingItem = {
+          list_id: listId,
+          name: name.trim(),
+          quantity: quantityValue,
+          completed: false,
+        };
 
         const { error: insertErr } = await supabase
           .from('shopping_items')
-          .insert([{
-            list_id: listId,
-            name: name.trim(),
-            quantity: quantityValue,
-            completed: false
-          }])
-        
+          .insert([newItem]);
+
         if (insertErr) {
-          console.error('Error inserting shopping item:', insertErr)
-          // If the insert fails due to quantity type mismatch, try with default value
+          logger.error('Error inserting shopping item from recipe', insertErr, { name, listId });
+
           if (insertErr.message.includes('quantity')) {
+            const fallbackItem: InsertShoppingItem = {
+              list_id: listId,
+              name: name.trim(),
+              quantity: 1,
+              completed: false,
+            };
+
             const { error: retryErr } = await supabase
               .from('shopping_items')
-              .insert([{
-                list_id: listId,
-                name: name.trim(),
-                quantity: 1, // Default to 1 if quantity parsing fails
-                completed: false
-              }])
-            
+              .insert([fallbackItem]);
+
             if (!retryErr) {
-              addedCount++
-              console.log(`➕ Added new item: "${name}" with default quantity 1`)
+              addedCount += 1;
+              logger.info('Added shopping item from recipe with fallback quantity', { name, listId });
             } else {
-              console.error('Retry insert also failed:', retryErr)
+              logger.error('Fallback insert for shopping item from recipe failed', retryErr, { name, listId });
             }
           }
         } else {
-          addedCount++
-          console.log(`➕ Added new item: "${name}" with quantity "${quantityValue}"`)
+          addedCount += 1;
+          logger.info('Added new shopping item from recipe', { name, quantity: quantityValue, listId });
         }
       }
     }
 
-    console.log(`📝 Recipe "${recipe.title}" ingredients processed: ${addedCount} added, ${updatedCount} updated`)
-    return { ok: true, added: addedCount, updated: updatedCount, listId }
-    
-  } catch (error: any) {
-    console.error('❌ Error in addRecipeIngredientsToGroceries:', error)
-    return { ok: false, added: 0, updated: 0, error: error.message }
+    logger.info('Recipe ingredients processed', {
+      recipeId: typedRecipe.id,
+      addedCount,
+      updatedCount,
+      listId,
+    });
+
+    return { ok: true, added: addedCount, updated: updatedCount, listId };
+  } catch (error) {
+    logger.error('Error in addRecipeIngredientsToGroceries', error as Error, {
+      userId,
+      householdId,
+      recipeId,
+    });
+    return {
+      ok: false,
+      added: 0,
+      updated: 0,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }

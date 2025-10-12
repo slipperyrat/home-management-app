@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { canAccessFeature } from '@/lib/server/canAccessFeature';
-import { withFeatureFlags, FEATURE_FLAGS } from '@/lib/middleware/featureFlags';
 import { createBillCalendarEvent } from '@/lib/finance/calendarIntegration';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/logger';
 
 // Validation schemas
 const createBillSchema = z.object({
@@ -24,16 +24,10 @@ const createBillSchema = z.object({
   external_id: z.string().optional(),
 });
 
-const updateBillSchema = createBillSchema.partial().extend({
-  id: z.string().uuid('Invalid bill ID'),
-  status: z.enum(['pending', 'paid', 'overdue', 'cancelled']).optional(),
-  paid_at: z.string().optional(),
-});
-
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -75,7 +69,7 @@ export async function GET(request: NextRequest) {
       const { data: bills, error } = await query;
 
       if (error) {
-        console.error('Error fetching bills:', error);
+        logger.error('Error fetching bills', error, { householdId: household.id });
         return createErrorResponse('Failed to fetch bills', 500);
       }
 
@@ -103,7 +97,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -147,16 +141,19 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) {
-        console.error('Error creating bill:', error);
+        logger.error('Error creating bill', error, { householdId: household.id, userId: user.id });
         return createErrorResponse('Failed to create bill', 500);
       }
 
       // Create calendar event for bill due date
       try {
         await createBillCalendarEvent(bill, household.id, user.id);
-        console.log(`Created calendar event for bill: ${bill.title}`);
+        logger.info('Created calendar event for bill', { billId: bill.id, title: bill.title });
       } catch (calendarError) {
-        console.error('Failed to create calendar event for bill:', calendarError);
+        logger.error('Failed to create calendar event for bill', calendarError instanceof Error ? calendarError : new Error(String(calendarError)), {
+          billId: bill.id,
+          householdId: household.id,
+        });
         // Don't fail the bill creation if calendar event creation fails
       }
 

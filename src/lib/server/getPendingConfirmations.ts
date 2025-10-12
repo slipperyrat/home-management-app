@@ -1,4 +1,5 @@
-import { sb } from './supabaseAdmin'
+import { sb } from './supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
 
 interface PendingItem {
   id: string;
@@ -21,38 +22,40 @@ interface PendingItem {
  */
 export async function getPendingConfirmations(
   householdId: string
-): Promise<{ 
-  ok: boolean; 
+): Promise<{
+  ok: boolean;
   pendingItems: PendingItem[];
   count: number;
-  error?: string 
+  error?: string;
 }> {
   try {
-    const supabase = sb()
+    const supabase = sb();
 
     // First, get all shopping list IDs for this household
     const { data: shoppingLists, error: listsError } = await supabase
       .from('shopping_lists')
       .select('id')
-      .eq('household_id', householdId)
+      .eq('household_id', householdId);
 
     if (listsError) {
-      return { 
-        ok: false, 
+      logger.error('Error fetching shopping lists for pending confirmations', listsError, { householdId });
+      return {
+        ok: false,
         pendingItems: [],
         count: 0,
-        error: listsError.message 
-      }
+        error: listsError.message,
+      };
     }
 
-    const listIds = shoppingLists?.map(list => list.id) || []
+    const listIds = shoppingLists?.map(list => list.id) || [];
     
     if (listIds.length === 0) {
-      return { 
-        ok: true, 
+      logger.info('No shopping lists found for household when checking pending confirmations', { householdId });
+      return {
+        ok: true,
         pendingItems: [],
-        count: 0
-      }
+        count: 0,
+      };
     }
 
     // Get all pending auto-added items with recipe information
@@ -70,42 +73,46 @@ export async function getPendingConfirmations(
       .eq('auto_added', true)
       .eq('is_complete', false)
       .in('list_id', listIds)
-      .order('auto_added_at', { ascending: false })
+      .order('auto_added_at', { ascending: false });
 
     if (fetchErr) {
-      return { 
-        ok: false, 
+      logger.error('Error fetching pending confirmation shopping items', fetchErr, { householdId });
+      return {
+        ok: false,
         pendingItems: [],
         count: 0,
-        error: fetchErr.message 
-      }
+        error: fetchErr.message,
+      };
     }
 
     // Transform the data to include recipe title
-    const transformedItems: PendingItem[] = (pendingItems || []).map((item: any) => ({
+    const transformedItems: PendingItem[] = (pendingItems || []).map((item) => ({
       id: item.id,
       name: item.name,
       quantity: item.quantity,
       auto_added_at: item.auto_added_at,
       source_recipe_id: item.source_recipe_id,
-      recipe_title: item.recipes?.title || 'Unknown Recipe'
-    }))
+      recipe_title: item.recipes?.title || 'Unknown Recipe',
+    }));
 
-    console.log(`📋 Found ${transformedItems.length} pending auto-added items`)
-    
-    return { 
-      ok: true, 
+    logger.info('Fetched pending auto-added shopping items', {
+      householdId,
+      pendingCount: transformedItems.length,
+    });
+
+    return {
+      ok: true,
       pendingItems: transformedItems,
-      count: transformedItems.length
-    }
-    
-  } catch (error: any) {
-    console.error('❌ Error in getPendingConfirmations:', error)
-    return { 
-      ok: false, 
+      count: transformedItems.length,
+    };
+
+  } catch (error) {
+    logger.error('Error in getPendingConfirmations', error as Error, { householdId });
+    return {
+      ok: false,
       pendingItems: [],
       count: 0,
-      error: error.message 
-    }
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }

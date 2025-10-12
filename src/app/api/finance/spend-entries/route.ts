@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { canAccessFeature } from '@/lib/server/canAccessFeature';
 import { z } from 'zod';
+import { logger } from '@/lib/logging/logger';
 
 // Validation schemas
 const createSpendEntrySchema = z.object({
@@ -20,14 +21,10 @@ const createSpendEntrySchema = z.object({
   external_id: z.string().optional(),
 });
 
-const updateSpendEntrySchema = createSpendEntrySchema.partial().extend({
-  id: z.string().uuid('Invalid spend entry ID'),
-});
-
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -89,7 +86,7 @@ export async function GET(request: NextRequest) {
       const { data: spendEntries, error } = await query;
 
       if (error) {
-        console.error('Error fetching spend entries:', error);
+        logger.error('Error fetching spend entries', error, { householdId: household.id });
         return createErrorResponse('Failed to fetch spend entries', 500);
       }
 
@@ -120,7 +117,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
     try {
-      const { userData, household } = await getUserAndHouseholdData(user.id);
+      const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
@@ -204,7 +201,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) {
-        console.error('Error creating spend entry:', error);
+        logger.error('Error creating spend entry', error, { householdId: household.id, userId: user.id });
         return createErrorResponse('Failed to create spend entry', 500);
       }
 

@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getAIConfig } from '@/lib/ai/config/aiConfig';
+import { logger } from '@/lib/logging/logger';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const createSupabaseClient = (): SupabaseClient => createClient(supabaseUrl, supabaseKey);
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,10 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create Supabase client with service role key for database operations
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const supabase = createSupabaseClient();
 
     // Get request body
     const { suggestionId, correctionType, correctionData, userNotes } = await request.json();
@@ -90,7 +97,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      console.error('Failed to insert correction:', insertError);
+      logger.error('Failed to insert correction', insertError, { suggestionId, userId });
       return NextResponse.json({ 
         error: 'Failed to save correction' 
       }, { status: 500 });
@@ -100,40 +107,27 @@ export async function POST(request: NextRequest) {
     const feedbackStatus = correctionType === 'mark_done' ? 'completed' : 
                           correctionType === 'ignore' ? 'ignored' : 'corrected';
 
-    console.log('🔄 Updating suggestion feedback status:', { suggestionId, feedbackStatus });
-
-    const { data: updateResult, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('ai_suggestions')
       .update({ user_feedback: feedbackStatus })
       .eq('id', suggestionId)
       .select('id, user_feedback');
 
     if (updateError) {
-      console.error('❌ Failed to update suggestion feedback status:', updateError);
+      logger.error('Failed to update suggestion feedback status', updateError, {
+        suggestionId,
+        feedbackStatus,
+      });
       return NextResponse.json({ 
         error: 'Failed to update suggestion status' 
       }, { status: 500 });
     }
 
-    console.log('✅ Successfully updated suggestion:', updateResult);
-
-    // 🧠 AI Learning: Analyze the correction for pattern learning
-    console.log('🧠 About to start AI Learning process...');
-    console.log('🧠 Correction ID:', correction.id);
-    console.log('🧠 Household ID:', suggestion.household_id);
-    console.log('🧠 Correction Type:', correctionType);
-    
     let learningResult = null;
-    
+
     try {
-      console.log('🧠 Step 1: Importing AILearningService...');
       const { AILearningService } = await import('@/lib/ai/services/aiLearningService');
-      console.log('🧠 Step 2: AILearningService imported successfully');
-      
-      console.log('🧠 Step 3: Creating AI Learning Service instance...');
       const learningService = new AILearningService();
-      console.log('🧠 Step 4: AI Learning Service instance created successfully');
-      
       const learningRequest = {
         correction_id: correction.id,
         household_id: suggestion.household_id,
@@ -143,29 +137,15 @@ export async function POST(request: NextRequest) {
         user_notes: userNotes
       };
 
-      console.log('🧠 Step 5: Learning request prepared:', JSON.stringify(learningRequest, null, 2));
-      console.log('🧠 Step 6: Starting AI learning analysis...');
-      
       learningResult = await learningService.analyzeCorrection(learningRequest);
-      console.log('✅ Step 7: AI learning analysis completed successfully:', JSON.stringify(learningResult, null, 2));
-
     } catch (learningError) {
-      console.error('❌ AI learning failed at some step:', learningError);
-      console.error('❌ Error type:', typeof learningError);
-      console.error('❌ Error constructor:', learningError?.constructor?.name);
-      
-      if (learningError instanceof Error) {
-        console.error('❌ Error message:', learningError.message);
-        console.error('❌ Error stack:', learningError.stack);
-        console.error('❌ Error name:', learningError.name);
-      } else {
-        console.error('❌ Error stringified:', String(learningError));
-        console.error('❌ Error JSON:', JSON.stringify(learningError, null, 2));
-      }
+      logger.error('AI learning failed', learningError instanceof Error ? learningError : new Error(String(learningError)), {
+        correctionId: correction.id,
+        householdId: suggestion.household_id,
+        correctionType,
+      });
       // Don't fail the main correction request if learning fails
     }
-    
-    console.log('🧠 AI Learning process completed (success or failure)');
 
     // Return response with AI Learning status
     return NextResponse.json({ 
@@ -184,7 +164,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error saving correction:', error);
+    logger.error('Error saving correction', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ 
       error: 'Internal server error' 
     }, { status: 500 });
@@ -200,10 +180,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Create Supabase client with service role key for database operations
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const supabase = createSupabaseClient();
 
     // Get household ID from query params or user's household
     const { searchParams } = new URL(request.url);
@@ -261,7 +238,7 @@ export async function GET(request: NextRequest) {
       .limit(50);
 
     if (fetchError) {
-      console.error('Failed to fetch corrections:', fetchError);
+      logger.error('Failed to fetch corrections', fetchError, { householdId, userId });
       return NextResponse.json({ 
         error: 'Failed to fetch corrections' 
       }, { status: 500 });
@@ -273,7 +250,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error fetching corrections:', error);
+    logger.error('Error fetching corrections', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ 
       error: 'Internal server error' 
     }, { status: 500 });

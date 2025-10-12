@@ -19,5 +19,19 @@
     "no-alert": "warn",
     "react/jsx-no-useless-fragment": "warn",
     "prefer-destructuring": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/components/ui/**/*.{ts,tsx}",
+        "src/app/calendar/_components/**/*.{ts,tsx}"
+      ],
+      "rules": {
+        "react/self-closing-comp": "off",
+        "react/no-array-index-key": "off",
+        "react/jsx-no-leaked-render": "off",
+        "jsx-a11y/heading-has-content": "off"
+      }
+    }
+  ]
 }

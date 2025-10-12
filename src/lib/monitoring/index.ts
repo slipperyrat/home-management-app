@@ -1,36 +1,38 @@
 // Comprehensive monitoring system for performance, user behavior, and AI accuracy
+import { logger } from '@/lib/logging/logger';
+
 export interface PerformanceMetric {
   name: string;
   value: number;
   unit: string;
   timestamp: number;
-  context: Record<string, any> | undefined;
+  context: Record<string, unknown> | undefined;
 }
 
 export interface UserBehaviorEvent {
   action: string;
   userId: string;
   householdId: string | undefined;
-  context: Record<string, any>;
+  context: Record<string, unknown>;
   timestamp: number;
   sessionId: string;
 }
 
 export interface AIMetric {
-  prediction: any;
-  actual: any;
+  prediction: unknown;
+  actual: unknown;
   confidence: number;
   processingTime: number;
   model: string;
   timestamp: number;
-  context: Record<string, any> | undefined;
+  context: Record<string, unknown> | undefined;
 }
 
 export interface ErrorEvent {
   error: string;
   stack: string | undefined;
   userId: string | undefined;
-  context: Record<string, any>;
+  context: Record<string, unknown>;
   timestamp: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
 }
@@ -58,17 +60,17 @@ export class MonitoringService {
   }
 
   // Performance monitoring
-  trackAPIPerformance(endpoint: string, duration: number, context?: Record<string, any>): void {
+  trackAPIPerformance(endpoint: string, duration: number, context?: Record<string, unknown>): void {
     this.addMetric({
       name: `api.${endpoint}.duration`,
       value: duration,
       unit: 'ms',
       timestamp: Date.now(),
-      context: { endpoint, ...context }
+        context: { endpoint, ...context }
     });
   }
 
-  trackPageLoad(page: string, loadTime: number, context?: Record<string, any>): void {
+  trackPageLoad(page: string, loadTime: number, context?: Record<string, unknown>): void {
     this.addMetric({
       name: `page.${page}.load_time`,
       value: loadTime,
@@ -78,7 +80,7 @@ export class MonitoringService {
     });
   }
 
-  trackDatabaseQuery(query: string, duration: number, context?: Record<string, any>): void {
+  trackDatabaseQuery(query: string, duration: number, context?: Record<string, unknown>): void {
     this.addMetric({
       name: 'database.query.duration',
       value: duration,
@@ -88,7 +90,7 @@ export class MonitoringService {
     });
   }
 
-  trackCachePerformance(operation: 'hit' | 'miss', duration: number, context?: Record<string, any>): void {
+  trackCachePerformance(operation: 'hit' | 'miss', duration: number, context?: Record<string, unknown>): void {
     this.addMetric({
       name: `cache.${operation}.duration`,
       value: duration,
@@ -102,7 +104,7 @@ export class MonitoringService {
   trackUserBehavior(
     action: string, 
     userId: string, 
-    context: Record<string, any> = {},
+    context: Record<string, unknown> = {},
     householdId?: string
   ): void {
     const event: UserBehaviorEvent = {
@@ -117,22 +119,22 @@ export class MonitoringService {
     this.addUserEvent(event);
   }
 
-  trackFeatureUsage(feature: string, userId: string, context?: Record<string, any>): void {
+  trackFeatureUsage(feature: string, userId: string, context?: Record<string, unknown>): void {
     this.trackUserBehavior(`feature.${feature}.used`, userId, context);
   }
 
-  trackOnboardingStep(step: string, userId: string, completed: boolean, context?: Record<string, any>): void {
+  trackOnboardingStep(step: string, userId: string, completed: boolean, context?: Record<string, unknown>): void {
     this.trackUserBehavior(`onboarding.${step}.${completed ? 'completed' : 'started'}`, userId, context);
   }
 
   // AI performance monitoring
   trackAIPrediction(
-    prediction: any,
-    actual: any,
+    prediction: unknown,
+    actual: unknown,
     confidence: number,
     processingTime: number,
     model: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ): void {
     const metric: AIMetric = {
       prediction,
@@ -147,7 +149,7 @@ export class MonitoringService {
     this.addAIMetric(metric);
   }
 
-  trackAIAccuracy(prediction: any, actual: any, context?: Record<string, any>): void {
+  trackAIAccuracy(prediction: unknown, actual: unknown, context?: Record<string, unknown>): void {
     const accuracy = this.calculateAccuracy(prediction, actual);
     this.addMetric({
       name: 'ai.accuracy',
@@ -163,7 +165,7 @@ export class MonitoringService {
     error: string,
     stack?: string,
     userId?: string,
-    context: Record<string, any> = {},
+    context: Record<string, unknown> = {},
     severity: 'low' | 'medium' | 'high' | 'critical' = 'medium'
   ): void {
     const errorEvent: ErrorEvent = {
@@ -414,7 +416,7 @@ export class MonitoringService {
     return groups;
   }
 
-  private calculateAccuracy(prediction: any, actual: any): number {
+  private calculateAccuracy(prediction: unknown, actual: unknown): number {
     // Simple accuracy calculation - can be enhanced based on data types
     if (typeof prediction === 'boolean' && typeof actual === 'boolean') {
       return prediction === actual ? 100 : 0;
@@ -438,17 +440,14 @@ export class MonitoringService {
     const dailyGroups: Record<string, AIMetric[]> = {};
     
     metrics.forEach(metric => {
-      const dateParts = new Date(metric.timestamp).toISOString().split('T');
-      const date = dateParts[0] || 'unknown';
+      const date = new Date(metric.timestamp).toISOString().split('T')[0] ?? 'unknown';
       if (!dailyGroups[date]) dailyGroups[date] = [];
       dailyGroups[date].push(metric);
     });
 
     return Object.entries(dailyGroups)
       .map(([date, dayMetrics]) => {
-        const totalAccuracy = dayMetrics.reduce((sum, m) => {
-          return sum + this.calculateAccuracy(m.prediction, m.actual);
-        }, 0);
+      const totalAccuracy = dayMetrics.reduce((sum, m) => sum + this.calculateAccuracy(m.prediction, m.actual), 0);
         return {
           date,
           accuracy: dayMetrics.length > 0 ? totalAccuracy / dayMetrics.length : 0
@@ -471,32 +470,23 @@ export class MonitoringService {
   }
 
   private setupPeriodicFlush(): void {
-    // Flush data every 5 minutes
     setInterval(() => {
-      this.flushToExternalService();
+      void this.flushToExternalService();
     }, 5 * 60 * 1000);
   }
 
   private async flushToExternalService(): Promise<void> {
     try {
-      // Here you would send data to your monitoring service (Sentry, DataDog, etc.)
       const data = this.exportMetrics();
-      
-      // Example: Send to external service
-      // await fetch('/api/monitoring/flush', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(data)
-      // });
-      
-      console.log('Monitoring data flushed:', {
+
+      logger.info('Monitoring data flushed', {
         metrics: data.performance.length,
         events: data.userBehavior.length,
         aiMetrics: data.aiMetrics.length,
-        errors: data.errors.length
+        errors: data.errors.length,
       });
     } catch (error) {
-      console.error('Failed to flush monitoring data:', error);
+      logger.error('Failed to flush monitoring data', error as Error);
     }
   }
 }
@@ -505,18 +495,24 @@ export class MonitoringService {
 export const monitoringService = MonitoringService.getInstance();
 
 // Convenience functions for easy usage
-export const trackAPIPerformance = (endpoint: string, duration: number, context?: Record<string, any>) => {
+export const trackAPIPerformance = (endpoint: string, duration: number, context?: Record<string, unknown>) => {
   monitoringService.trackAPIPerformance(endpoint, duration, context);
 };
 
-export const trackUserBehavior = (action: string, userId: string, context?: Record<string, any>, householdId?: string) => {
+export const trackUserBehavior = (action: string, userId: string, context?: Record<string, unknown>, householdId?: string) => {
   monitoringService.trackUserBehavior(action, userId, context, householdId);
 };
 
-export const trackAIAccuracy = (prediction: any, actual: any, context?: Record<string, any>) => {
+export const trackAIAccuracy = (prediction: unknown, actual: unknown, context?: Record<string, unknown>) => {
   monitoringService.trackAIAccuracy(prediction, actual, context);
 };
 
-export const trackError = (error: string, stack?: string, userId?: string, context?: Record<string, any>, severity?: 'low' | 'medium' | 'high' | 'critical') => {
+export const trackError = (
+  error: string,
+  stack?: string,
+  userId?: string,
+  context?: Record<string, unknown>,
+  severity?: 'low' | 'medium' | 'high' | 'critical',
+) => {
   monitoringService.trackError(error, stack, userId, context, severity);
 };

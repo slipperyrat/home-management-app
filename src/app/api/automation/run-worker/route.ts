@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
 import { logger } from '@/lib/logging/logger';
-import { jobSuccessCounter, jobFailureCounter, jobDurationHistogram } from '@/app/metrics/router';
+import { jobSuccessCounter, jobFailureCounter, jobDurationHistogram } from '@/lib/monitoring/jobMetrics';
 
 export async function GET(request: NextRequest) {
   const start = performance.now();

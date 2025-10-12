@@ -1,29 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useUserData } from '@/hooks/useUserData';
-import { canAccessFeature } from '@/lib/entitlements';
 import DailyDigest from '@/components/DailyDigest';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, AlertCircle, Info, Mail } from 'lucide-react';
-import { toast } from 'sonner';
+import { AlertCircle, Info } from 'lucide-react';
 
 export default function DigestPage() {
   const { userData, isLoading } = useUserData();
-  const [entitlements, setEntitlements] = useState<any>(null);
+  const [entitlements, setEntitlements] = useState<Record<string, unknown> | null>(null);
   const [entitlementsLoading, setEntitlementsLoading] = useState(true);
+  const householdId = userData?.household_id;
 
-  // Load entitlements
-  useEffect(() => {
-    if (userData?.household_id) {
-      loadEntitlements();
+  const loadEntitlements = useCallback(async () => {
+    if (!householdId) {
+      return;
     }
-  }, [userData?.household_id]);
 
-  const loadEntitlements = async () => {
     try {
       setEntitlementsLoading(true);
-      const response = await fetch(`/api/entitlements/${userData.household_id}`);
+      const response = await fetch(`/api/entitlements/${householdId}`);
       const data = await response.json();
       
       if (response.ok) {
@@ -36,7 +32,13 @@ export default function DigestPage() {
     } finally {
       setEntitlementsLoading(false);
     }
-  };
+  }, [householdId]);
+
+  useEffect(() => {
+    if (householdId) {
+      void loadEntitlements();
+    }
+  }, [householdId, loadEntitlements]);
 
   if (isLoading || entitlementsLoading) {
     return (

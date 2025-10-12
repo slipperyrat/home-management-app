@@ -1,6 +1,6 @@
 'use client';
 
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useId, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface FormInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -15,34 +15,44 @@ export interface FormInputProps extends React.InputHTMLAttributes<HTMLInputEleme
 }
 
 export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
-  ({
-    label,
-    error,
-    touched,
-    required,
-    helperText,
-    leftIcon,
-    rightIcon,
-    variant = 'default',
-    className,
-    id,
-    ...props
-  }, ref) => {
-    const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
-    const hasError = touched && error;
-    const showError = hasError && error;
+  (
+    {
+      label,
+      error,
+      touched,
+      required,
+      helperText,
+      leftIcon,
+      rightIcon,
+      variant = 'default',
+      className,
+      id,
+      ...props
+    },
+    ref,
+  ) => {
+    const generatedId = useId();
+    const inputId = id ?? generatedId;
+    const hasError = Boolean(touched && error);
+    const showError = Boolean(hasError && error);
 
-    const inputVariants = {
+    const inputVariants = useMemo(() => ({
       default: 'border-gray-300 focus:border-blue-500 focus:ring-blue-500',
       error: 'border-red-500 focus:border-red-500 focus:ring-red-500',
-      success: 'border-green-500 focus:border-green-500 focus:ring-green-500'
-    };
+      success: 'border-green-500 focus:border-green-500 focus:ring-green-500',
+    }), []);
 
-    const getVariant = () => {
-      if (hasError) return 'error';
-      if (variant === 'success') return 'success';
-      return 'default';
-    };
+    const variantClassName = hasError
+      ? inputVariants.error
+      : variant === 'success'
+        ? inputVariants.success
+        : inputVariants.default;
+
+    const describedBy = useMemo(() => {
+      if (showError) return `${inputId}-error`;
+      if (helperText) return `${inputId}-helper`;
+      return undefined;
+    }, [helperText, inputId, showError]);
 
     return (
       <div className="space-y-1">
@@ -59,7 +69,7 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
             )}
           </label>
         )}
-        
+
         <div className="relative">
           {leftIcon && (
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -68,7 +78,7 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
               </div>
             </div>
           )}
-          
+
           <input
             ref={ref}
             id={inputId}
@@ -76,20 +86,14 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
               'flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
               leftIcon && 'pl-10',
               rightIcon && 'pr-10',
-              inputVariants[getVariant()],
-              className
+              variantClassName,
+              className,
             )}
             aria-invalid={hasError}
-            aria-describedby={
-              showError 
-                ? `${inputId}-error` 
-                : helperText 
-                  ? `${inputId}-helper` 
-                  : undefined
-            }
+            aria-describedby={describedBy}
             {...props}
           />
-          
+
           {rightIcon && (
             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
               <div className="text-gray-400">
@@ -120,7 +124,7 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
         )}
       </div>
     );
-  }
+  },
 );
 
 FormInput.displayName = 'FormInput';

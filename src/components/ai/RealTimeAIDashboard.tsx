@@ -3,8 +3,19 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRealTimeAI } from '@/hooks/useRealTimeAI';
+import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
+import { logger } from '@/lib/logging/logger';
+import { useRealtimeDashboard } from '@/components/ai/hooks/useRealtimeDashboard';
+import type {
+  ShoppingSuggestionsContext,
+  MealPlanningContext,
+  ChoreAssignmentContext,
+  EmailProcessingContext,
+  ProgressUpdate,
+  CompletedResult,
+  RealtimeStatus,
+} from '@/components/ai/types/dashboard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -34,19 +45,20 @@ export function RealTimeAIDashboard() {
     status,
     processingRequests,
     completedRequests,
-    processRequest,
+    sendRequest,
+    buildRequest,
     getStatus,
     clearQueue,
     clearCompletedRequest,
     clearAllCompletedRequests,
     connect,
     disconnect
-  } = useRealTimeAI();
+  } = useRealtimeDashboard();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
       await getStatus();
@@ -54,101 +66,104 @@ export function RealTimeAIDashboard() {
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [getStatus]);
 
-  const handleTestShoppingSuggestions = async () => {
+  const handleRequestError = useCallback((message: string, error: unknown) => {
+    logger.error(message, error instanceof Error ? error : new Error(String(error)));
+    toast.error(message);
+  }, []);
+
+  const handleTestShoppingSuggestions = useCallback(async () => {
     try {
-      await processRequest({
-        type: 'shopping_suggestions',
-        context: {
+      const payload = buildRequest<ShoppingSuggestionsContext>(
+        'shopping_suggestions',
+        {
           dietaryRestrictions: ['vegetarian'],
           budget: 100,
-          specialOccasions: ['weeknight']
+          specialOccasions: ['weeknight'],
         },
-        priority: 'medium'
-      });
-    } catch (error: any) {
-      console.error('Failed to test shopping suggestions:', error);
+        'medium',
+      );
+      await sendRequest(payload);
+      toast.success('Shopping suggestions request queued');
+    } catch (error) {
+      handleRequestError('Failed to test shopping suggestions', error);
     }
-  };
+  }, [buildRequest, handleRequestError, sendRequest]);
 
-  const handleTestMealPlanning = async () => {
+  const handleTestMealPlanning = useCallback(async () => {
     try {
-      await processRequest({
-        type: 'meal_planning',
-        context: {
+      const payload = buildRequest<MealPlanningContext>(
+        'meal_planning',
+        {
           mealType: 'dinner',
           dietaryRestrictions: ['vegetarian'],
           maxPrepTime: 30,
           servings: 4,
-          cuisine: 'Italian'
+          cuisine: 'Italian',
         },
-        priority: 'medium'
-      });
-    } catch (error: any) {
-      console.error('Failed to test meal planning:', error);
+        'medium',
+      );
+      await sendRequest(payload);
+      toast.success('Meal planning request queued');
+    } catch (error) {
+      handleRequestError('Failed to test meal planning', error);
     }
-  };
+  }, [buildRequest, handleRequestError, sendRequest]);
 
-  const handleTestChoreAssignment = async () => {
+  const handleTestChoreAssignment = useCallback(async () => {
     try {
-      await processRequest({
-        type: 'chore_assignment',
-        context: {
+      const payload = buildRequest<ChoreAssignmentContext>(
+        'chore_assignment',
+        {
           householdId: 'test-household',
           availableUsers: ['user1', 'user2'],
-          choreTypes: ['cleaning', 'cooking']
+          choreTypes: ['cleaning', 'cooking'],
         },
-        priority: 'high'
-      });
-    } catch (error: any) {
-      console.error('Failed to test chore assignment:', error);
+        'high',
+      );
+      await sendRequest(payload);
+      toast.success('Chore assignment request queued');
+    } catch (error) {
+      handleRequestError('Failed to test chore assignment', error);
     }
-  };
+  }, [buildRequest, handleRequestError, sendRequest]);
 
-  const handleTestEmailProcessing = async () => {
+  const handleTestEmailProcessing = useCallback(async () => {
     try {
-      await processRequest({
-        type: 'email_processing',
-        context: {
+      const payload = buildRequest<EmailProcessingContext>(
+        'email_processing',
+        {
           emailCount: 5,
-          processingType: 'bills_and_receipts'
+          processingType: 'bills_and_receipts',
         },
-        priority: 'low'
-      });
-    } catch (error: any) {
-      console.error('Failed to test email processing:', error);
+        'low',
+      );
+      await sendRequest(payload);
+      toast.success('Email processing request queued');
+    } catch (error) {
+      handleRequestError('Failed to test email processing', error);
     }
-  };
+  }, [buildRequest, handleRequestError, sendRequest]);
 
   // Auto-refresh status every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       if (isConnected) {
-        getStatus();
+        void getStatus();
       }
     }, 30000);
 
     return () => clearInterval(interval);
   }, [isConnected, getStatus]);
 
-  const getRequestTypeIcon = (requestId: string) => {
+  const getRequestTypeIcon = useCallback((requestId: string) => {
     if (requestId.includes('shopping')) return <ShoppingCart className="h-4 w-4" />;
     if (requestId.includes('meal')) return <Utensils className="h-4 w-4" />;
     if (requestId.includes('chore')) return <Clock className="h-4 w-4" />;
     if (requestId.includes('email')) return <Brain className="h-4 w-4" />;
     return <Zap className="h-4 w-4" />;
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return 'destructive';
-      case 'high': return 'default';
-      case 'medium': return 'secondary';
-      case 'low': return 'outline';
-      default: return 'outline';
-    }
-  };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -196,20 +211,20 @@ export function RealTimeAIDashboard() {
                 {isConnecting ? 'Connecting...' : isConnected ? 'Connected' : 'Disconnected'}
               </span>
             </div>
-            {error && (
+            {error ? (
               <Badge variant="destructive">
                 Error: {error}
               </Badge>
-            )}
-            {lastRefresh && (
+            ) : null}
+            {lastRefresh ? (
               <span className="text-xs text-muted-foreground">
                 Last refreshed: {lastRefresh.toLocaleTimeString()}
               </span>
-            )}
+            ) : null}
           </div>
 
           {/* Status Cards */}
-          {status && (
+          {status ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="p-4">
@@ -244,11 +259,11 @@ export function RealTimeAIDashboard() {
                     <CheckCircle className="h-4 w-4 text-purple-500" />
                     <span className="text-sm font-medium">Completed</span>
                   </div>
-                  <p className="text-2xl font-bold">{completedRequests.size}</p>
+                  <p className="text-2xl font-bold">{completedRequests.length}</p>
                 </CardContent>
               </Card>
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
@@ -273,7 +288,7 @@ export function RealTimeAIDashboard() {
               <div className="grid grid-cols-2 gap-4">
                 <Button
                   onClick={handleTestShoppingSuggestions}
-                  disabled={!isConnected || processingRequests.size > 0}
+                  disabled={!isConnected || processingRequests.length > 0}
                   className="flex items-center gap-2"
                 >
                   <ShoppingCart className="h-4 w-4" />
@@ -281,7 +296,7 @@ export function RealTimeAIDashboard() {
                 </Button>
                 <Button
                   onClick={handleTestMealPlanning}
-                  disabled={!isConnected || processingRequests.size > 0}
+                  disabled={!isConnected || processingRequests.length > 0}
                   className="flex items-center gap-2"
                 >
                   <Utensils className="h-4 w-4" />
@@ -289,7 +304,7 @@ export function RealTimeAIDashboard() {
                 </Button>
                 <Button
                   onClick={handleTestChoreAssignment}
-                  disabled={!isConnected || processingRequests.size > 0}
+                  disabled={!isConnected || processingRequests.length > 0}
                   className="flex items-center gap-2"
                 >
                   <Clock className="h-4 w-4" />
@@ -297,7 +312,7 @@ export function RealTimeAIDashboard() {
                 </Button>
                 <Button
                   onClick={handleTestEmailProcessing}
-                  disabled={!isConnected || processingRequests.size > 0}
+                  disabled={!isConnected || processingRequests.length > 0}
                   className="flex items-center gap-2"
                 >
                   <Brain className="h-4 w-4" />
@@ -320,35 +335,28 @@ export function RealTimeAIDashboard() {
                   </CardDescription>
                 </div>
                 <Button
-                  onClick={clearQueue}
+                  onClick={() => {
+                    clearQueue();
+                    toast.success('Processing queue cleared');
+                  }}
                   variant="outline"
                   size="sm"
-                  disabled={status?.processingQueue === 0}
+                  disabled={(status as RealtimeStatus | null)?.processingQueue === 0}
                 >
                   Clear Queue
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
-              {processingRequests.size > 0 ? (
+              {processingRequests.length > 0 ? (
                 <div className="space-y-4">
-                  {Array.from(processingRequests.entries()).map(([requestId, progress]) => (
-                    <div key={requestId} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          {getRequestTypeIcon(requestId)}
-                          <span className="font-medium">{progress.step}</span>
-                        </div>
-                        <span className="text-sm text-muted-foreground">{progress.progress}%</span>
-                      </div>
-                      <Progress value={progress.progress} className="h-2 mb-2" />
-                      <p className="text-sm text-muted-foreground">{progress.message}</p>
-                      {progress.estimatedTimeRemaining && (
-                        <p className="text-xs text-muted-foreground">
-                          Est. time remaining: {progress.estimatedTimeRemaining}s
-                        </p>
-                      )}
-                    </div>
+                  {processingRequests.map(([requestId, progress]) => (
+                    <ProcessingRequestCard
+                      key={requestId}
+                      requestId={requestId}
+                      progress={progress}
+                      getRequestTypeIcon={getRequestTypeIcon}
+                    />
                   ))}
                 </div>
               ) : (
@@ -373,69 +381,31 @@ export function RealTimeAIDashboard() {
                   </CardDescription>
                 </div>
                 <Button
-                  onClick={clearAllCompletedRequests}
+                  onClick={() => {
+                    clearAllCompletedRequests();
+                    toast.success('All results cleared');
+                  }}
                   variant="outline"
                   size="sm"
-                  disabled={completedRequests.size === 0}
+                  disabled={completedRequests.length === 0}
                 >
                   Clear All Results
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
-              {completedRequests.size > 0 ? (
+              {completedRequests.length > 0 ? (
                 <div className="space-y-4">
-                  {Array.from(completedRequests.entries()).map(([requestId, result]) => (
-                    <div key={requestId} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          {result.success ? (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <XCircle className="h-4 w-4 text-red-500" />
-                          )}
-                          <span className="font-medium">
-                            {result.success ? 'Success' : 'Failed'}
-                          </span>
-                          <Badge variant="outline">{result.provider}</Badge>
-                          {result.fallbackUsed && (
-                            <Badge variant="secondary">Fallback</Badge>
-                          )}
-                        </div>
-                        <Button
-                          onClick={() => clearCompletedRequest(requestId)}
-                          variant="ghost"
-                          size="sm"
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      
-                      <div className="text-sm text-muted-foreground mb-2">
-                        Request ID: {requestId}
-                      </div>
-                      
-                      <div className="text-sm text-muted-foreground mb-2">
-                        Processing Time: {result.processingTime}ms
-                      </div>
-                      
-                      {result.error && (
-                        <Alert className="mt-2">
-                          <AlertDescription>{result.error}</AlertDescription>
-                        </Alert>
-                      )}
-                      
-                      {result.data && (
-                        <div className="mt-2">
-                          <details className="text-sm">
-                            <summary className="cursor-pointer font-medium">View Results</summary>
-                            <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
-                              {JSON.stringify(result.data, null, 2)}
-                            </pre>
-                          </details>
-                        </div>
-                      )}
-                    </div>
+                  {completedRequests.map(([requestId, result]) => (
+                    <CompletedResultCard
+                      key={requestId}
+                      requestId={requestId}
+                      result={result}
+                      onClear={() => {
+                        clearCompletedRequest(requestId);
+                        toast.success('Result removed');
+                      }}
+                    />
                   ))}
                 </div>
               ) : (
@@ -448,6 +418,78 @@ export function RealTimeAIDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+interface ProcessingRequestCardProps {
+  requestId: string;
+  progress: ProgressUpdate;
+  getRequestTypeIcon: (requestId: string) => JSX.Element;
+}
+
+function ProcessingRequestCard({ requestId, progress, getRequestTypeIcon }: ProcessingRequestCardProps) {
+  return (
+    <div className="border rounded-lg p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          {getRequestTypeIcon(requestId)}
+          <span className="font-medium">{progress.step}</span>
+        </div>
+        <span className="text-sm text-muted-foreground">{progress.progress}%</span>
+      </div>
+      <Progress value={progress.progress} className="h-2 mb-2" />
+      <p className="text-sm text-muted-foreground">{progress.message}</p>
+      {progress.estimatedTimeRemaining ? (
+        <p className="text-xs text-muted-foreground">
+          Est. time remaining: {progress.estimatedTimeRemaining}s
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+interface CompletedResultCardProps {
+  requestId: string;
+  result: CompletedResult;
+  onClear: () => void;
+}
+
+function CompletedResultCard({ requestId, result, onClear }: CompletedResultCardProps) {
+  return (
+    <div className="border rounded-lg p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          {result.success ? (
+            <CheckCircle className="h-4 w-4 text-green-500" />
+          ) : (
+            <XCircle className="h-4 w-4 text-red-500" />
+          )}
+          <span className="font-medium">{result.success ? 'Success' : 'Failed'}</span>
+          <Badge variant="outline">{result.provider}</Badge>
+          {result.fallbackUsed ? <Badge variant="secondary">Fallback</Badge> : null}
+        </div>
+        <Button onClick={onClear} variant="ghost" size="sm">
+          <XCircle className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="text-sm text-muted-foreground mb-2">Request ID: {requestId}</div>
+      <div className="text-sm text-muted-foreground mb-2">Processing Time: {result.processingTime}ms</div>
+      {result.error ? (
+        <Alert className="mt-2">
+          <AlertDescription>{result.error}</AlertDescription>
+        </Alert>
+      ) : null}
+      {result.data ? (
+        <div className="mt-2">
+          <details className="text-sm">
+            <summary className="cursor-pointer font-medium">View Results</summary>
+            <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
+              {JSON.stringify(result.data, null, 2)}
+            </pre>
+          </details>
+        </div>
+      ) : null}
     </div>
   );
 }

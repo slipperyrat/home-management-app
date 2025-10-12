@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getAuth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { canAccessFeatureFromEntitlements } from '@/lib/server/canAccessFeature';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,7 +13,7 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase: SupabaseClient<Database> = createClient(supabaseUrl, supabaseKey);
 
 const TemplateIdSchema = z.object({
   id: z.string().uuid(),
@@ -76,7 +78,7 @@ export async function GET(
 
     return NextResponse.json(template);
   } catch (error) {
-    console.error('Error in GET /api/calendar-templates/[id]:', error);
+    logger.error('Error in GET /api/calendar-templates/[id]', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -103,7 +105,7 @@ export async function PUT(
   try {
     const { id } = TemplateIdSchema.parse({ id: (await params).id });
     const body = await request.json();
-    const updateData = UpdateTemplateSchema.parse(body);
+    let updateData = UpdateTemplateSchema.parse(body);
 
     // Get user
     const { userId } = await getAuth(request);
@@ -157,11 +159,11 @@ export async function PUT(
       }
     } else {
       // Global templates - only allow updates to is_active for now
-      const allowedFields = ['is_active'];
-      const filteredData = Object.fromEntries(
-        Object.entries(updateData).filter(([key]) => allowedFields.includes(key))
-      );
-      updateData = filteredData as any;
+      if (Object.prototype.hasOwnProperty.call(updateData, 'is_active')) {
+        updateData = { is_active: updateData.is_active };
+      } else {
+        updateData = {};
+      }
     }
 
     // Update the template
@@ -176,7 +178,7 @@ export async function PUT(
       .single();
 
     if (updateError) {
-      console.error('Error updating calendar template:', updateError);
+      logger.error('Error updating calendar template', updateError, { templateId: id, userId });
       return NextResponse.json({ error: 'Failed to update template' }, { status: 500 });
     }
 
@@ -196,7 +198,7 @@ export async function PUT(
 
     return NextResponse.json(updatedTemplate);
   } catch (error) {
-    console.error('Error in PUT /api/calendar-templates/[id]:', error);
+    logger.error('Error in PUT /api/calendar-templates/[id]', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -270,7 +272,7 @@ export async function DELETE(
       .eq('id', id);
 
     if (deleteError) {
-      console.error('Error deleting calendar template:', deleteError);
+      logger.error('Error deleting calendar template', deleteError, { templateId: id, userId });
       return NextResponse.json({ error: 'Failed to delete template' }, { status: 500 });
     }
 
@@ -290,7 +292,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error in DELETE /api/calendar-templates/[id]:', error);
+    logger.error('Error in DELETE /api/calendar-templates/[id]', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

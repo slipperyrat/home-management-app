@@ -53,11 +53,6 @@ export async function GET(request: NextRequest) {
     }
 
     const duration = performance.now() - start;
-    logger.performance('automation.check-jobs.fetch', duration, {
-      userId,
-      householdId,
-    });
-
     logger.info('Automation jobs retrieved', {
       userId,
       householdId,
@@ -65,7 +60,6 @@ export async function GET(request: NextRequest) {
       duration,
     });
 
-    const duration = performance.now() - start;
     logger.performance('automation.check-jobs.fetch', duration, {
       userId,
       householdId,

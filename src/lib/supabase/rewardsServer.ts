@@ -1,4 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,12 +15,12 @@ if (!supabaseServiceKey) {
 }
 
 // Create a Supabase client with service role key for server-side operations
-export const supabaseService = createClient(supabaseUrl, supabaseServiceKey);
+export const supabaseService = createClient<Database>(supabaseUrl, supabaseServiceKey);
 
 /**
  * Cleans up expired power-ups for a user (server-side only)
  */
-export async function cleanupExpiredPowerUps(userId: string) {
+export async function cleanupExpiredPowerUps(userId: string): Promise<boolean> {
   try {
     const now = new Date().toISOString();
     const { error: deleteError } = await supabaseService
@@ -29,14 +31,14 @@ export async function cleanupExpiredPowerUps(userId: string) {
       .not('expires_at', 'is', null);
 
     if (deleteError) {
-      console.error('❌ Error deleting expired power-ups:', deleteError);
+      logger.warn('Error deleting expired power-ups', { userId, error: deleteError });
       return false;
-    } else {
-      console.log(`🧹 Cleaned up expired power-ups for user ${userId}`);
-      return true;
     }
+
+    logger.info('Expired power-ups cleaned', { userId });
+    return true;
   } catch (error) {
-    console.error('❌ Error in cleanupExpiredPowerUps:', error);
+    logger.error('cleanupExpiredPowerUps failed', error as Error, { userId });
     return false;
   }
 }

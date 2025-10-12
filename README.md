@@ -221,8 +221,10 @@ The app is optimized for deployment on Vercel:
 5. Ensure all tests pass
 6. Submit a pull request
 
+## Release Notes
+
+- 2025-09-27 – AI upgrades documented in `docs/AI_UPGRADES_2025-09-27.md` (OpenAI config fixes)
+
 ## 📝 License
 
-This project is licensed under the MIT License.#   F o r c e   f r e s h   d e p l o y m e n t   -   2 0 2 5 - 0 8 - 1 6   1 6 : 0 5 : 4 8 
- 
- 
+This project is licensed under the MIT License.

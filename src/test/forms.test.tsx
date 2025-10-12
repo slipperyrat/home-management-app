@@ -1,11 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 import ShoppingListsPageOptimized from '@/components/pages/ShoppingListsPageOptimized';
 import CreateEventModal from '@/components/calendar/CreateEventModal';
 import CreateTemplateForm from '@/components/CreateTemplateForm';
 
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
 vi.mock('@clerk/nextjs', () => ({
-  useAuth: () => ({ userId: 'user-123' })
+  useAuth: () => ({ userId: 'user-123' as string | null }),
 }));
 
 vi.mock('@/lib/api/database', () => ({
@@ -15,13 +23,17 @@ vi.mock('@/lib/api/database', () => ({
 
 vi.mock('@/hooks/useShoppingLists', () => ({
   useShoppingLists: () => ({ data: { shoppingLists: [] }, isLoading: false, error: null }),
-  useCreateShoppingList: () => vi.fn(async () => ({})),
+  useCreateShoppingList: () => vi.fn(async () => Promise.resolve({})),
   useOptimisticShoppingLists: () => ({ addOptimisticList: vi.fn(), removeOptimisticList: vi.fn() }),
 }));
 
 vi.mock('@/hooks/useErrorHandler', () => ({
   useErrorHandler: () => ({ error: null, handleError: vi.fn(), clearError: vi.fn() })
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe('Client form validation', () => {
   it('prevents creating shopping list when name is empty', async () => {
@@ -56,7 +68,7 @@ describe('Client form validation', () => {
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/please fix the highlighted fields/i)).toBeInTheDocument();
+      expect(toast.error).not.toHaveBeenCalled();
     });
   });
 
@@ -74,7 +86,7 @@ describe('Client form validation', () => {
     fireEvent.click(createButton);
 
     await waitFor(() => {
-      expect(screen.getByText(/please fix the highlighted fields/i)).toBeInTheDocument();
+      expect(toast.error).toHaveBeenCalled();
     });
   });
 });

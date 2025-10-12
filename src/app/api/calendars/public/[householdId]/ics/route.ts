@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabaseClient } from '@/lib/api/database';
 import { generateEventOccurrences } from '@/lib/calendar/rruleUtils';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
 /**
  * Public ICS (iCalendar) feed for a household
@@ -64,7 +66,7 @@ export async function GET(
       .order('start_at', { ascending: true });
 
     if (error) {
-      console.error('Error fetching public events for ICS:', error);
+      logger.error('Error fetching public events for ICS', error, { householdId });
       return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
     }
 
@@ -82,7 +84,7 @@ export async function GET(
     }
 
     // Generate ICS content
-    const icsContent = generateICS(events || [], household);
+    const icsContent = generateICS(events ?? [], household);
 
     return new NextResponse(icsContent, {
       status: 200,
@@ -97,7 +99,7 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error('Error generating public ICS feed:', error);
+    logger.error('Error generating public ICS feed', error instanceof Error ? error : new Error(String(error)), { householdId: (await params).householdId });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -105,11 +107,17 @@ export async function GET(
 /**
  * Generate ICS content from events
  */
-function generateICS(events: any[], household: any): string {
-  const now = new Date();
-  const calendarName = `${household.name} Calendar`;
+type PublicEvent = Database['public']['Tables']['events']['Row'] & {
+  calendar?: { name?: string | null; color?: string | null; is_public?: boolean | null } | null;
+  attendees?: Array<Database['public']['Tables']['event_attendees']['Row']> | null;
+};
+
+type Household = Database['public']['Tables']['households']['Row'];
+
+function generateICS(events: PublicEvent[], household: Household): string {
+  const calendarName = `${household.name ?? 'Household'} Calendar`;
   
-  let ics = [
+  const ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Home Management App//Public Calendar//EN',
@@ -144,12 +152,41 @@ function generateICS(events: any[], household: any): string {
       );
 
       // Add each occurrence as a separate VEVENT
-      for (const occurrence of occurrences) {
-        ics.push(...generateVEVENT(occurrence, event));
-      }
+      ics.push(
+        ...occurrences.flatMap((occurrence) =>
+          generateVEVENT(
+            {
+              id: event.id,
+              title: event.title,
+              description: event.description,
+              startAt: occurrence.startAt,
+              endAt: occurrence.endAt,
+              timezone: occurrence.timezone ?? event.timezone,
+              isAllDay: occurrence.isAllDay ?? event.is_all_day,
+              attendees: event.attendees ?? [],
+              calendar: event.calendar ?? null,
+              updated_at: occurrence.updated_at ?? event.updated_at,
+              created_at: occurrence.created_at ?? event.created_at,
+            },
+            event,
+          ),
+        ),
+      );
     } else {
       // Single occurrence event
-      ics.push(...generateVEVENT(event, event));
+      ics.push(...generateVEVENT({
+        id: event.id,
+        title: event.title,
+        description: event.description,
+        startAt: new Date(event.start_at),
+        endAt: new Date(event.end_at),
+        timezone: event.timezone,
+        isAllDay: event.is_all_day,
+        attendees: event.attendees ?? [],
+        calendar: event.calendar ?? null,
+        updated_at: event.updated_at,
+        created_at: event.created_at,
+      }, event));
     }
   }
 
@@ -161,7 +198,21 @@ function generateICS(events: any[], household: any): string {
 /**
  * Generate VEVENT block for an event
  */
-function generateVEVENT(event: any, originalEvent: any): string[] {
+type PublicOccurrence = {
+  id?: string;
+  title: string;
+  description?: string | null;
+  startAt: Date;
+  endAt: Date;
+  timezone?: string | null;
+  isAllDay?: boolean | null;
+  attendees?: Array<Database['public']['Tables']['event_attendees']['Row']>;
+  calendar?: { name?: string | null; color?: string | null; is_public?: boolean | null } | null;
+  updated_at?: string | null;
+  created_at: string;
+};
+
+function generateVEVENT(event: PublicOccurrence, originalEvent: PublicEvent): string[] {
   const vevent = ['BEGIN:VEVENT'];
   
   // UID (unique identifier)
@@ -171,10 +222,10 @@ function generateVEVENT(event: any, originalEvent: any): string[] {
   vevent.push(`DTSTAMP:${formatICSDate(new Date())}`);
   
   // Start and end times
-  const startDate = new Date(event.startAt || event.start_at);
-  const endDate = new Date(event.endAt || event.end_at);
+  const startDate = new Date(event.startAt);
+  const endDate = new Date(event.endAt);
   
-  if (event.isAllDay || event.is_all_day) {
+  if (event.isAllDay) {
     vevent.push(`DTSTART;VALUE=DATE:${formatICSDate(startDate, true)}`);
     vevent.push(`DTEND;VALUE=DATE:${formatICSDate(endDate, true)}`);
   } else {
@@ -208,16 +259,17 @@ function generateVEVENT(event: any, originalEvent: any): string[] {
   
   // Attendees (only include public attendees)
   if (event.attendees && event.attendees.length > 0) {
-    for (const attendee of event.attendees) {
-      if (attendee.email && attendee.status !== 'private') {
-        const email = attendee.email;
-        const name = attendee.email.split('@')[0];
-        const status = attendee.status === 'accepted' ? 'ACCEPTED' : 
-                     attendee.status === 'declined' ? 'DECLINED' :
-                     attendee.status === 'tentative' ? 'TENTATIVE' : 'NEEDS-ACTION';
-        
-        vevent.push(`ATTENDEE;CN="${escapeICS(name)}";RSVP=TRUE:mailto:${email}`);
+    for (const { email, status } of event.attendees) {
+      if (!email || status === 'private') {
+        continue;
       }
+
+      const name = email.split('@')[0];
+      const partstat = status === 'accepted' ? 'ACCEPTED' :
+        status === 'declined' ? 'DECLINED' :
+          status === 'tentative' ? 'TENTATIVE' : 'NEEDS-ACTION';
+
+      vevent.push(`ATTENDEE;CN="${escapeICS(name)}";PARTSTAT=${partstat};RSVP=TRUE:mailto:${email}`);
     }
   }
   
@@ -247,7 +299,7 @@ function formatICSDate(date: Date, dateOnly = false): string {
   if (dateOnly) {
     return date.toISOString().split('T')[0].replace(/-/g, '');
   }
-  return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  return `${date.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`;
 }
 
 /**

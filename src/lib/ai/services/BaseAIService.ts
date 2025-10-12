@@ -4,8 +4,9 @@
 import OpenAI from 'openai';
 import { AIConfig, getAIConfig } from '../config/aiConfig';
 import { performanceMonitor } from '@/lib/monitoring/PerformanceMonitor';
+import { logger } from '@/lib/logging/logger';
 
-export interface AIResponse<T = any> {
+export interface AIResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
@@ -33,8 +34,7 @@ export abstract class BaseAIService {
 
   protected async executeWithFallback<T>(
     aiFunction: () => Promise<T>,
-    mockFunction: () => Promise<T>,
-    context?: any
+    mockFunction: () => Promise<T>
   ): Promise<AIResponse<T>> {
     const startTime = Date.now();
     
@@ -62,7 +62,7 @@ export abstract class BaseAIService {
     // Try AI provider first
     if (this.config.provider === 'openai' && this.openai) {
       try {
-        console.log(`🤖 Using OpenAI for ${this.featureName}`);
+        logger.info('AI service using OpenAI provider', { feature: this.featureName });
         const result = await this.withRetry(aiFunction, this.config.retryAttempts);
         const response = {
           success: true,
@@ -82,11 +82,11 @@ export abstract class BaseAIService {
         
         return response;
       } catch (error) {
-        console.warn(`⚠️ OpenAI failed for ${this.featureName}:`, error);
+        logger.warn('OpenAI provider failed', error as Error, { feature: this.featureName });
         
         // Try fallback if enabled
         if (this.config.fallbackToMock) {
-          console.log(`🔄 Falling back to mock for ${this.featureName}`);
+          logger.info('Falling back to mock provider', { feature: this.featureName });
           try {
             const mockResult = await mockFunction();
             const response = {
@@ -108,7 +108,7 @@ export abstract class BaseAIService {
             
             return response;
           } catch (mockError) {
-            console.error(`❌ Mock fallback failed for ${this.featureName}:`, mockError);
+            logger.error('Mock fallback failed', mockError as Error, { feature: this.featureName });
             return {
               success: false,
               error: `Both AI and mock failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -130,7 +130,7 @@ export abstract class BaseAIService {
     // Use mock provider
     if (this.config.provider === 'mock') {
       try {
-        console.log(`🎭 Using mock for ${this.featureName}`);
+        logger.info('AI service using mock provider', { feature: this.featureName });
         const result = await mockFunction();
         return {
           success: true,
@@ -170,7 +170,12 @@ export abstract class BaseAIService {
         
         if (i < retries) {
           const delay = Math.pow(2, i) * 1000; // Exponential backoff
-          console.log(`🔄 Retry ${i + 1}/${retries} for ${this.featureName} in ${delay}ms`);
+          logger.info('Retrying AI provider call', {
+            feature: this.featureName,
+            attempt: i + 1,
+            retries,
+            delay,
+          });
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
@@ -179,7 +184,7 @@ export abstract class BaseAIService {
     throw lastError!;
   }
 
-  protected createOpenAIPrompt(systemPrompt: string, userPrompt: string): any[] {
+  protected createOpenAIPrompt(systemPrompt: string, userPrompt: string) {
     return [
       {
         role: 'system',
@@ -198,11 +203,11 @@ export abstract class BaseAIService {
       const cleanContent = response.replace(/```json\n?|\n?```/g, '').trim();
       return JSON.parse(cleanContent);
     } catch (error) {
-      console.warn(`⚠️ Failed to parse AI response for ${this.featureName}:`, error);
+      logger.warn('Failed to parse AI response', error as Error, { feature: this.featureName });
       return fallback;
     }
   }
 
   // Abstract method to be implemented by subclasses
-  protected abstract getMockResponse(context?: any): Promise<any>;
+  protected abstract getMockResponse(context?: unknown): Promise<unknown>;
 }

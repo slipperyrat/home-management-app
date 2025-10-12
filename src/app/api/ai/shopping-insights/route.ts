@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
+import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/database.types';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function GET(_request: NextRequest) {
   try {
@@ -36,7 +42,7 @@ export async function GET(_request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error fetching AI shopping insights:', error);
+    logger.error('Error fetching AI shopping insights', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json(
       { error: 'Failed to fetch shopping insights' },
       { status: 500 }
@@ -44,7 +50,24 @@ export async function GET(_request: NextRequest) {
   }
 }
 
-async function calculateAIShoppingInsights(householdId: string) {
+type ShoppingList = Database['public']['Tables']['shopping_lists']['Row'] & {
+  shopping_items?: Array<Database['public']['Tables']['shopping_items']['Row']>;
+};
+
+type ShoppingFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
+
+type ShoppingInsights = {
+  total_lists: number;
+  completed_lists: number;
+  average_items_per_list: number;
+  most_common_categories: string[];
+  shopping_frequency: ShoppingFrequency;
+  suggested_improvements: string[];
+  ai_learning_progress: number;
+  next_shopping_prediction: string;
+};
+
+async function calculateAIShoppingInsights(householdId: string): Promise<ShoppingInsights> {
   try {
     // Get all shopping lists for the household
     const { data: shoppingLists, error: listsError } = await supabase
@@ -63,7 +86,7 @@ async function calculateAIShoppingInsights(householdId: string) {
       .order('created_at', { ascending: false });
 
     if (listsError) {
-      console.error('Error fetching shopping lists:', listsError);
+      logger.error('Error fetching shopping lists for insights', listsError, { householdId });
       return getDefaultInsights();
     }
 
@@ -82,19 +105,19 @@ async function calculateAIShoppingInsights(householdId: string) {
     const averageItemsPerList = totalItems > 0 ? Math.round(totalItems / totalLists) : 0;
 
     // Analyze shopping frequency
-    const shoppingFrequency = analyzeShoppingFrequency(shoppingLists);
+    const shoppingFrequency = analyzeShoppingFrequency(shoppingLists as ShoppingList[]);
 
     // Get most common categories
-    const mostCommonCategories = getMostCommonCategories(shoppingLists);
+    const mostCommonCategories = getMostCommonCategories(shoppingLists as ShoppingList[]);
 
     // Calculate AI learning progress
-    const aiLearningProgress = calculateAILearningProgress(shoppingLists);
+    const aiLearningProgress = calculateAILearningProgress(shoppingLists as ShoppingList[]);
 
     // Generate next shopping prediction
-    const nextShoppingPrediction = predictNextShopping(shoppingLists);
+    const nextShoppingPrediction = predictNextShopping(shoppingLists as ShoppingList[]);
 
     // Generate suggested improvements
-    const suggestedImprovements = generateSuggestedImprovements(shoppingLists, {
+    const suggestedImprovements = generateSuggestedImprovements(shoppingLists as ShoppingList[], {
       totalLists,
       completedLists,
       averageItemsPerList,
@@ -113,18 +136,20 @@ async function calculateAIShoppingInsights(householdId: string) {
     };
 
   } catch (error) {
-    console.error('Error calculating AI shopping insights:', error);
+    logger.error('Error calculating AI shopping insights', error instanceof Error ? error : new Error(String(error)), {
+      householdId,
+    });
     return getDefaultInsights();
   }
 }
 
-function analyzeShoppingFrequency(shoppingLists: any[]): 'daily' | 'weekly' | 'biweekly' | 'monthly' {
+function analyzeShoppingFrequency(shoppingLists: ShoppingList[]): ShoppingFrequency {
   if (shoppingLists.length < 2) return 'weekly';
 
   // Sort by creation date
   const sortedLists = shoppingLists
-    .filter(list => list.created_at)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    .filter((list) => list.created_at)
+    .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
 
   if (sortedLists.length < 2) return 'weekly';
 
@@ -150,12 +175,12 @@ function analyzeShoppingFrequency(shoppingLists: any[]): 'daily' | 'weekly' | 'b
   return 'monthly';
 }
 
-function getMostCommonCategories(shoppingLists: any[]): string[] {
+function getMostCommonCategories(shoppingLists: ShoppingList[]): string[] {
   const categoryCounts: { [key: string]: number } = {};
 
-  shoppingLists.forEach(list => {
+  shoppingLists.forEach((list) => {
     if (list.shopping_items) {
-      list.shopping_items.forEach((item: any) => {
+      list.shopping_items.forEach((item) => {
         if (item.category) {
           categoryCounts[item.category] = (categoryCounts[item.category] || 0) + 1;
         }
@@ -169,7 +194,7 @@ function getMostCommonCategories(shoppingLists: any[]): string[] {
     .map(([category]) => category);
 }
 
-function calculateAILearningProgress(shoppingLists: any[]): number {
+function calculateAILearningProgress(shoppingLists: ShoppingList[]): number {
   if (shoppingLists.length === 0) return 0;
 
   // Base progress on number of lists and completion rate
@@ -181,10 +206,10 @@ function calculateAILearningProgress(shoppingLists: any[]): number {
   let complexityScore = 0;
   const uniqueCategories = new Set<string>();
 
-  shoppingLists.forEach(list => {
+  shoppingLists.forEach((list) => {
     if (list.shopping_items) {
       complexityScore += list.shopping_items.length;
-      list.shopping_items.forEach((item: any) => {
+      list.shopping_items.forEach((item) => {
         if (item.category) {
           uniqueCategories.add(item.category);
         }
@@ -196,7 +221,7 @@ function calculateAILearningProgress(shoppingLists: any[]): number {
   const categoryDiversity = uniqueCategories.size;
 
   // Calculate learning progress (0-100)
-  let progress = Math.min(100, 
+  const progress = Math.min(100, 
     (totalLists * 10) + // Base progress from list count
     (completionRate * 20) + // Progress from completion rate
     (Math.min(averageComplexity, 10) * 3) + // Progress from complexity
@@ -206,12 +231,12 @@ function calculateAILearningProgress(shoppingLists: any[]): number {
   return Math.round(progress);
 }
 
-function predictNextShopping(shoppingLists: any[]): string {
+function predictNextShopping(shoppingLists: ShoppingList[]): string {
   if (shoppingLists.length === 0) return 'This week';
 
   const sortedLists = shoppingLists
-    .filter(list => list.created_at)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    .filter((list) => list.created_at)
+    .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
 
   if (sortedLists.length === 0) return 'This week';
 
@@ -225,7 +250,14 @@ function predictNextShopping(shoppingLists: any[]): string {
   return 'In the next few weeks';
 }
 
-function generateSuggestedImprovements(_shoppingLists: any[], stats: any): string[] {
+type ShoppingStats = {
+  totalLists: number;
+  completedLists: number;
+  averageItemsPerList: number;
+  shoppingFrequency: ShoppingFrequency;
+};
+
+function generateSuggestedImprovements(_shoppingLists: ShoppingList[], stats: ShoppingStats): string[] {
   const suggestions: string[] = [];
 
   if (stats.totalLists < 3) {

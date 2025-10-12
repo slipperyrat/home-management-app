@@ -1,55 +1,64 @@
 import { createClient } from '@supabase/supabase-js'
 
+import { logger } from '@/lib/logging/logger'
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY! // Must be service role key
 )
 
 export async function syncUser(clerkUser: { id: string; email: string; name: string }) {
-  console.log("🔁 Running syncUser");
-  const { id, email } = clerkUser;
-  console.log("✅ Current user:", clerkUser);
+  logger.info('Running syncUser', { clerkUserId: clerkUser.id })
+  const { id, email } = clerkUser
+  logger.info('Current Clerk user snapshot', { clerkUserId: id, email, name: clerkUser.name })
 
   // Test service role key access
-  console.log("🔑 Testing service role key access...");
+  logger.debug('Testing service role key access', { clerkUserId: id })
   const { data: allUsers, error: testError } = await supabase
     .from('users')
     .select('id, email')
     .limit(5);
   
-  console.log('Service role test:', { 
-    allUsers: allUsers?.length || 0, 
-    error: testError?.message || null 
-  });
+  logger.debug('Service role test results', {
+    clerkUserId: id,
+    totalUsers: allUsers?.length ?? 0,
+    hasError: Boolean(testError),
+  })
 
   // Ensure user exists in users table
-  console.log("👤 Ensuring user exists in users table...");
+  logger.debug('Ensuring user exists in users table', { clerkUserId: id })
   const { data: userRow, error: userError } = await supabase
     .from('users')
     .select('id')
     .eq('id', id)  // Changed from clerk_id to id
     .single();
   
-  console.log('User check result:', { userRow, userError });
+  logger.debug('User check result', {
+    clerkUserId: id,
+    hasRow: Boolean(userRow),
+    hasError: Boolean(userError),
+  })
   
   if (userError && userError.code !== 'PGRST116') {
-    console.error('❌ Error checking users table:', userError);
+    logger.error('Error checking users table during sync', userError, { clerkUserId: id })
   }
 
   // 2. Check if any households exist
-  console.log("📡 Fetching household list...");
+  logger.debug('Fetching household list for sync', { clerkUserId: id })
   const { data: existingHouseholds, error: householdsError } = await supabase
     .from('households')
     .select('id')
     .limit(1)
-  if (householdsError) console.error('❌ Error fetching households:', householdsError);
+  if (householdsError) {
+    logger.error('Error fetching households during sync', householdsError, { clerkUserId: id })
+  }
 
   let householdId: string;
   let role: string;
 
   if (!existingHouseholds || existingHouseholds.length === 0) {
     // No households → create one + become owner
-    console.log("🏠 Creating household since none found...");
+    logger.info('Creating initial household during sync', { clerkUserId: id })
     const { data: newHousehold, error: householdError } = await supabase
       .from('households')
       .insert({ 
@@ -58,7 +67,9 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
       })
       .select()
       .single();
-    if (householdError) console.error('❌ Error creating household:', householdError);
+    if (householdError) {
+      logger.error('Error creating household during sync', householdError, { clerkUserId: id })
+    }
     householdId = newHousehold?.id;
     role = 'owner';
   } else {
@@ -68,13 +79,13 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
   }
 
   // Upsert user (without household_id since it's in household_members table)
-  console.log('🔄 Upserting user...');
+  logger.debug('Upserting user during sync', { clerkUserId: id })
   
   // Only upsert if user doesn't exist, or update without overwriting XP/coins
   if (!userRow) {
     // New user - set initial values
     const { error: upsertError } = await supabase.from('users').upsert({
-      id: id,  // Changed from clerk_id to id
+      id,  // Changed from clerk_id to id
       email,
       role,
       xp: 0,
@@ -83,9 +94,16 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
       onboarding_completed: false, // Set initial onboarding status for new users only
     });
     if (upsertError) {
-      console.error('❌ Error upserting user:', upsertError);
+      logger.error('Error upserting user during sync', upsertError, { clerkUserId: id })
     } else {
-      console.log('✅ Created new user:', { clerk_id: id, email, role, xp: 0, coins: 0, household_id: householdId });
+      logger.info('Created new user during sync', {
+        clerkUserId: id,
+        email,
+        role,
+        xp: 0,
+        coins: 0,
+        householdId,
+      })
     }
   } else {
     // Existing user - update email, role, and household_id, but preserve has_onboarded status
@@ -96,40 +114,46 @@ export async function syncUser(clerkUser: { id: string; email: string; name: str
       // Note: We don't update has_onboarded for existing users to preserve their onboarding status
     }).eq('id', id);  // Changed from clerk_id to id
     if (updateError) {
-      console.error('❌ Error updating existing user:', updateError);
+      logger.error('Error updating existing user during sync', updateError, { clerkUserId: id })
     } else {
-      console.log('✅ Updated existing user:', { clerk_id: id, email, role, household_id: householdId });
+      logger.info('Updated existing user during sync', {
+        clerkUserId: id,
+        email,
+        role,
+        householdId,
+      })
     }
   }
 
   // 1. Check if user is already in household_members
-  console.log("🔎 Checking if user already exists in household_members table...");
+  logger.debug('Checking household membership during sync', { clerkUserId: id })
   const { data: existingMembership, error: membershipError } = await supabase
     .from('household_members')
     .select('*')
     .eq('user_id', id)
     .single();
   if (membershipError && membershipError.code !== 'PGRST116') {
-    console.error('❌ Error checking membership:', membershipError);
+    logger.error('Error checking membership during sync', membershipError, { clerkUserId: id })
   }
 
   if (existingMembership) {
-    console.log("✅ User already exists in household_members, skipping sync.");
-    return;
+    logger.info('User already exists in household_members, skipping insert', { clerkUserId: id })
+    return
   }
 
-  console.log(`👤 Creating user as ${role}:`, email, role);
-  console.log("📥 Inserting into household_members:", {
-    user_id: id,
-    household_id: householdId,
-    role,
-  });
+  logger.info('Creating household membership during sync', { clerkUserId: id, householdId, role })
   const { error: insertMemberError } = await supabase.from('household_members').insert({
     user_id: id,
     household_id: householdId,
     role,
   });
-  if (insertMemberError) console.error('❌ Error inserting member into household_members:', insertMemberError);
-
-  console.log(`✅ Synced ${email} to household ${householdId} as ${role}`);
+  if (insertMemberError) {
+    logger.error('Error inserting member into household_members', insertMemberError, {
+      clerkUserId: id,
+      householdId,
+      role,
+    })
+  } else {
+    logger.info('Synced user to household', { clerkUserId: id, email, householdId, role })
+  }
 } 

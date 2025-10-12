@@ -1,17 +1,34 @@
 import { createClient } from '@supabase/supabase-js'
 
-// You may want to use environment variables for these
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string
+import { logger } from '@/lib/logging/logger'
+import { Database } from '@/types/database'
 
-const supabase = createClient(supabaseUrl, supabaseKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-export async function getUserRole(userId: string) {
-  if (!userId) return null
+let cachedClient: ReturnType<typeof createClient<Database>> | null = null
 
-  // Check if environment variables are set
+function getSupabaseClient(): ReturnType<typeof createClient<Database>> | null {
   if (!supabaseUrl || !supabaseKey) {
-    console.error('Supabase environment variables not configured')
+    logger.error('Supabase environment variables not configured for getUserRole')
+    return null
+  }
+
+  if (!cachedClient) {
+    cachedClient = createClient<Database>(supabaseUrl, supabaseKey)
+  }
+
+  return cachedClient
+}
+
+export async function getUserRole(userId: string): Promise<string | null> {
+  if (!userId) {
+    return null
+  }
+
+  const supabase = getSupabaseClient()
+
+  if (!supabase) {
     return null
   }
 
@@ -23,27 +40,28 @@ export async function getUserRole(userId: string) {
       .single()
 
     if (error) {
-      // Log the full error details for debugging
-      console.log('Supabase error details:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      })
-      
-      // If user doesn't exist in database yet, return default role
+      logger.error(
+        'Supabase error fetching user role',
+        new Error(error.message),
+        {
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          userId
+        }
+      )
+
       if (error.code === 'PGRST116' || error.message?.includes('No rows found')) {
-        console.log('User not found in database yet, returning default role')
-        return 'member' // Default role for new users
+        logger.info('User not found in database yet, returning default role', { userId })
+        return 'member'
       }
-      
-      // For any other error, just return default role without logging the error
-      return 'member' // Default to member role if there's an error
+
+      return 'member'
     }
 
-    return data?.role || 'member' // Default to member role if no role is set
+    return data?.role || 'member'
   } catch (err) {
-    console.error('Exception in getUserRole:', err)
-    return 'member' // Default to member role on exception
+    logger.error('Exception in getUserRole', err as Error, { userId })
+    return 'member'
   }
-} 
+}

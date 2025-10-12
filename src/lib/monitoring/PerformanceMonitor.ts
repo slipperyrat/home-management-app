@@ -1,6 +1,8 @@
 // Performance Monitoring Service for AI System
 // This can be easily removed if the performance monitoring doesn't work
 
+import { logger } from '@/lib/logging/logger';
+
 export interface PerformanceMetric {
   id: string;
   type: 'ai_processing' | 'websocket_connection' | 'api_request' | 'database_query' | 'user_action';
@@ -8,7 +10,7 @@ export interface PerformanceMetric {
   value: number;
   unit: 'ms' | 'count' | 'bytes' | 'percentage';
   timestamp: Date;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   userId?: string;
   householdId?: string;
   requestId?: string;
@@ -55,10 +57,7 @@ export class PerformanceMonitor {
   }
 
   private initializeMonitoring() {
-    // Initialize performance monitoring
-    console.log('📊 Performance Monitor initialized');
-    
-    // Start system metrics collection
+    logger.info('Performance Monitor initialized');
     this.startSystemMetricsCollection();
   }
 
@@ -79,8 +78,12 @@ export class PerformanceMonitor {
     }
 
     // Log high-value metrics
-    if (metric.value > 5000) { // Log metrics over 5 seconds
-      console.warn(`⚠️ High-value metric detected: ${metric.name} = ${metric.value}${metric.unit}`);
+    if (metric.value > 5000) {
+      logger.warn('High-value performance metric detected', {
+        metric: metric.name,
+        value: metric.value,
+        unit: metric.unit,
+      });
     }
   }
 
@@ -355,17 +358,17 @@ export class PerformanceMonitor {
 
   public clearMetrics(): void {
     this.metrics = [];
-    console.log('📊 Performance metrics cleared');
+    logger.info('Performance metrics cleared');
   }
 
   public enable(): void {
     this.isEnabled = true;
-    console.log('📊 Performance monitoring enabled');
+    logger.info('Performance monitoring enabled');
   }
 
   public disable(): void {
     this.isEnabled = false;
-    console.log('📊 Performance monitoring disabled');
+    logger.info('Performance monitoring disabled');
   }
 
   public isMonitoringEnabled(): boolean {

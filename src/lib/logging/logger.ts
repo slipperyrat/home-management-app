@@ -1,7 +1,7 @@
 // Unified Logging Service for Home Management App
 // Replaces scattered console.log statements with structured, contextual logging
 
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from '@sentry/nextjs';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -13,7 +13,9 @@ export interface LogContext {
   method?: string;
   userAgent?: string;
   ip?: string;
-  [key: string]: any;
+  severity?: 'low' | 'medium' | 'high';
+  securityEvent?: boolean;
+  [key: string]: unknown;
 }
 
 export interface LogEntry {
@@ -21,21 +23,23 @@ export interface LogEntry {
   level: LogLevel;
   message: string;
   context: LogContext;
-  error?: Error;
-  data?: any;
+  error?: {
+    name: string;
+    message: string;
+    stack?: string;
+  };
+  data?: unknown;
 }
 
 class Logger {
-  private isDevelopment = process.env.NODE_ENV === 'development';
-  private isProduction = process.env.NODE_ENV === 'production';
+  private readonly isDevelopment = process.env.NODE_ENV === 'development';
+  private readonly isProduction = process.env.NODE_ENV === 'production';
 
-  // Generate unique request ID for tracking requests across logs
   generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `req_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 
-  // Format log entry for consistent output
-  private formatLog(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: any): LogEntry {
+  private formatLog(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: unknown): LogEntry {
     return {
       timestamp: new Date().toISOString(),
       level,
@@ -43,56 +47,64 @@ class Logger {
       context: {
         ...context,
         environment: process.env.NODE_ENV,
-        version: process.env.npm_package_version || 'unknown'
+        version: process.env.npm_package_version || 'unknown',
       },
-      error: error ? {
-        name: error.name,
-        message: error.message,
-        stack: this.isDevelopment ? error.stack : undefined
-      } : undefined,
-      data
+      error: error
+        ? {
+            name: error.name,
+            message: error.message,
+            stack: this.isDevelopment ? error.stack : undefined,
+          }
+        : undefined,
+      data,
     };
   }
 
-  private output(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: any): void {
+  private output(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: unknown): void {
     const entry = this.formatLog(level, message, context, error, data);
 
     if (this.isProduction) {
       this.forwardToSentry(level, message, context, error, data);
+      // Also emit JSON for log aggregators
+      process.stdout.write(`${JSON.stringify(entry)}\n`);
+      return;
     }
 
-    if (this.isDevelopment) {
-      // Development: Pretty console output with emojis
-      const emoji = {
-        debug: '🔍',
-        info: 'ℹ️',
-        warn: '⚠️',
-        error: '❌'
-      }[entry.level];
+    const emoji: Record<LogLevel, string> = {
+      debug: '🔍',
+      info: 'ℹ️',
+      warn: '⚠️',
+      error: '❌',
+    };
 
-      const contextStr = Object.keys(entry.context).length > 0 
-        ? ` [${Object.entries(entry.context).map(([k, v]) => `${k}:${v}`).join(', ')}]`
-        : '';
+    const contextStr = Object.keys(entry.context).length > 0
+      ? ` [${Object.entries(entry.context)
+          .map(([k, v]) => `${k}:${typeof v === 'object' ? JSON.stringify(v) : v}`)
+          .join(', ')}]`
+      : '';
 
-      console.log(`${emoji} ${entry.level.toUpperCase()}: ${entry.message}${contextStr}`);
-      
-      if (entry.data) {
-        console.log('📊 Data:', entry.data);
-      }
-      
+    const line = `${emoji[entry.level]} ${entry.level.toUpperCase()}: ${entry.message}${contextStr}`;
+
+    if (entry.level === 'error') {
+      console.error(line);
       if (entry.error) {
-        console.error('🚨 Error:', entry.error);
+        console.error(entry.error);
       }
+    } else if (entry.level === 'warn') {
+      console.warn(line);
     } else {
-      // Production: Structured JSON for log aggregation
-      console.log(JSON.stringify(entry));
+      process.stdout.write(`${line}\n`);
+    }
+
+    if (entry.data && entry.level !== 'error') {
+      process.stdout.write(`📊 Data: ${JSON.stringify(entry.data)}\n`);
     }
   }
 
-  private forwardToSentry(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: any) {
+  private forwardToSentry(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: unknown) {
     try {
-      const extra = { ...context, data };
-      const severity = context.severity as ('low' | 'medium' | 'high' | undefined);
+      const { severity, ...contextWithoutSeverity } = context;
+      const extra = { ...contextWithoutSeverity, severity, data };
 
       if (level === 'error') {
         if (error) {
@@ -111,7 +123,6 @@ class Logger {
       if (context.securityEvent) {
         const sentryLevel: Sentry.SeverityLevel = severity === 'high' ? 'error' : 'warning';
         Sentry.captureMessage(message, { level: sentryLevel, extra });
-        return;
       }
     } catch (sentryError) {
       if (this.isDevelopment) {
@@ -120,26 +131,24 @@ class Logger {
     }
   }
 
-  // Main logging methods
-  debug(message: string, context: LogContext = {}, data?: any): void {
+  debug(message: string, context: LogContext = {}, data?: unknown): void {
     if (this.isDevelopment) {
       this.output('debug', message, context, undefined, data);
     }
   }
 
-  info(message: string, context: LogContext = {}, data?: any): void {
+  info(message: string, context: LogContext = {}, data?: unknown): void {
     this.output('info', message, context, undefined, data);
   }
 
-  warn(message: string, context: LogContext = {}, data?: any): void {
+  warn(message: string, context: LogContext = {}, data?: unknown): void {
     this.output('warn', message, context, undefined, data);
   }
 
-  error(message: string, error?: Error, context: LogContext = {}, data?: any): void {
+  error(message: string, error?: Error, context: LogContext = {}, data?: unknown): void {
     this.output('error', message, context, error, data);
   }
 
-  // Convenience methods for common logging patterns
   apiCall(method: string, route: string, context: LogContext = {}): void {
     this.info(`API ${method} ${route}`, { ...context, method, route });
   }
@@ -164,7 +173,6 @@ class Logger {
     this.info(`⚡ Performance: ${operation} took ${duration}ms`, { ...context, operation, duration });
   }
 
-  // Database operation logging
   dbQuery(operation: string, table: string, context: LogContext = {}): void {
     this.debug(`🗄️ DB ${operation} on ${table}`, { ...context, operation, table });
   }
@@ -173,13 +181,11 @@ class Logger {
     this.error(`🗄️ DB ${operation} on ${table} failed`, error, { ...context, operation, table });
   }
 
-  // Security logging
   securityEvent(event: string, severity: 'low' | 'medium' | 'high', context: LogContext = {}): void {
     const emoji = { low: '🔒', medium: '⚠️', high: '🚨' }[severity];
     this.warn(`${emoji} Security: ${event}`, { ...context, event, severity, securityEvent: true });
   }
 
-  // AI/ML logging
   aiEvent(event: string, model?: string, context: LogContext = {}): void {
     this.info(`🤖 AI: ${event}`, { ...context, event, model });
   }
@@ -189,29 +195,25 @@ class Logger {
   }
 }
 
-// Create singleton instance
 export const logger = new Logger();
 
-// Export convenience functions for direct use
 export const { debug, info, warn, error, apiCall, apiSuccess, apiError, userAction, householdAction, performance, dbQuery, dbError, securityEvent, aiEvent, aiError } = logger;
 
-// Middleware helper for Next.js API routes
 export function createRequestLogger(requestId: string, userId?: string, householdId?: string) {
   return {
     requestId,
     userId,
     householdId,
-    debug: (message: string, data?: any) => logger.debug(message, { requestId, userId, householdId }, data),
-    info: (message: string, data?: any) => logger.info(message, { requestId, userId, householdId }, data),
-    warn: (message: string, data?: any) => logger.warn(message, { requestId, userId, householdId }, data),
-    error: (message: string, error?: Error, data?: any) => logger.error(message, error, { requestId, userId, householdId }, data),
-    apiCall: (method: string, route: string, data?: any) => logger.apiCall(method, route, { requestId, userId, householdId }, data),
-    apiSuccess: (method: string, route: string, data?: any) => logger.apiSuccess(method, route, { requestId, userId, householdId }, data),
-    apiError: (method: string, route: string, error: Error, data?: any) => logger.apiError(method, route, error, { requestId, userId, householdId }, data),
+    debug: (message: string, data?: unknown) => logger.debug(message, { requestId, userId, householdId }, data),
+    info: (message: string, data?: unknown) => logger.info(message, { requestId, userId, householdId }, data),
+    warn: (message: string, data?: unknown) => logger.warn(message, { requestId, userId, householdId }, data),
+    error: (message: string, err?: Error, data?: unknown) => logger.error(message, err, { requestId, userId, householdId }, data),
+    apiCall: (method: string, route: string, data?: unknown) => logger.apiCall(method, route, { requestId, userId, householdId, data }),
+    apiSuccess: (method: string, route: string, data?: unknown) => logger.apiSuccess(method, route, { requestId, userId, householdId, data }),
+    apiError: (method: string, route: string, err: Error, data?: unknown) => logger.apiError(method, route, err, { requestId, userId, householdId, data }),
   };
 }
 
-// Hook for React components
 export function useLogger(requestId?: string, userId?: string, householdId?: string) {
   return createRequestLogger(requestId || 'client', userId, householdId);
 }
