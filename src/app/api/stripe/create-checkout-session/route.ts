@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { createCheckoutSession, createCustomer, PLAN_TO_STRIPE_PRICE } from '@/lib/stripe';
-import { createClient } from '@/lib/supabaseClient';
+import { getSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
 
 export async function POST(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
       }
 
-      const supabase = createClient();
+    const supabase = getSupabaseAdminClient();
 
       // Get user's household
       const { data: userData, error: userError } = await supabase
