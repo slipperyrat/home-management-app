@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
@@ -24,8 +24,10 @@ const updateBillSchema = z.object({
 });
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
+  const { params } = context;
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);
@@ -72,7 +74,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   });
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
+  const { params } = context;
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);
@@ -184,7 +187,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   });
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, context: { params: { id: string } }): Promise<NextResponse> {
+  const { params } = context;
   return withAPISecurity(request, async (req, user) => {
     try {
       const { household } = await getUserAndHouseholdData(user.id);
