@@ -1,5 +1,3 @@
-import { cookies } from "next/headers";
-
 import type { RecipeDetail, RecipeFormInput, RecipeImportResult, RecipeSummary } from "./types";
 
 const BASE_URL =
@@ -183,25 +181,32 @@ async function fetchFromApp(path: string, init?: RequestInit): Promise<Response>
 }
 
 async function buildHeaders(base?: HeadersInit): Promise<HeadersInit> {
-  const cookieStore = cookies();
   const headers = new Headers(base ?? {});
   headers.set("Content-Type", "application/json");
 
-  const csrf = cookieStore.get("csrf-token");
-  if (csrf) {
-    headers.set("x-csrf-token", csrf.value);
-  }
-
-  const serialized = cookieStore
-    .getAll()
-    .map(({ name, value }) => `${name}=${value}`)
-    .join("; ");
-
-  if (serialized) {
-    headers.set("cookie", serialized);
+  if (typeof document !== "undefined") {
+    const cookieHeader = document.cookie ?? "";
+    if (cookieHeader) {
+      headers.set("cookie", cookieHeader);
+      const csrfToken = extractCookie(cookieHeader, "csrf-token");
+      if (csrfToken) {
+        headers.set("x-csrf-token", csrfToken);
+      }
+    }
   }
 
   return headers;
+}
+
+function extractCookie(cookieHeader: string, name: string): string | null {
+  const cookies = cookieHeader.split("; ");
+  for (const cookie of cookies) {
+    const [cookieName, ...rest] = cookie.split("=");
+    if (cookieName === name) {
+      return rest.join("=");
+    }
+  }
+  return null;
 }
 
 async function safeJson(response: Response): Promise<unknown | undefined> {

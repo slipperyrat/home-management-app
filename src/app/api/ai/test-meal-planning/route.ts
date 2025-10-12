@@ -1,12 +1,12 @@
 // Test endpoint for Meal Planning AI Service
 // This can be easily removed if the AI implementation doesn't work
 
-import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
-import { getUserAndHouseholdData } from '@/lib/api/database';
-import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { testMealPlanningAI, testMealTypes, testDietaryRestrictions } from '@/lib/ai/test/testMealPlanningAI';
-import { logger } from '@/lib/logging/logger';
+import { NextRequest } from "next/server";
+
+import { testMealPlanningAI, testMealTypes, testDietaryRestrictions } from "@/lib/ai/harness/mealPlanningHarness";
+import { createSuccessResponse } from "@/lib/api/errors";
+import { withAPISecurity } from "@/lib/security/apiProtection";
+import { logger } from "@/lib/logging/logger";
 
 export async function GET(request: NextRequest) {
   return withAPISecurity(request, async (req, user) => {

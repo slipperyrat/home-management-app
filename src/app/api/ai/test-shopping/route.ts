@@ -5,7 +5,7 @@ import { NextRequest } from 'next/server';
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { testShoppingAI, testAIConfig } from '@/lib/ai/test/testShoppingAI';
+import { testShoppingAI, testAIConfig } from '@/lib/ai/harness/shoppingHarness';
 import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
