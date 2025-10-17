@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDatabaseClient } from '@/lib/api/database';
 import { startOfDay, endOfDay, format } from 'date-fns';
+import type { Database } from '@/types/supabase.generated';
 
 interface TodayViewData {
   date: string;
@@ -72,6 +73,18 @@ interface TodayViewData {
   };
 }
 
+type ChoreRow = Database['public']['Tables']['chores']['Row'];
+type EventRow = Database['public']['Tables']['events']['Row'];
+type MealPlanRow = Database['public']['Tables']['meal_plans']['Row'];
+type ShoppingItemSelect = {
+  id: string;
+  name: string;
+  quantity: string | null;
+  notes: string | null;
+  is_complete: boolean | null;
+  shopping_lists?: { title: string | null } | null;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
@@ -79,193 +92,169 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const dateParam = searchParams.get('date');
-    const targetDate = dateParam ? new Date(dateParam) : new Date();
-    
-    const startDate = startOfDay(targetDate);
-    const endDate = endOfDay(targetDate);
-
     const supabase = getDatabaseClient();
-    
-    // Get user's household
+    const targetDate = request.nextUrl.searchParams.get('date')
+      ? new Date(request.nextUrl.searchParams.get('date')!)
+      : new Date();
+
+    const dayStart = startOfDay(targetDate).toISOString();
+    const dayEnd = endOfDay(targetDate).toISOString();
+
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('household_id')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (userError || !userData) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (userError || !userData?.household_id) {
+      return NextResponse.json({ error: 'User not found or no household' }, { status: 404 });
     }
 
     const householdId = userData.household_id;
 
-    // Fetch today's chores
-    const { data: chores, error: choresError } = await supabase
-      .from('chores')
-      .select(`
-        id,
-        title,
-        description,
-        assigned_to,
-        due_date,
-        priority,
-        status,
-        xp_reward,
-        ai_estimated_duration
-      `)
-      .eq('household_id', householdId)
-      .gte('due_date', startDate.toISOString())
-      .lte('due_date', endDate.toISOString())
-      .order('priority', { ascending: false });
-
-    if (choresError) {
-      console.error('Error fetching chores:', choresError);
-    }
-
-    // Fetch today's events from household_events
-    const { data: events, error: eventsError } = await supabase
-      .from('household_events')
-      .select(`
-        id,
-        title,
-        description,
-        start_time,
-        end_time,
-        location
-      `)
-      .eq('household_id', householdId)
-      .eq('type', 'calendar.event')
-      .gte('start_time', startDate.toISOString())
-      .lte('start_time', endDate.toISOString())
-      .order('start_time', { ascending: true });
-
-    if (eventsError) {
-      console.error('Error fetching events:', eventsError);
-    }
-
-    // Fetch today's meal plans
-    const { data: mealPlans, error: mealPlansError } = await supabase
-      .from('meal_plans')
-      .select(`
-        id,
-        meal_type,
-        recipe_name,
-        planned_for
-      `)
-      .eq('household_id', householdId)
-      .eq('planned_for', format(targetDate, 'yyyy-MM-dd'))
-      .order('meal_type');
-
-    if (mealPlansError) {
-      console.error('Error fetching meal plans:', mealPlansError);
-    }
-
-    // Fetch urgent shopping items (due today or overdue)
-    const { data: shoppingItems, error: shoppingError } = await supabase
-      .from('shopping_items')
-      .select(`
-        id,
-        name,
-        quantity,
-        notes,
-        is_complete,
-        shopping_lists!inner(
-          title as list_name
-        )
-      `)
-      .eq('shopping_lists.household_id', householdId)
-      .eq('is_complete', false)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (shoppingError) {
-      console.error('Error fetching shopping items:', shoppingError);
-    }
-
-    // Get ingredients needed for today's meals
-    const missingIngredients = [];
-    if (mealPlans && mealPlans.length > 0) {
-      const mealIds = mealPlans.map(meal => meal.id);
-      const { data: mealIngredients, error: ingredientsError } = await supabase
-        .from('meal_plan_ingredients')
-        .select(`
-          ingredient_name,
-          quantity,
-          unit,
-          meal_plans!inner(
+    const [choresResult, eventsResult, mealPlansResult, shoppingItemsResult] = await Promise.all([
+      supabase
+        .from('chores')
+        .select('*')
+        .eq('household_id', householdId)
+        .gte('due_date', dayStart)
+        .lte('due_date', dayEnd),
+      supabase
+        .from('events')
+        .select('*')
+        .eq('household_id', householdId)
+        .gte('start_at', dayStart)
+        .lte('start_at', dayEnd),
+      supabase
+        .from('meal_plans')
+        .select('*')
+        .eq('household_id', householdId)
+        .gte('planned_for', dayStart)
+        .lte('planned_for', dayEnd),
+      supabase
+        .from('shopping_items')
+        .select(
+          `
             id,
-            meal_type,
-            recipe_name
-          )
-        `)
-        .in('meal_plan_id', mealIds);
+            name,
+            quantity,
+            notes,
+            is_complete,
+            shopping_lists ( title )
+          `,
+        )
+        .eq('household_id', householdId)
+        .eq('is_complete', false)
+        .order('created_at', { ascending: true })
+        .limit(10),
+    ]);
 
-      if (!ingredientsError && mealIngredients) {
-        // Check which ingredients are missing from shopping lists
-        const ingredientNames = mealIngredients.map(ing => ing.ingredient_name);
-        const { data: availableIngredients } = await supabase
-          .from('shopping_items')
-          .select('name, is_complete')
-          .eq('shopping_lists.household_id', householdId)
-          .in('name', ingredientNames);
+    const chores = (choresResult.data ?? []) as ChoreRow[];
+    const events = (eventsResult.data ?? []) as EventRow[];
+    const mealPlans = (mealPlansResult.data ?? []) as MealPlanRow[];
+    const shoppingItems = (shoppingItemsResult.data ?? []) as ShoppingItemSelect[];
 
-        const availableSet = new Set(
-          availableIngredients
-            ?.filter(item => item.is_complete)
-            .map(item => item.name.toLowerCase()) || []
-        );
+    const missingIngredients: TodayViewData['shopping']['missing_ingredients'] = [];
 
-        mealIngredients.forEach(ingredient => {
-          if (!availableSet.has(ingredient.ingredient_name.toLowerCase())) {
-            missingIngredients.push({
-              ingredient_name: ingredient.ingredient_name,
-              meal_name: ingredient.meal_plans?.recipe_name || 'Unknown',
-              meal_type: ingredient.meal_plans?.meal_type || 'unknown',
-              quantity_needed: `${ingredient.quantity} ${ingredient.unit}`
-            });
-          }
-        });
-      }
-    }
-
-    // Calculate digest statistics
-    const completedChores = chores?.filter(chore => chore.status === 'completed').length || 0;
-    const totalChores = chores?.length || 0;
+    const completedChores = chores.filter((chore) => chore.status === 'completed').length;
     const xpEarnedToday = chores
-      ?.filter(chore => chore.status === 'completed')
-      .reduce((sum, chore) => sum + (chore.xp_reward || 0), 0) || 0;
-    const xpAvailableToday = chores
-      ?.reduce((sum, chore) => sum + (chore.xp_reward || 0), 0) || 0;
+      .filter((chore) => chore.status === 'completed')
+      .reduce((sum, chore) => sum + (chore.xp_reward ?? 0), 0);
+    const xpAvailableToday = chores.reduce((sum, chore) => sum + (chore.xp_reward ?? 0), 0);
+
+    const mappedChores: TodayViewData['chores'] = chores.map((chore) => {
+      const mapped: TodayViewData['chores'][number] = {
+        id: chore.id,
+        title: chore.title,
+        priority: (chore.priority as TodayViewData['chores'][number]['priority']) ?? 'medium',
+        status: (chore.status as TodayViewData['chores'][number]['status']) ?? 'pending',
+        xp_reward: chore.xp_reward ?? 0,
+      };
+
+      if (chore.description) {
+        mapped.description = chore.description;
+      }
+      if (chore.assigned_to) {
+        mapped.assigned_to = chore.assigned_to;
+      }
+      if (chore.due_date) {
+        mapped.due_date = chore.due_date;
+      }
+      if (typeof chore.ai_estimated_duration === 'number') {
+        mapped.estimated_duration = chore.ai_estimated_duration;
+      }
+
+      return mapped;
+    });
+
+    const mappedEvents: TodayViewData['events'] = events
+      .filter((event): event is EventRow & { start_at: string; end_at: string } => Boolean(event.start_at && event.end_at))
+      .map((event) => {
+        const mapped: TodayViewData['events'][number] = {
+          id: event.id,
+          title: event.title ?? 'Untitled event',
+          startAt: event.start_at,
+          endAt: event.end_at,
+          isAllDay: Boolean(event.is_all_day),
+        };
+
+        if (event.description) {
+          mapped.description = event.description;
+        }
+        if (event.location) {
+          mapped.location = event.location;
+        }
+
+        return mapped;
+      });
+
+    const mappedMeals: TodayViewData['meals'] = mealPlans.map((meal) => ({
+      id: meal.id,
+      meal_type: (meal.meal_type as TodayViewData['meals'][number]['meal_type']) ?? 'snack',
+      recipe_name: meal.recipe_name ?? '',
+      planned_for: meal.planned_for ?? format(targetDate, 'yyyy-MM-dd'),
+      ingredients_needed: [],
+    }));
+
+    const mappedUrgentItems: TodayViewData['shopping']['urgent_items'] = shoppingItems.map((item) => {
+      const mapped: TodayViewData['shopping']['urgent_items'][number] = {
+        id: item.id,
+        name: item.name,
+        is_complete: Boolean(item.is_complete),
+        list_name: item.shopping_lists?.title ?? 'Shopping List',
+      };
+
+      if (item.quantity) {
+        mapped.quantity = String(item.quantity);
+      }
+      if (item.notes) {
+        mapped.notes = String(item.notes);
+      }
+
+      return mapped;
+    });
 
     const todayData: TodayViewData = {
       date: format(targetDate, 'yyyy-MM-dd'),
-      chores: chores || [],
-      events: events?.map(event => ({
-        ...event,
-        startAt: event.start_time,
-        endAt: event.end_time,
-        isAllDay: false
-      })) || [],
-      meals: mealPlans || [],
+      chores: mappedChores,
+      events: mappedEvents,
+      meals: mappedMeals,
       shopping: {
-        urgent_items: shoppingItems || [],
-        missing_ingredients: missingIngredients
+        urgent_items: mappedUrgentItems,
+        missing_ingredients: missingIngredients,
       },
       digest: {
-        total_chores: totalChores,
+        total_chores: chores.length,
         completed_chores: completedChores,
-        upcoming_events: events?.length || 0,
-        meals_planned: mealPlans?.length || 0,
-        shopping_items_needed: (shoppingItems?.length || 0) + missingIngredients.length,
+        upcoming_events: mappedEvents.length,
+        meals_planned: mappedMeals.length,
+        shopping_items_needed: mappedUrgentItems.length + missingIngredients.length,
         xp_earned_today: xpEarnedToday,
-        xp_available_today: xpAvailableToday
-      }
+        xp_available_today: xpAvailableToday,
+      },
     };
 
     return NextResponse.json(todayData);
-
   } catch (error) {
     console.error('Error in GET /api/today-view:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

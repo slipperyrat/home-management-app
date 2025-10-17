@@ -28,7 +28,7 @@ export default function NavBarUserSection() {
 
       {/* User Button */}
       {isSignedIn ? (
-        <UserButton fallbackRedirectUrl="/" />
+        <UserButton />
       ) : (
         <Link 
           href="/sign-in" 

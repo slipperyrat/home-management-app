@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 export default function MarketingHome() {
   return (
     <main className="mx-auto grid max-w-5xl gap-12 px-4 py-16 text-slate-100">
@@ -51,5 +53,5 @@ export default function MarketingHome() {
         </div>
       </section>
     </main>
-  );
+  )
 }

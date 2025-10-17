@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { canAccessFeature } from '@/lib/server/canAccessFeature';
+import { canAccessFeature, type UserPlan } from '@/lib/server/canAccessFeature';
+import type { Database } from '@/types/supabase.generated';
 import { z } from 'zod';
 import { logger } from '@/lib/logging/logger';
 
@@ -21,19 +22,25 @@ const createEnvelopeSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
       }
 
+      const userPlan: UserPlan = (household.plan as UserPlan | null) ?? 'free';
+
       // Check feature access
-      if (!canAccessFeature(household.plan || 'free', 'budget_envelopes')) {
+      if (!canAccessFeature(userPlan, 'budget_envelopes')) {
         return createErrorResponse('Budget envelopes require Pro plan', 403, {
           requiredPlan: 'pro',
-          currentPlan: household.plan || 'free'
+          currentPlan: userPlan,
         });
       }
 
@@ -74,13 +81,18 @@ export async function GET(request: NextRequest) {
       }
 
       // Calculate remaining amounts
-      const envelopesWithRemaining = envelopes?.map(envelope => ({
-        ...envelope,
-        remaining_amount: envelope.allocated_amount - envelope.spent_amount,
-        spent_percentage: envelope.allocated_amount > 0 
-          ? (envelope.spent_amount / envelope.allocated_amount) * 100 
-          : 0
-      })) || [];
+      const envelopesWithRemaining = (envelopes ?? []).map((envelope) => {
+        const spentAmount = envelope.spent_amount ?? 0;
+        const remainingAmount = envelope.allocated_amount - spentAmount;
+        const spentPercentage = envelope.allocated_amount > 0
+          ? (spentAmount / envelope.allocated_amount) * 100
+          : 0;
+        return {
+          ...envelope,
+          remaining_amount: remainingAmount,
+          spent_percentage: spentPercentage,
+        };
+      });
 
       // Log audit event
       await createAuditLog({
@@ -94,7 +106,7 @@ export async function GET(request: NextRequest) {
       return createSuccessResponse({ envelopes: envelopesWithRemaining });
 
     } catch (error) {
-      return handleApiError(error, 'Failed to fetch budget envelopes');
+      return handleApiError(error, { route: '/api/finance/budget-envelopes', method: 'GET', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
@@ -104,19 +116,25 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
         return createErrorResponse('Household not found', 404);
       }
 
+      const userPlan: UserPlan = (household.plan as UserPlan | null) ?? 'free';
+
       // Check feature access
-      if (!canAccessFeature(household.plan || 'free', 'budget_envelopes')) {
+      if (!canAccessFeature(userPlan, 'budget_envelopes')) {
         return createErrorResponse('Budget envelopes require Pro plan', 403, {
           requiredPlan: 'pro',
-          currentPlan: household.plan || 'free'
+          currentPlan: userPlan,
         });
       }
 
@@ -131,27 +149,30 @@ export async function POST(request: NextRequest) {
         .insert({
           household_id: household.id,
           name: validatedData.name,
-          description: validatedData.description,
+          description: validatedData.description ?? null,
           allocated_amount: validatedData.allocated_amount,
           period_start: validatedData.period_start,
           period_end: validatedData.period_end,
-          category: validatedData.category,
+          category: validatedData.category ?? null,
           color: validatedData.color,
           created_by: user.id,
-        })
-        .select()
-        .single();
+        } satisfies Database['public']['Tables']['budget_envelopes']['Insert'])
+        .select('*')
+        .maybeSingle<Database['public']['Tables']['budget_envelopes']['Row']>();
 
-      if (error) {
-        logger.error('Error creating budget envelope', error, { householdId: household.id, userId: user.id });
+      if (error || !envelope) {
+        const logError = error instanceof Error ? error : new Error('Postgrest error');
+        logger.error('Error creating budget envelope', logError, { householdId: household.id, userId: user.id });
         return createErrorResponse('Failed to create budget envelope', 500);
       }
 
       // Add calculated fields
       const envelopeWithCalculations = {
         ...envelope,
-        remaining_amount: envelope.allocated_amount - envelope.spent_amount,
-        spent_percentage: 0
+        remaining_amount: envelope.allocated_amount - (envelope.spent_amount ?? 0),
+        spent_percentage: envelope.allocated_amount > 0
+          ? ((envelope.spent_amount ?? 0) / envelope.allocated_amount) * 100
+          : 0,
       };
 
       // Log audit event
@@ -168,13 +189,13 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      return createSuccessResponse({ envelope: envelopeWithCalculations }, 201);
+      return createSuccessResponse({ envelope: envelopeWithCalculations }, 'Budget envelope created', 201);
 
     } catch (error) {
       if (error instanceof z.ZodError) {
         return createErrorResponse('Invalid input data', 400, { errors: error.errors });
       }
-      return handleApiError(error, 'Failed to create budget envelope');
+      return handleApiError(error, { route: '/api/finance/budget-envelopes', method: 'POST', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,

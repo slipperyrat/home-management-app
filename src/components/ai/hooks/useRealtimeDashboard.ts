@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { useRealTimeAI } from '@/hooks/useRealTimeAI';
+import type { RealTimeAIRequest } from '@/types/websocket';
 import type {
   RealTimeRequestPayload,
   ProgressUpdate,
@@ -34,7 +35,16 @@ export const useRealtimeDashboard = () => {
 
   const sendRequest = useCallback(
     async <T extends Record<string, unknown>>(payload: RealTimeRequestPayload<T>) => {
-      await realtime.processRequest(payload);
+      const request: RealTimeAIRequest = {
+        type: payload.type,
+        context: payload.context as RealTimeAIRequest['context'],
+        requestId: payload.requestId ?? `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        priority: payload.priority,
+        userId: realtime.userId,
+        householdId: realtime.householdId,
+      };
+
+      await realtime.processRequest(request);
     },
     [realtime],
   );

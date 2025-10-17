@@ -238,7 +238,11 @@ export async function GET(request: NextRequest) {
       .limit(50);
 
     if (fetchError) {
-      logger.error('Failed to fetch corrections', fetchError, { householdId, userId });
+      const context = householdId
+        ? { householdId, userId }
+        : { userId };
+
+      logger.error('Failed to fetch corrections', fetchError, context);
       return NextResponse.json({ 
         error: 'Failed to fetch corrections' 
       }, { status: 500 });

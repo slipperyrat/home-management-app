@@ -1,5 +1,5 @@
 import { logger } from '@/lib/logging/logger';
-
+import type { Database } from '@/types/supabase.generated';
 
 export type Tier = 'free' | 'pro';
 
@@ -12,8 +12,8 @@ export interface Entitlements {
   google_import: boolean;
   digest_max_per_day: number;
   quiet_hours: boolean;
-  quiet_hours_start?: string;
-  quiet_hours_end?: string;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
   quota_actions_per_month: number;
   quota_actions_used: number;
   quota_reset_date: string;
@@ -21,23 +21,45 @@ export interface Entitlements {
   updated_at: string;
 }
 
+export function toEntitlements(row: Database['public']['Tables']['entitlements']['Row']): Entitlements {
+  return {
+    household_id: row.household_id,
+    tier: (row.tier ?? 'free') as Tier,
+    history_months: row.history_months ?? 0,
+    advanced_rrule: row.advanced_rrule ?? false,
+    conflict_detection: (row.conflict_detection ?? 'basic') as Entitlements['conflict_detection'],
+    google_import: row.google_import ?? false,
+    digest_max_per_day: row.digest_max_per_day ?? 0,
+    quiet_hours: row.quiet_hours ?? false,
+    quiet_hours_start: row.quiet_hours_start ?? null,
+    quiet_hours_end: row.quiet_hours_end ?? null,
+    quota_actions_per_month: row.quota_actions_per_month ?? 0,
+    quota_actions_used: row.quota_actions_used ?? 0,
+    quota_reset_date: row.quota_reset_date ?? '',
+    created_at: row.created_at ?? new Date().toISOString(),
+    updated_at: row.updated_at ?? new Date().toISOString(),
+  };
+}
+
 export interface CalendarTemplate {
   id: string;
   household_id: string | null;
   name: string;
-  description?: string;
+  description?: string | null;
   template_type: 'school_term' | 'sports_training' | 'custom';
   rrule: string;
-  events: Array<{
-    title: string;
-    start: string;
-    end: string;
-    color: string;
-    recurring?: boolean;
-  }>;
+  events: TemplateEvent[];
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface TemplateEvent {
+  title: string;
+  start: string;
+  end: string;
+  color: string;
+  recurring?: boolean | null;
 }
 
 export interface QuietHours {
@@ -211,7 +233,9 @@ export async function getCalendarTemplates(
   }
 
   try {
-  const origin = typeof window !== 'undefined' ? window.location.origin : globalThis.__TEST_ORIGIN__ ?? 'http://localhost';
+  const origin = typeof window !== 'undefined'
+    ? window.location.origin
+    : (globalThis as typeof globalThis & { __TEST_ORIGIN__?: string }).__TEST_ORIGIN__ ?? 'http://localhost';
   const requestUrl = new URL(CALENDAR_TEMPLATE_ROUTE, origin);
   requestUrl.searchParams.set('household_id', householdId);
   if (options.templateType) {

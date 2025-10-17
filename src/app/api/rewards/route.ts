@@ -1,18 +1,24 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
+import type { Database } from '@/types/supabase.generated';
 import { createRewardSchema } from '@/lib/validation/schemas';
+
 import { logger } from '@/lib/logging/logger';
+import { z } from 'zod';
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       logger.info('Fetching rewards', { userId: user.id });
 
-      // Get user and household data
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
@@ -29,85 +35,85 @@ export async function GET(request: NextRequest) {
         return createErrorResponse('Failed to fetch rewards', 500, error.message);
       }
 
-      return createSuccessResponse({ rewards: data || [] }, 'Rewards fetched successfully');
-
+      return createSuccessResponse({ rewards: data ?? [] }, 'Rewards fetched successfully');
     } catch (error) {
-      return handleApiError(error, { route: '/api/rewards', method: 'GET', userId: user.id });
+      return handleApiError(error, { route: '/api/rewards', method: 'GET', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: false,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       logger.info('Creating reward', { userId: user.id });
 
-      // Parse and validate request body using Zod schema
-      let validatedData;
+      let validatedData: z.infer<typeof createRewardSchema>;
       try {
         const body = await req.json();
         validatedData = createRewardSchema.parse(body);
       } catch (validationError: unknown) {
-        if (validationError instanceof Error && 'errors' in validationError) {
-          return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
+        if (validationError instanceof z.ZodError) {
+          return createErrorResponse('Invalid input', 400, validationError.errors);
         }
         return createErrorResponse('Invalid input', 400);
       }
 
-      // Get user and household data
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
 
-      const { title, points_cost: cost_xp } = validatedData;
-
-      const rewardData = {
-        title,
-        cost_xp,
-        household_id: household.id,
-        created_by: user.id
-      };
-
       const supabase = getDatabaseClient();
+      const rewardData = {
+        title: validatedData.name,
+        household_id: household.id,
+        pro_only: validatedData.is_active === false ? false : Boolean(validatedData.pro_only ?? false),
+        created_by: user.id,
+        cost_xp: validatedData.points_cost,
+        cost_coins: validatedData.coins_cost ?? 0,
+        description: validatedData.description ?? null,
+      } satisfies Database['public']['Tables']['rewards']['Insert'];
+
       const { data, error } = await supabase
         .from('rewards')
         .insert(rewardData)
-        .select()
-        .single();
+        .select('*')
+        .maybeSingle();
 
-      if (error) {
-        logger.error('Error creating reward', error, { householdId: household.id, userId: user.id });
-        return createErrorResponse('Failed to create reward', 500, error.message);
+      if (error || !data) {
+        logger.error('Error creating reward', error ?? new Error('Insert failed'), { householdId: household.id, userId: user.id });
+        return createErrorResponse('Failed to create reward', 500, error?.message ?? 'Insert failed');
       }
 
-      // Add audit log entry
       await createAuditLog({
         action: 'reward.created',
         targetTable: 'rewards',
         targetId: data.id,
         userId: user.id,
-        metadata: { 
-          reward_title: title,
-          cost_xp,
-          household_id: household.id
-        }
+        metadata: {
+          reward_name: validatedData.name,
+          cost_xp: validatedData.points_cost,
+          household_id: household.id,
+        },
       });
 
       logger.info('Reward created', { rewardId: data.id, householdId: household.id, userId: user.id });
       return createSuccessResponse({ reward: data }, 'Reward created successfully');
-
     } catch (error) {
-      return handleApiError(error, { route: '/api/rewards', method: 'POST', userId: user.id });
+      return handleApiError(error, { route: '/api/rewards', method: 'POST', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 } 

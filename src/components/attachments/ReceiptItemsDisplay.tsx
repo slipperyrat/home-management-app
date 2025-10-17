@@ -5,13 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { 
-  ShoppingCart, 
-  Plus, 
-  Minus, 
-  CheckCircle, 
+  ShoppingCart,
+  CheckCircle,
   AlertCircle,
   Receipt,
   Calendar,
@@ -199,37 +196,6 @@ export function ReceiptItemsDisplay({ attachmentId, className }: ReceiptItemsDis
     }
   };
 
-  const handleUpdateItem = async (itemId: string, updates: Partial<ReceiptItem>) => {
-    try {
-      const token = await getToken();
-      const response = await fetch('/api/receipt-items', {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          item_id: itemId,
-          updates
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        setItems(prev => prev.map(item => 
-          item.id === itemId ? { ...item, ...updates, user_modified: true } : item
-        ));
-        toast.success('Item updated successfully');
-      } else {
-        toast.error(data.error || 'Failed to update item');
-      }
-    } catch (error) {
-      console.error('❌ Error updating item:', error);
-      toast.error('Failed to update item');
-    }
-  };
-
   const getConfidenceColor = (score: number) => {
     if (score >= 0.8) return 'bg-green-100 text-green-800';
     if (score >= 0.6) return 'bg-yellow-100 text-yellow-800';
@@ -296,18 +262,18 @@ export function ReceiptItemsDisplay({ attachmentId, className }: ReceiptItemsDis
             Receipt Items ({items.length})
           </CardTitle>
           
-          {items.length > 0 && (
+          {items.length > 0 && items[0]?.attachment && (
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                {items[0].attachment.receipt_date && 
-                  format(new Date(items[0].attachment.receipt_date), 'MMM dd, yyyy')
-                }
+                {items[0].attachment?.receipt_date
+                  ? format(new Date(items[0].attachment.receipt_date), 'MMM dd, yyyy')
+                  : 'Unknown date'}
               </Badge>
-              {items[0].attachment.receipt_store && (
+              {items[0].attachment?.receipt_store && (
                 <Badge variant="outline" className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  {items[0].attachment.receipt_store}
+                  <MapPin className="h-3 w-3" aria-hidden="true" />
+                  <span>{items[0].attachment.receipt_store}</span>
                 </Badge>
               )}
             </div>
@@ -322,9 +288,7 @@ export function ReceiptItemsDisplay({ attachmentId, className }: ReceiptItemsDis
             <Checkbox
               checked={allSelected}
               onCheckedChange={handleSelectAll}
-              ref={(el) => {
-                if (el) el.indeterminate = someSelected;
-              }}
+              indeterminate={someSelected}
             />
             <span className="text-sm font-medium text-gray-900">
               Select All ({selectedItems.size}/{items.length})
@@ -470,10 +434,16 @@ export function ReceiptItemsDisplay({ attachmentId, className }: ReceiptItemsDis
               
               <div className="flex items-center gap-2">
                 {item.added_to_shopping_list && (
-                  <CheckCircle className="h-5 w-5 text-green-600" title="Added to shopping list" />
+                  <Badge variant="outline" className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-600" aria-hidden="true" />
+                    <span>Added to shopping list</span>
+                  </Badge>
                 )}
                 {item.added_to_spending && (
-                  <CheckCircle className="h-5 w-5 text-blue-600" title="Added to spending" />
+                  <Badge variant="secondary" className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                    <span>Added to spending</span>
+                  </Badge>
                 )}
                 {item.user_modified && (
                   <Badge variant="outline" className="text-xs">

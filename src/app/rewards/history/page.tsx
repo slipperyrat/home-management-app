@@ -54,7 +54,13 @@ export default function RewardHistoryPage() {
         console.log('🎯 Fetching reward history for user:', user.id)
         const data = await getRewardHistory(user.id)
         console.log('📊 Reward history result:', data)
-        setHistory(data)
+        setHistory(
+          data.map(entry => ({
+            reward_id: entry.reward_id,
+            created_at: entry.created_at,
+            rewards: entry.rewards ? [entry.rewards] : [],
+          }))
+        )
       } catch {
         console.error('❌ Error fetching reward history')
         setHistory([])

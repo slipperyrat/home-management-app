@@ -1,15 +1,16 @@
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
-import {
+import type {
   AICorrectionPattern,
   AIHouseholdProfile,
   AILearningRule,
+  AILearningRuleActions,
   LearningAnalysisResult,
   HouseholdLearningInsights,
   PatternLearningRequest,
   LearningRuleTrigger,
 } from '../types/learning';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database';
+import type { Database, Json } from '@/types/supabase.generated';
 
 export class AILearningService {
   private supabase = createSupabaseAdminClient();
@@ -25,24 +26,24 @@ export class AILearningService {
       const analysis = this.analyzeCorrectionPattern(request);
       
       // Create the correction pattern record
-      const pattern: Partial<Database['public']['Tables']['ai_correction_patterns']['Row']> = {
+      const patternInsert: Database['public']['Tables']['ai_correction_patterns']['Insert'] = {
         household_id: request.household_id,
         correction_id: request.correction_id,
         pattern_type: analysis.pattern_type,
         issue_category: analysis.issue_category,
-        correction_type: request.correction_type as 'correct' | 'ignore' | 'mark_done',
-        original_ai_output: request.original_suggestion,
-        corrected_output: request.user_correction,
-        correction_reason: request.user_notes,
+        correction_type: request.correction_type,
+        original_ai_output: JSON.parse(JSON.stringify(request.original_suggestion)) as Json,
+        corrected_output: JSON.parse(JSON.stringify(request.user_correction)) as Json,
+        correction_reason: request.user_notes ?? null,
         confidence_impact: this.calculateConfidenceImpact(request),
         pattern_strength: 1,
-        is_learned: false
+        is_learned: false,
       };
 
       // Save the pattern to the database
       const { data: savedPattern, error } = await this.supabase
         .from('ai_correction_patterns')
-        .insert(pattern)
+        .insert(patternInsert)
         .select()
         .single();
 
@@ -56,11 +57,13 @@ export class AILearningService {
 
       logger.info('Saved correction pattern', { correctionPatternId: savedPattern.id });
 
+      const normalizedPattern = this.normalizeCorrectionPattern(savedPattern);
+
       // Trigger learning rules
-      await this.triggerLearningRules(request.household_id, savedPattern);
+      await this.triggerLearningRules(request.household_id, normalizedPattern);
 
       // Update household profile
-      await this.updateHouseholdProfile(request.household_id);
+      await this.updateHouseholdProfile(request.household_id, normalizedPattern);
 
       return analysis;
 
@@ -71,6 +74,26 @@ export class AILearningService {
       });
       throw error;
     }
+  }
+
+  private normalizeCorrectionPattern(pattern: Database['public']['Tables']['ai_correction_patterns']['Row']): AICorrectionPattern {
+    return {
+      id: pattern.id,
+      household_id: pattern.household_id,
+      correction_id: pattern.correction_id,
+      pattern_type: pattern.pattern_type,
+      issue_category: pattern.issue_category,
+      correction_type: pattern.correction_type,
+      original_ai_output: (pattern.original_ai_output ?? null) as Record<string, unknown> | null,
+      corrected_output: (pattern.corrected_output ?? null) as Record<string, unknown> | null,
+      correction_reason: pattern.correction_reason,
+      confidence_impact: pattern.confidence_impact,
+      pattern_strength: pattern.pattern_strength,
+      is_learned: pattern.is_learned,
+      created_at: pattern.created_at,
+      learned_at: pattern.learned_at,
+      updated_at: pattern.updated_at,
+    };
   }
 
   /**
@@ -162,11 +185,15 @@ export class AILearningService {
   private hasWrongClassification(original: Record<string, unknown>, corrected: Record<string, unknown>): boolean {
     if (!original || !corrected) return false;
     
-    // Check if suggestion_type or item_type changed
-    return (original.suggestion_type && corrected.suggestion_type && 
-            original.suggestion_type !== corrected.suggestion_type) ||
-           (original.item_type && corrected.item_type && 
-            original.item_type !== corrected.item_type);
+    const originalSuggestionType = original.suggestion_type as string | undefined;
+    const correctedSuggestionType = corrected.suggestion_type as string | undefined;
+    const originalItemType = original.item_type as string | undefined;
+    const correctedItemType = corrected.item_type as string | undefined;
+
+    return Boolean(
+      (originalSuggestionType && correctedSuggestionType && originalSuggestionType !== correctedSuggestionType) ||
+      (originalItemType && correctedItemType && originalItemType !== correctedItemType)
+    );
   }
 
   /**
@@ -269,27 +296,30 @@ export class AILearningService {
   private async triggerLearningRules(household_id: string, pattern: AICorrectionPattern): Promise<void> {
     try {
       // Get applicable learning rules
-      const { data: rules, error } = await this.supabase
+      const { data: rules, error: rulesError } = await this.supabase
         .from('ai_learning_rules')
         .select('*')
-        .or(`household_id.eq.${household_id},household_id.is.null`)
-        .eq('is_active', true)
-        .order('priority', { ascending: false });
+        .eq('household_id', household_id)
+        .eq('is_active', true);
 
-      if (error) {
-        logger.error('Failed to fetch learning rules', error, { householdId: household_id });
+      if (rulesError) {
+        logger.error('Failed to fetch learning rules', rulesError, { householdId: household_id });
         return;
       }
 
       logger.info('Applicable learning rules fetched', { householdId: household_id, ruleCount: rules?.length ?? 0 });
 
       // Check which rules should be triggered
-      for (const rule of rules || []) {
-        const trigger = this.evaluateLearningRule(rule, pattern);
+      for (const rule of rules ?? []) {
+        const normalizedRule = this.normalizeLearningRule(rule);
+        if (!normalizedRule) {
+          continue;
+        }
+        const trigger = this.evaluateLearningRule(normalizedRule, pattern);
         
         if (trigger.conditions_met) {
-          logger.info('Triggering learning rule', { ruleName: rule.rule_name, correctionPatternId: pattern.id });
-          await this.executeLearningRule(rule, pattern, trigger);
+          logger.info('Triggering learning rule', { ruleName: normalizedRule.rule_name, correctionPatternId: pattern.id });
+          await this.executeLearningRule(normalizedRule, pattern, trigger);
         }
       }
 
@@ -298,11 +328,44 @@ export class AILearningService {
     }
   }
 
+  private normalizeLearningRule(rule: Database['public']['Tables']['ai_learning_rules']['Row']): AILearningRule | null {
+    const conditions = (rule.trigger_conditions ?? {}) as Record<string, unknown>;
+    const actions = (rule.learning_actions ?? {}) as Record<string, unknown>;
+
+    const normalizedConditions: AILearningRule['trigger_conditions'] = {
+      ...(typeof conditions.pattern_type === 'string' ? { pattern_type: conditions.pattern_type } : {}),
+      ...(typeof conditions.issue_category === 'string' ? { issue_category: conditions.issue_category } : {}),
+      ...(typeof conditions.correction_type === 'string' ? { correction_type: conditions.correction_type } : {}),
+    };
+
+    const normalizedActions: AILearningRule['learning_actions'] = {
+      action: (actions.action as AILearningRuleActions['action']) ?? 'adjust_confidence_threshold',
+      ...(typeof actions.parameters === 'object' && actions.parameters !== null
+        ? { parameters: actions.parameters as Record<string, unknown> }
+        : {}),
+    };
+
+    return {
+      id: rule.id,
+      household_id: rule.household_id,
+      rule_name: rule.rule_name ?? 'Unnamed rule',
+      rule_description: rule.rule_description ?? null,
+      rule_type: rule.rule_type ?? 'general',
+      trigger_conditions: normalizedConditions,
+      learning_actions: normalizedActions,
+      priority: rule.priority,
+      is_active: rule.is_active,
+      success_rate: rule.success_rate,
+      created_at: rule.created_at,
+      updated_at: rule.updated_at,
+    };
+  }
+
   /**
    * Evaluate if a learning rule should be triggered
    */
   private evaluateLearningRule(rule: AILearningRule, pattern: AICorrectionPattern): LearningRuleTrigger {
-    const conditions = rule.trigger_conditions;
+    const conditions = rule.trigger_conditions ?? {};
     let conditions_met = false;
     let confidence_score = 0;
 
@@ -386,14 +449,16 @@ export class AILearningService {
   /**
    * Update household learning profile
    */
-  private async updateHouseholdProfile(household_id: string): Promise<void> {
+  private async updateHouseholdProfile(household_id: string, pattern?: AICorrectionPattern): Promise<void> {
     try {
       // Get or create household profile
-      let { data: profile } = await this.supabase
+      let { data: profileRow } = await this.supabase
         .from('ai_household_profiles')
         .select('*')
         .eq('household_id', household_id)
         .single();
+
+      let profile = this.mapProfile(profileRow);
 
       if (!profile) {
         // Create new profile
@@ -409,18 +474,24 @@ export class AILearningService {
           .single();
 
         if (error) throw error;
-        profile = newProfile;
-      } else {
+        profile = this.mapProfile(newProfile);
+      } else if (pattern) {
         // Update existing profile
-        const { error } = await this.supabase
+        const currentCorrections = profile.total_corrections ?? 0;
+        const { data: updatedProfile, error } = await this.supabase
           .from('ai_household_profiles')
           .update({
-            total_corrections: profile.total_corrections + 1,
-            last_learning_update: new Date().toISOString()
+            total_corrections: currentCorrections + 1,
+            successful_learnings: (profile.successful_learnings ?? 0) + (pattern.is_learned ? 1 : 0),
+            accuracy_improvement: this.calculateAccuracyImprovement(profile, Boolean(pattern?.is_learned)),
+            last_learning_update: new Date().toISOString(),
           })
-          .eq('id', profile.id);
+          .eq('id', profile.id)
+          .select('*')
+          .single();
 
         if (error) throw error;
+        profile = this.mapProfile(updatedProfile);
       }
 
       logger.info('Household learning profile updated', { householdId: household_id });
@@ -436,11 +507,13 @@ export class AILearningService {
   async getHouseholdLearningInsights(household_id: string): Promise<HouseholdLearningInsights> {
     try {
       // Get household profile
-      const { data: profile } = await this.supabase
+      const { data: profileRow } = await this.supabase
         .from('ai_household_profiles')
         .select('*')
         .eq('household_id', household_id)
         .single();
+
+      const profile = this.mapProfile(profileRow);
 
       // Get total corrections count
       const { count: totalCorrections } = await this.supabase
@@ -449,18 +522,20 @@ export class AILearningService {
         .eq('household_id', household_id);
 
       // Get learning patterns
-      const { data: patterns } = await this.supabase
+      const { data: patternsRows } = await this.supabase
         .from('ai_correction_patterns')
         .select('*')
         .eq('household_id', household_id)
         .eq('is_learned', true);
 
+      const patterns = (patternsRows ?? []).map((pattern) => this.mapPattern(pattern));
+
       // Calculate insights
-      const total_patterns_learned = patterns?.length || 0;
-      const accuracy_trend = this.calculateAccuracyTrend(profile as AIHouseholdProfile, patterns as AICorrectionPattern[]);
-      const top_learning_areas = this.getTopLearningAreas(patterns as AICorrectionPattern[]);
-      const suggested_improvements = this.generateSuggestedImprovements(patterns as AICorrectionPattern[]);
-      const next_learning_goals = this.generateNextLearningGoals(profile as AIHouseholdProfile, patterns as AICorrectionPattern[]);
+      const total_patterns_learned = patterns.length;
+      const accuracy_trend = this.calculateAccuracyTrend(profile ?? null, patterns);
+      const top_learning_areas = this.getTopLearningAreas(patterns);
+      const suggested_improvements = this.generateSuggestedImprovements(patterns);
+      const next_learning_goals = this.generateNextLearningGoals(profile ?? null, patterns);
 
       return {
         household_id,
@@ -469,7 +544,7 @@ export class AILearningService {
         accuracy_trend: this.convertTrendToPercentage(accuracy_trend),
         top_learning_areas,
         suggested_improvements,
-        confidence_threshold: (profile as AIHouseholdProfile)?.confidence_threshold || 75,
+        confidence_threshold: this.getConfidenceThreshold(profile ?? null),
         learning_goals: next_learning_goals,
         last_updated: new Date().toISOString()
       };
@@ -483,12 +558,12 @@ export class AILearningService {
   /**
    * Calculate accuracy trend based on learning data
    */
-  private calculateAccuracyTrend(profile: AIHouseholdProfile, patterns: AICorrectionPattern[]): 'improving' | 'stable' | 'declining' {
-    if (!profile || !patterns) return 'stable';
+  private calculateAccuracyTrend(profile: AIHouseholdProfile | null, patterns: AICorrectionPattern[]): 'improving' | 'stable' | 'declining' {
+    if (!profile || !patterns || patterns.length === 0) return 'stable';
     
     // Simple trend calculation based on recent patterns
     const recent_patterns = patterns.filter(p => 
-      new Date(p.created_at) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
+      p.created_at !== null && new Date(p.created_at) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
     );
     
     if (recent_patterns.length === 0) return 'stable';
@@ -512,10 +587,12 @@ export class AILearningService {
   private getTopLearningAreas(patterns: AICorrectionPattern[]): string[] {
     if (!patterns) return [];
     
-    const areaCounts: { [key: string]: number } = {};
+    const areaCounts: Record<string, number> = {};
     
     patterns.forEach(pattern => {
-      const area = `${pattern.pattern_type} (${pattern.issue_category})`;
+      const patternType = pattern.pattern_type ?? 'unknown';
+      const issueCategory = pattern.issue_category ?? 'unspecified';
+      const area = `${patternType} (${issueCategory})`;
       areaCounts[area] = (areaCounts[area] || 0) + 1;
     });
     
@@ -525,7 +602,20 @@ export class AILearningService {
       .map(([area]) => area);
   }
 
+  /**
+   * Calculate accuracy improvement based on current and previous profiles
+   */
+  private calculateAccuracyImprovement(currentProfile: AIHouseholdProfile | null, isNewPattern: boolean): number {
+    if (!currentProfile) return 0;
 
+    const previousAccuracyImprovement = currentProfile.accuracy_improvement ?? 0;
+
+    if (isNewPattern) {
+      return Math.min(previousAccuracyImprovement + 0.05, 1);
+    }
+
+    return Math.max(previousAccuracyImprovement - 0.01, 0);
+  }
 
   /**
    * Convert trend to percentage for dashboard display
@@ -546,23 +636,66 @@ export class AILearningService {
   /**
    * Generate next learning goals
    */
-  private generateNextLearningGoals(profile: AIHouseholdProfile, patterns: AICorrectionPattern[]): string[] {
+  private generateNextLearningGoals(profile: AIHouseholdProfile | null, patterns: AICorrectionPattern[]): string[] {
     const goals: string[] = [];
     
     if (!profile || !patterns) return goals;
     
-    if (profile.total_corrections < 10) {
+    if ((profile.total_corrections ?? 0) < 10) {
       goals.push('Reach 10 total corrections for better pattern recognition');
     }
     
-    if (profile.successful_learnings < 5) {
+    if ((profile.successful_learnings ?? 0) < 5) {
       goals.push('Achieve 5 successful learning patterns');
     }
     
-    if (profile.accuracy_improvement < 0.1) {
+    if ((profile.accuracy_improvement ?? 0) < 0.1) {
       goals.push('Improve accuracy by 10% through learning');
     }
     
     return goals;
+  }
+
+  /**
+   * Get confidence threshold from household profile
+   */
+  private getConfidenceThreshold(profile: AIHouseholdProfile | null): number {
+    return profile?.confidence_threshold ?? 75;
+  }
+
+  private mapProfile(row: Database['public']['Tables']['ai_household_profiles']['Row'] | null): AIHouseholdProfile | null {
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      household_id: row.household_id,
+      total_corrections: row.total_corrections ?? 0,
+      successful_learnings: row.successful_learnings ?? 0,
+      accuracy_improvement: row.accuracy_improvement ?? 0,
+      preferred_email_formats: this.toRecord(row.preferred_email_formats),
+      common_bill_providers: this.toRecord(row.common_bill_providers),
+      typical_shopping_patterns: this.toRecord(row.typical_shopping_patterns),
+      event_preferences: this.toRecord(row.event_preferences),
+      current_ai_model_version: row.current_ai_model_version,
+      last_learning_update: row.last_learning_update,
+      learning_status: row.learning_status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  private mapPattern(row: Database['public']['Tables']['ai_correction_patterns']['Row']): AICorrectionPattern {
+    return {
+      ...row,
+      original_ai_output: this.toRecord(row.original_ai_output),
+      corrected_output: this.toRecord(row.corrected_output),
+    };
+  }
+
+  private toRecord(value: Json | null): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
   }
 }

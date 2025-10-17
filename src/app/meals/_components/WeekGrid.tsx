@@ -51,7 +51,14 @@ export default function WeekGrid({ weekStart, meals, onAttachRecipe }: WeekGridP
         return;
       }
 
-      const [rowIndex, colIndex] = activeCell.split(":").map((value) => Number.parseInt(value, 10));
+      const [rowIndexRaw = "", colIndexRaw = ""] = activeCell.split(":");
+      const rowIndex = Number.parseInt(rowIndexRaw, 10);
+      const colIndex = Number.parseInt(colIndexRaw, 10);
+
+      if (Number.isNaN(rowIndex) || Number.isNaN(colIndex)) {
+        return;
+      }
+
       let nextRow = rowIndex;
       let nextCol = colIndex;
 
@@ -71,7 +78,12 @@ export default function WeekGrid({ weekStart, meals, onAttachRecipe }: WeekGridP
         case "Enter":
         case " ":
           event.preventDefault();
-          openDialog(matrix.cells[colIndex][rowIndex]);
+          {
+            const targetCell = matrix.cells[colIndex]?.[rowIndex];
+            if (targetCell) {
+              openDialog(targetCell);
+            }
+          }
           return;
         default:
           return;
@@ -113,10 +125,21 @@ export default function WeekGrid({ weekStart, meals, onAttachRecipe }: WeekGridP
                 {row.label}
               </th>
               {matrix.headers.map((header, columnIndex) => {
-                const cell = matrix.cells[columnIndex][rowIndex];
+                const column = matrix.cells[columnIndex];
+                const cell = column?.[rowIndex];
                 const cellKey = `${rowIndex}:${columnIndex}`;
                 const meal = mealMap.get(`${header.iso}:${row.type}`);
                 const isActive = activeCell === cellKey;
+
+                if (!cell) {
+                  return (
+                    <td key={cellKey} className="h-24 border border-white/5 p-3 align-top" role="gridcell">
+                      <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-white/10 bg-transparent text-xs text-slate-500">
+                        Unavailable
+                      </div>
+                    </td>
+                  );
+                }
 
                 return (
                   <td key={cellKey} className="h-24 border border-white/5 p-3 align-top" role="gridcell">
@@ -127,7 +150,7 @@ export default function WeekGrid({ weekStart, meals, onAttachRecipe }: WeekGridP
                           "w-full rounded-xl border border-blue-400/10 bg-blue-400/5 p-3 text-left text-sm text-white transition",
                           isActive && "ring-2 ring-blue-400"
                         )}
-                        onClick={() => openDialog(cell)}
+                        onClick={() => cell && openDialog(cell)}
                         onFocus={() => setActiveCell(cellKey)}
                       >
                         <p className="font-medium">

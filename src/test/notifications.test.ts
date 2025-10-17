@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { vi } from './setup'
 
 // Mock the Notification API
 const mockNotification = {
@@ -17,7 +18,8 @@ const mockNavigator = {
             p256dh: 'test-p256dh-key',
             auth: 'test-auth-key'
           }
-        }))
+        })),
+        getSubscription: vi.fn(() => Promise.resolve(null))
       }
     }),
     addEventListener: vi.fn(),
@@ -25,7 +27,7 @@ const mockNavigator = {
       pushManager: {
         getSubscription: vi.fn(() => Promise.resolve(null))
       }
-    }))
+    })),
   }
 }
 
@@ -43,6 +45,11 @@ Object.defineProperty(globalThis, 'navigator', {
 describe('Push Notifications', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockNavigator.serviceWorker.getRegistration = vi.fn(() => Promise.resolve({
+      pushManager: {
+        getSubscription: vi.fn(() => Promise.resolve(null))
+      }
+    }))
   })
 
   describe('Notification Permission', () => {
@@ -68,10 +75,7 @@ describe('Push Notifications', () => {
   describe('Push Subscription', () => {
     it('should create push subscription', async () => {
       const registration = await mockNavigator.serviceWorker.ready
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: 'test-vapid-key'
-      })
+      const subscription = await registration.pushManager.subscribe()
 
       expect(subscription.endpoint).toBe('https://fcm.googleapis.com/fcm/send/test-endpoint')
       expect(subscription.keys.p256dh).toBe('test-p256dh-key')
@@ -96,21 +100,19 @@ describe('Push Notifications', () => {
 
   describe('VAPID Key Conversion', () => {
     it('should convert base64 VAPID key to Uint8Array', () => {
-      const base64Key = 'BGcCAoQJ9ObXoN81fkX_xB3RN8eYIdsOpkIQH6g4xHme8uTnnpYrOpP6s5eRB2EniOdf78oKstPbM5hF_U91GTQ'
-      
       // Mock the conversion function
       const urlB64ToUint8Array = (base64String: string) => {
         const padding = '='.repeat((4 - base64String.length % 4) % 4)
-        const _base64 = (base64String + padding)
+        const normalized = (base64String + padding)
           .replace(/-/g, '+')
           .replace(/_/g, '/')
 
         // In a real implementation, this would use atob
         // For testing, we'll just return a mock Uint8Array
-        return new Uint8Array(65) // VAPID keys are 65 bytes
+        return new Uint8Array(normalized.length) // VAPID keys are typically 65 bytes
       }
 
-      const result = urlB64ToUint8Array(base64Key)
+      const result = urlB64ToUint8Array('BGcCAoQJ9ObXoN81fkX_xB3RN8eYIdsOpkIQH6g4xHme8uTnnpYrOpP6s5eRB2EniOdf78oKstPbM5hF_U91GTQ')
       expect(result).toBeInstanceOf(Uint8Array)
       expect(result.length).toBe(65)
     })

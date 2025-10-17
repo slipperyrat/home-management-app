@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
         .from('users')
         .update({
           onboarding_completed: true,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', userId);
 
@@ -27,10 +27,10 @@ export async function POST(request: NextRequest) {
         return createErrorResponse(error);
       }
 
-      return handleApiError(error, { route: '/api/onboarding/complete', method: 'POST', userId: undefined });
+      return handleApiError(error, { route: '/api/onboarding/complete', method: 'POST', userId: '' });
     }
   }, {
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }

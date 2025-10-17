@@ -32,6 +32,10 @@ export class SecurityMonitor {
    * Log a security event
    */
   public logEvent(event: Omit<SecurityEvent, 'timestamp'>): void {
+    if (!event.ip) {
+      logger.warn('Security event missing IP address', { event });
+      return;
+    }
     const securityEvent: SecurityEvent = {
       ...event,
       timestamp: new Date()
@@ -48,20 +52,18 @@ export class SecurityMonitor {
     // Log based on severity
     switch (securityEvent.severity) {
       case 'critical':
-        logger.error('Critical security event', new Error(securityEvent.type), securityEvent);
+        logger.error('Critical security event', new Error(securityEvent.type), { ...securityEvent, severity: 'high' });
         break;
       case 'high':
       case 'medium':
-        logger.warn('Security event', securityEvent);
+        logger.warn('Security event', { ...securityEvent });
         break;
       case 'low':
-        logger.info('Security event', securityEvent);
+        logger.info('Security event', { ...securityEvent });
         break;
     }
 
-    // Check for patterns that might indicate an attack
-    // Temporarily disabled to prevent infinite recursion
-    // this.analyzePatterns(securityEvent);
+    // Pattern analysis disabled to avoid recursive logging
   }
 
   /**
@@ -73,11 +75,16 @@ export class SecurityMonitor {
     ip: string, 
     userAgent?: string
   ): void {
+    if (!ip) {
+      logger.warn('Rate limit exceeded event missing IP address', { userId, endpoint });
+      return;
+    }
+
     this.logEvent({
       type: 'rate_limit_exceeded',
       userId,
       ip,
-      userAgent,
+      userAgent: userAgent ?? '',
       endpoint,
       severity: 'medium',
       details: { action: 'rate_limit_exceeded' }
@@ -93,11 +100,16 @@ export class SecurityMonitor {
     ip: string, 
     userAgent?: string
   ): void {
+    if (!ip) {
+      logger.warn('CSRF failure event missing IP address', { userId, endpoint });
+      return;
+    }
+
     this.logEvent({
       type: 'csrf_failure',
       userId,
       ip,
-      userAgent,
+      userAgent: userAgent ?? '',
       endpoint,
       severity: 'high',
       details: { action: 'csrf_validation_failed' }
@@ -113,10 +125,15 @@ export class SecurityMonitor {
     userAgent?: string,
     details?: Record<string, unknown>
   ): void {
+    if (!ip) {
+      logger.warn('Unauthorized access event missing IP address', { endpoint });
+      return;
+    }
+
     this.logEvent({
       type: 'unauthorized_access',
       ip,
-      userAgent,
+      userAgent: userAgent ?? '',
       endpoint,
       severity: 'high',
       details: { action: 'unauthorized_access', ...details }
@@ -133,11 +150,16 @@ export class SecurityMonitor {
     userAgent?: string,
     details?: Record<string, unknown>
   ): void {
+    if (!ip) {
+      logger.warn('Suspicious activity event missing IP address', { userId, activity });
+      return;
+    }
+
     this.logEvent({
       type: 'suspicious_activity',
       userId,
       ip,
-      userAgent,
+      userAgent: userAgent ?? '',
       severity: 'medium',
       details: { activity, ...details }
     });
@@ -152,10 +174,15 @@ export class SecurityMonitor {
     userAgent?: string,
     details?: Record<string, unknown>
   ): void {
+    if (!ip) {
+      logger.warn('Authentication failure event missing IP address', { endpoint });
+      return;
+    }
+
     this.logEvent({
       type: 'authentication_failure',
       ip,
-      userAgent,
+      userAgent: userAgent ?? '',
       endpoint,
       severity: 'medium',
       details: { action: 'authentication_failed', ...details }
@@ -189,76 +216,6 @@ export class SecurityMonitor {
       .filter(event => event.severity === severity)
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, limit);
-  }
-
-  /**
-   * Analyze patterns for potential attacks
-   */
-  private analyzePatterns(event: SecurityEvent): void {
-    const recentEvents = this.eventQueue.filter(
-      e => e.timestamp.getTime() > Date.now() - 5 * 60 * 1000 // Last 5 minutes
-    );
-
-    // Check for rapid-fire requests from same IP
-    const ipEvents = recentEvents.filter(e => e.ip === event.ip);
-    if (ipEvents.length > 20) {
-      // Directly add to queue to avoid recursion
-      const suspiciousEvent: SecurityEvent = {
-        type: 'suspicious_activity',
-        ip: event.ip,
-        severity: 'high',
-        timestamp: new Date(),
-        details: { 
-          pattern: 'rapid_fire_requests',
-          count: ipEvents.length,
-          timeWindow: '5_minutes'
-        }
-      };
-      this.eventQueue.push(suspiciousEvent);
-      logger.warn('SUSPICIOUS ACTIVITY DETECTED', suspiciousEvent);
-    }
-
-    // Check for multiple failed CSRF attempts
-    const csrfFailures = recentEvents.filter(
-      e => e.type === 'csrf_failure' && e.ip === event.ip
-    );
-    if (csrfFailures.length > 5) {
-      // Directly add to queue to avoid recursion
-      const suspiciousEvent: SecurityEvent = {
-        type: 'suspicious_activity',
-        ip: event.ip,
-        severity: 'high',
-        timestamp: new Date(),
-        details: { 
-          pattern: 'multiple_csrf_failures',
-          count: csrfFailures.length,
-          timeWindow: '5_minutes'
-        }
-      };
-      this.eventQueue.push(suspiciousEvent);
-      logger.warn('SUSPICIOUS ACTIVITY DETECTED', suspiciousEvent);
-    }
-
-    // Check for multiple unauthorized access attempts
-    const unauthorizedAttempts = recentEvents.filter(
-      e => e.type === 'unauthorized_access' && e.ip === event.ip
-    );
-    if (unauthorizedAttempts.length > 10) {
-      // Directly add to queue to avoid recursion
-      const suspiciousEvent: SecurityEvent = {
-        type: 'suspicious_activity',
-        ip: event.ip,
-        severity: 'critical',
-        timestamp: new Date(),
-        details: { 
-          pattern: 'multiple_unauthorized_attempts',
-          count: unauthorizedAttempts.length,
-          timeWindow: '5_minutes'
-        }
-      };
-      this.eventQueue.push(suspiciousEvent);
-      logger.error('CRITICAL SECURITY EVENT', suspiciousEvent);
-    }
   }
 
   /**

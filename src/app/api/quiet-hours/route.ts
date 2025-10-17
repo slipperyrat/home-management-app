@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
       formatted: {
         next_change: nextChange ? new Date(nextChange).toLocaleString() : null,
         days_of_week: quietHours ? 
-          quietHours.days_of_week.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ') : 
+          quietHours.days_of_week.map((d: number) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ') : 
           null,
         time_range: quietHours ? 
           `${quietHours.start_time} - ${quietHours.end_time}` : 

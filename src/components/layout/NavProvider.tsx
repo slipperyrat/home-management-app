@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { createContext, useContext, useEffect, useState } from 'react';
 
-const NavContext = createContext<string>('');
+const NavContext = createContext<string | null>(null);
 
 export function useActivePath() {
   return useContext(NavContext);
@@ -11,7 +11,7 @@ export function useActivePath() {
 
 export function NavProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [activePath, setActivePath] = useState(pathname);
+  const [activePath, setActivePath] = useState<string | null>(pathname);
 
   useEffect(() => {
     setActivePath(pathname);

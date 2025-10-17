@@ -162,6 +162,11 @@ export function useFormState<T extends Record<string, unknown>>(
     setFieldTouched,
     reset,
     validate,
-    ...validation,
+    errors: validation.errors,
+    touched: validation.touched,
+    hasFieldError: validation.hasFieldError,
+    getFieldError: validation.getFieldError,
+    isValid: validation.isValid,
+    clearErrors: validation.clearErrors,
   };
 }

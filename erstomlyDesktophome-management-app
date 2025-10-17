@@ -1,0 +1,198 @@
+[1mdiff --git a/src/types/database.ts b/src/types/database.ts[m
+[1mindex cac5599..aa9d13c 100644[m
+[1m--- a/src/types/database.ts[m
+[1m+++ b/src/types/database.ts[m
+[36m@@ -256,6 +256,177 @@[m [mexport interface BudgetEnvelopeRow {[m
+   period_end: string;[m
+ }[m
+ [m
+[32m+[m[32mexport interface ShoppingItemRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  name: string;[m
+[32m+[m[32m  category: string | null;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m  shopping_list_id: string | null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface ShoppingListRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  title: string;[m
+[32m+[m[32m  created_by: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface AICorrectionPattern {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  correction_id: string;[m
+[32m+[m[32m  pattern_type: 'email_format' | 'data_extraction' | 'classification' | 'confidence_threshold' | 'user_preference';[m
+[32m+[m[32m  issue_category: 'missing_data' | 'incorrect_data' | 'wrong_classification' | 'low_confidence' | 'user_override';[m
+[32m+[m[32m  correction_type: 'correct' | 'ignore' | 'mark_done';[m
+[32m+[m[32m  original_ai_output: Record<string, unknown> | null;[m
+[32m+[m[32m  corrected_output: Record<string, unknown> | null;[m
+[32m+[m[32m  correction_reason: string;[m
+[32m+[m[32m  confidence_impact: number;[m
+[32m+[m[32m  pattern_strength: number;[m
+[32m+[m[32m  is_learned: boolean;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m  learned_at?: string;[m
+[32m+[m[32m  updated_at: string;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface AIHouseholdProfile {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  total_corrections: number;[m
+[32m+[m[32m  successful_learnings: number;[m
+[32m+[m[32m  accuracy_improvement: number;[m
+[32m+[m[32m  preferred_email_formats?: Record<string, unknown> | null;[m
+[32m+[m[32m  common_bill_providers?: Record<string, unknown> | null;[m
+[32m+[m[32m  typical_shopping_patterns?: Record<string, unknown> | null;[m
+[32m+[m[32m  event_preferences?: Record<string, unknown> | null;[m
+[32m+[m[32m  current_ai_model_version: string;[m
+[32m+[m[32m  last_learning_update: string;[m
+[32m+[m[32m  learning_status: 'active' | 'paused' | 'completed';[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m  updated_at: string;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface AILearningRule {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  household_id: string | null;[m
+[32m+[m[32m  rule_name: string;[m
+[32m+[m[32m  rule_description?: string;[m
+[32m+[m[32m  rule_type: 'email_parsing' | 'data_extraction' | 'classification' | 'confidence_adjustment';[m
+[32m+[m[32m  trigger_conditions: Record<string, unknown>;[m
+[32m+[m[32m  learning_actions: {[m
+[32m+[m[32m    action: 'update_email_format_preferences' | 'update_bill_provider_patterns' | 'adjust_confidence_threshold';[m
+[32m+[m[32m    parameters?: Record<string, unknown>;[m
+[32m+[m[32m  };[m
+[32m+[m[32m  priority: number;[m
+[32m+[m[32m  is_active: boolean;[m
+[32m+[m[32m  success_rate: number;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m  updated_at: string;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface ReceiptItem {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  attachment_id: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  item_name: string;[m
+[32m+[m[32m  item_price: number;[m
+[32m+[m[32m  item_quantity: number;[m
+[32m+[m[32m  item_category?: string;[m
+[32m+[m[32m  item_brand?: string;[m
+[32m+[m[32m  item_unit?: string;[m
+[32m+[m[32m  confidence_score: number;[m
+[32m+[m[32m  attachment?: {[m
+[32m+[m[32m    id: string;[m
+[32m+[m[32m    file_name: string;[m
+[32m+[m[32m    receipt_store?: string;[m
+[32m+[m[32m    receipt_date?: string;[m
+[32m+[m[32m  } | null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface SpendEntryRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  amount: number;[m
+[32m+[m[32m  description: string | null;[m
+[32m+[m[32m  category: string | null;[m
+[32m+[m[32m  envelope_id: string | null;[m
+[32m+[m[32m  receipt_attachment_id: string | null;[m
+[32m+[m[32m  transaction_date: string;[m
+[32m+[m[32m  merchant: string | null;[m
+[32m+[m[32m  payment_method: string | null;[m
+[32m+[m[32m  source: string | null;[m
+[32m+[m[32m  created_by: string;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface BudgetEnvelopeRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  name: string;[m
+[32m+[m[32m  color: string | null;[m
+[32m+[m[32m  category: string | null;[m
+[32m+[m[32m  period_end: string;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface ShoppingItemRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  name: string;[m
+[32m+[m[32m  category: string | null;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m  shopping_list_id: string | null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface ShoppingListRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  title: string;[m
+[32m+[m[32m  created_by: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface CalendarRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  name: string;[m
+[32m+[m[32m  color?: string | null;[m
+[32m+[m[32m  timezone?: string | null;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m  updated_at: string;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface EventRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  household_id: string;[m
+[32m+[m[32m  calendar_id?: string | null;[m
+[32m+[m[32m  title: string;[m
+[32m+[m[32m  description?: string | null;[m
+[32m+[m[32m  start_at: string;[m
+[32m+[m[32m  end_at: string;[m
+[32m+[m[32m  timezone: string;[m
+[32m+[m[32m  is_all_day: boolean;[m
+[32m+[m[32m  rrule?: string | null;[m
+[32m+[m[32m  exdates?: string[] | null;[m
+[32m+[m[32m  rdates?: string[] | null;[m
+[32m+[m[32m  location?: string | null;[m
+[32m+[m[32m  created_by: string;[m
+[32m+[m[32m  updated_at: string;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m  is_public?: boolean | null;[m
+[32m+[m[32m  attendee_user_id?: string | null;[m
+[32m+[m[32m  source: 'first_party' | 'google_import';[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport interface EventAttendeeRow {[m
+[32m+[m[32m  id: string;[m
+[32m+[m[32m  event_id: string;[m
+[32m+[m[32m  user_id?: string | null;[m
+[32m+[m[32m  email?: string | null;[m
+[32m+[m[32m  status?: 'accepted' | 'declined' | 'tentative' | 'needsAction' | null;[m
+[32m+[m[32m  is_optional?: boolean | null;[m
+[32m+[m[32m  created_at: string;[m
+[32m+[m[32m  updated_at: string;[m
+[32m+[m[32m}[m
+[32m+[m
+ export type Database = {[m
+   public: {[m
+     Tables: {[m
+[36m@@ -370,6 +541,15 @@[m [mexport type Database = {[m
+       chore_ai_insights: {[m
+         Row: ChoreInsightRow;[m
+       };[m
+[32m+[m[32m      calendars: {[m
+[32m+[m[32m        Row: CalendarRow;[m
+[32m+[m[32m      };[m
+[32m+[m[32m      events: {[m
+[32m+[m[32m        Row: EventRow;[m
+[32m+[m[32m      };[m
+[32m+[m[32m      event_attendees: {[m
+[32m+[m[32m        Row: EventAttendeeRow;[m
+[32m+[m[32m      };[m
+     };[m
+   };[m
+ };[m

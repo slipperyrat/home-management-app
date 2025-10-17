@@ -42,8 +42,17 @@ export async function getRewardHistory(userId: string): Promise<RewardHistoryEnt
       return []
     }
 
-    logger.info('Fetched reward history data', { userId, count: data?.length ?? 0 })
-    return data ?? []
+    const rows = Array.isArray(data) ? data : []
+
+    logger.info('Fetched reward history data', { userId, count: rows.length })
+    return rows.map(entry => ({
+      created_at: entry.created_at ?? '',
+      reward_id: entry.reward_id,
+      rewards:
+        entry.rewards && typeof entry.rewards === 'object' && 'name' in entry.rewards
+          ? (entry.rewards as RewardHistoryEntry['rewards'])
+          : null,
+    }));
   } catch (error) {
     logger.error('Unexpected error in getRewardHistory', error as Error, { userId })
     return []

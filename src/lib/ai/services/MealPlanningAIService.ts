@@ -4,7 +4,8 @@
 import { BaseAIService, AIResponse } from './BaseAIService';
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
 import { logger } from '@/lib/logging/logger';
-import type { RecipeRow, MealPlanRow } from '@/types/database';
+import type { Database } from '@/types/supabase.generated';
+import type { MealPlanRow, RecipeRow } from '@/types/database';
 
 export interface MealSuggestion {
   id: string;
@@ -211,7 +212,13 @@ Focus on practical, delicious meals that fit the household's preferences and con
         .limit(20);
 
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).map((plan) => ({
+        ...plan,
+        meals: (plan.meals as Database['public']['Tables']['meal_plans']['Row']['meals'])
+          ? (plan.meals as Record<string, Record<string, string | null>>)
+          : null,
+        created_at: plan.created_at ?? null,
+      }));
     } catch (error) {
       logger.error('Error fetching meal history', error as Error, { householdId });
       return [];
@@ -228,7 +235,10 @@ Focus on practical, delicious meals that fit the household's preferences and con
         .limit(50);
 
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).map((recipe) => ({
+        ...recipe,
+        created_at: recipe.created_at ?? null,
+      }));
     } catch (error) {
       logger.error('Error fetching available recipes', error as Error, { householdId });
       return [];

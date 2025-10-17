@@ -296,7 +296,8 @@ class SupabaseCache {
         tags: data.tags || []
       };
     } catch (error) {
-      logger.warn('Supabase cache get error', error as Error, { key });
+      const err = error instanceof Error ? error : new Error('Unknown cache get error');
+      logger.warn('Supabase cache get error', { key, error: err.message });
       return null;
     }
   }
@@ -317,7 +318,8 @@ class SupabaseCache {
         throw error;
       }
     } catch (error) {
-      logger.warn('Supabase cache set error', error as Error, { key });
+      const err = error instanceof Error ? error : new Error('Unknown cache set error');
+      logger.warn('Supabase cache set error', { key, error: err.message });
     }
   }
 
@@ -328,7 +330,8 @@ class SupabaseCache {
         .delete()
         .eq('cache_key', key);
     } catch (error) {
-      logger.warn('Supabase cache delete error', error as Error, { key });
+      const err = error instanceof Error ? error : new Error('Unknown cache delete error');
+      logger.warn('Supabase cache delete error', { key, error: err.message });
     }
   }
 
@@ -339,7 +342,8 @@ class SupabaseCache {
         .delete()
         .neq('cache_key', '');
     } catch (error) {
-      logger.warn('Supabase cache clear error', error as Error);
+      const err = error instanceof Error ? error : new Error('Unknown cache clear error');
+      logger.warn('Supabase cache clear error', { error: err.message });
     }
   }
 }

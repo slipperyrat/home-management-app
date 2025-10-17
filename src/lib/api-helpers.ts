@@ -1,4 +1,4 @@
-import type { NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { logger } from '@/lib/logging/logger';
 import { z } from 'zod';
 import { sanitizeDeep, SanitizePolicy } from '@/lib/security/sanitize';

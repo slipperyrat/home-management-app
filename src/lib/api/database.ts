@@ -1,9 +1,10 @@
 // Standardized Database Access Helper
 // Provides consistent database access across all API routes
 
-import { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
+import { SupabaseClient, type PostgrestError } from '@supabase/supabase-js';
 import { logger } from '@/lib/logging/logger';
-import type { AuditLogInput, Household, User } from '@/types/database';
+import type { Database, Json } from '@/types/supabase.generated';
+import type { User, Household, AuditLogInput } from '@/types/database';
 import { getSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
 
 type DBClient = SupabaseClient<Database>;
@@ -32,28 +33,46 @@ export async function executeQuery<T>(
     const result = await queryFn(client);
 
     if (result.error) {
-      logger.error(`Database error in ${context.operation}`, new Error(result.error.message), {
-        operation: context.operation,
-        table: context.table,
-        userId: context.userId,
-        error: result.error
-      });
+      logger.error(
+        `Database error in ${context.operation}`,
+        new Error(result.error.message),
+        {
+          operation: context.operation,
+          ...(context.table ? { table: context.table } : {}),
+          ...(context.userId ? { userId: context.userId } : {}),
+          error: {
+            message: result.error.message,
+            code: result.error.code,
+            details: result.error.details,
+            hint: result.error.hint,
+            name: result.error.name,
+          },
+        },
+      );
     }
 
     return result;
   } catch (error) {
-    logger.error(`Database connection error in ${context.operation}`, error as Error, {
-      operation: context.operation,
-      table: context.table,
-      userId: context.userId
-    });
+    const err = error instanceof Error ? error : new Error('Unknown database error');
+    logger.error(
+      `Database connection error in ${context.operation}`,
+      err,
+      {
+        operation: context.operation,
+        ...(context.table ? { table: context.table } : {}),
+        ...(context.userId ? { userId: context.userId } : {}),
+      },
+    );
 
     return {
       data: null,
       error: {
         message: 'Database connection failed',
-        code: 'CONNECTION_ERROR'
-      }
+        code: 'CONNECTION_ERROR',
+        details: '',
+        hint: '',
+        name: 'CONNECTION_ERROR',
+      },
     };
   }
 }
@@ -64,12 +83,16 @@ export async function executeQuery<T>(
  * @returns Promise with household ID or null
  */
 export async function getUserHouseholdId(userId: string): Promise<string | null> {
-  const { data, error } = await executeQuery(
-    (client) => client
-      .from('users')
-      .select('household_id')
-      .eq('id', userId)
-      .single(),
+  const { data, error } = await executeQuery<{ household_id: string | null }>(
+    async (client) => {
+      const { data, error } = await client
+        .from('users')
+        .select('household_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      return { data: data ?? null, error };
+    },
     { operation: 'getUserHouseholdId', table: 'users', userId }
   );
 
@@ -90,13 +113,17 @@ export async function verifyHouseholdAccess(
   userId: string,
   householdId: string
 ): Promise<{ hasAccess: boolean; role?: string }> {
-  const { data, error } = await executeQuery(
-    (client) => client
-      .from('household_members')
-      .select('role')
-      .eq('user_id', userId)
-      .eq('household_id', householdId)
-      .single(),
+  const { data, error } = await executeQuery<{ role: string | null }>(
+    async (client) => {
+      const { data, error } = await client
+        .from('household_members')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('household_id', householdId)
+        .maybeSingle();
+
+      return { data: data ?? null, error };
+    },
     { operation: 'verifyHouseholdAccess', table: 'household_members', userId }
   );
 
@@ -104,7 +131,7 @@ export async function verifyHouseholdAccess(
     return { hasAccess: false };
   }
 
-  return { hasAccess: true, role: data.role };
+  return { hasAccess: true, ...(data.role ? { role: data.role } : {}) };
 }
 
 /**
@@ -117,20 +144,24 @@ export async function getUserAndHouseholdData(userId: string): Promise<{
   household: Household | null;
   error?: string;
 }> {
-  const { data: userData, error: userError } = await executeQuery(
-    (client) => client
-      .from('users')
-      .select(`
-        *,
-        households!inner(
-          id,
-          name,
-          plan,
-          game_mode
-        )
-      `)
-      .eq('id', userId)
-      .single(),
+  const { data: userData, error: userError } = await executeQuery<User & { households: Household | null }>(
+    async (client) => {
+      const { data, error } = await client
+        .from('users')
+        .select(`
+          *,
+          households!inner(
+            id,
+            name,
+            plan,
+            game_mode
+          )
+        `)
+        .eq('id', userId)
+        .maybeSingle();
+
+      return { data: (data as (User & { households: Household | null }) | null) ?? null, error };
+    },
     { operation: 'getUserAndHouseholdData', table: 'users', userId }
   );
 
@@ -154,14 +185,18 @@ export async function getUserAndHouseholdData(userId: string): Promise<{
  * @returns Promise with audit log result
  */
 export async function createAuditLog(params: AuditLogInput): Promise<{ success: boolean; error?: string }> {
-  const { error } = await executeQuery(
-    (client) => client.rpc('add_audit_log', {
-      p_action: params.action,
-      p_target_table: params.targetTable,
-      p_target_id: params.targetId,
-      p_user_id: params.userId,
-      p_meta: params.metadata || {}
-    }),
+  const { error } = await executeQuery<null>(
+    async (client) => {
+      const { error } = await client.rpc('add_audit_log', {
+        p_action: params.action,
+        p_target_table: params.targetTable,
+        p_target_id: params.targetId,
+        p_user_id: params.userId,
+        p_meta: (params.metadata ?? {}) as Json,
+      });
+
+      return { data: null, error };
+    },
     { operation: 'createAuditLog', table: 'audit_logs', userId: params.userId }
   );
 
@@ -179,16 +214,20 @@ export async function createAuditLog(params: AuditLogInput): Promise<{ success: 
  * @returns Promise with existence status
  */
 export async function userExists(userId: string): Promise<boolean> {
-  const { data, error } = await executeQuery(
-    (client) => client
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .single(),
+  const { data, error } = await executeQuery<{ id: string }>(
+    async (client) => {
+      const { data, error } = await client
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      return { data: data ?? null, error };
+    },
     { operation: 'userExists', table: 'users', userId }
   );
 
-  return !error && !!data;
+  return !error && Boolean(data?.id);
 }
 
 /**
@@ -201,16 +240,20 @@ export async function getUserPlan(userId: string): Promise<{
   features: string[];
   error?: string;
 }> {
-  const { data, error } = await executeQuery(
-    (client) => client
-      .from('users')
-      .select(`
-        households!inner(
-          plan
-        )
-      `)
-      .eq('id', userId)
-      .single(),
+  const { data, error } = await executeQuery<{ households: { plan: string | null } | null }>(
+    async (client) => {
+      const { data, error } = await client
+        .from('users')
+        .select(`
+          households!inner(
+            plan
+          )
+        `)
+        .eq('id', userId)
+        .single();
+
+      return { data: (data as { households: { plan: string | null } | null } | null) ?? null, error };
+    },
     { operation: 'getUserPlan', table: 'users', userId }
   );
 
@@ -233,12 +276,16 @@ export async function getUserPlan(userId: string): Promise<{
 }
 
 export async function getUserOnboardingStatus(userId: string): Promise<boolean> {
-  const { data, error } = await executeQuery(
-    (client) => client
-      .from('users')
-      .select('onboarding_completed')
-      .eq('id', userId)
-      .single(),
+  const { data, error } = await executeQuery<{ onboarding_completed: boolean | null }>(
+    async (client) => {
+      const { data, error } = await client
+        .from('users')
+        .select('onboarding_completed')
+        .eq('id', userId)
+        .single();
+
+      return { data: data ?? null, error };
+    },
     { operation: 'getUserOnboardingStatus', table: 'users', userId }
   );
 
@@ -246,5 +293,5 @@ export async function getUserOnboardingStatus(userId: string): Promise<boolean> 
     return false;
   }
 
-  return Boolean((data as { onboarding_completed?: boolean }).onboarding_completed);
+  return Boolean(data.onboarding_completed);
 }

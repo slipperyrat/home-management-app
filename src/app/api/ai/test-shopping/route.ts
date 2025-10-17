@@ -2,15 +2,20 @@
 // This can be easily removed if the AI implementation doesn't work
 
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { testShoppingAI, testAIConfig } from '@/lib/ai/harness/shoppingHarness';
 import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Shopping AI test requested without authenticated user');
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Testing shopping AI service', { userId: user.id });
 
       // Get user and household data
@@ -45,7 +50,20 @@ export async function GET(request: NextRequest) {
       }, 'AI service test completed successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/ai/test-shopping', method: 'GET', userId: user.id });
+      const errorContext: {
+        route: string;
+        method: string;
+        userId?: string;
+      } = {
+        route: '/api/ai/test-shopping',
+        method: 'GET'
+      };
+
+      if (user?.id) {
+        errorContext.userId = user.id;
+      }
+
+      return handleApiError(error, errorContext);
     }
   }, {
     requireAuth: true,

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { canAccessFeatureFromEntitlements } from '@/lib/server/canAccessFeature';
 import { z } from 'zod';
+import type { Database } from '@/types/supabase.generated';
+import { toEntitlements } from '@/lib/entitlements';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,7 +13,13 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
+
+type EntitlementRow = Database['public']['Tables']['entitlements']['Row'];
+
+function mapEntitlement(row: EntitlementRow) {
+  return toEntitlements(row);
+}
 
 const HistoryRequestSchema = z.object({
   household_id: z.string().uuid(),
@@ -47,15 +55,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Check entitlements
-    const { data: entitlements, error: entitlementsError } = await supabase
+    const { data: entitlementsRow, error: entitlementsError } = await supabase
       .from('entitlements')
       .select('*')
       .eq('household_id', household_id)
       .single();
 
-    if (entitlementsError || !entitlements) {
+    if (entitlementsError || !entitlementsRow) {
       return NextResponse.json({ error: 'Entitlements not found' }, { status: 404 });
     }
+
+    const entitlements = mapEntitlement(entitlementsRow);
 
     if (!canAccessFeatureFromEntitlements(entitlements, 'digest_max_per_day')) {
       return NextResponse.json({ 
@@ -91,14 +101,12 @@ export async function GET(request: NextRequest) {
 
     // Calculate statistics
     const today = new Date().toISOString().split('T')[0];
-    const todayDigests = digests?.filter(d => d.digest_date === today) || [];
-    const successfulDigests = digests?.filter(d => d.status === 'sent') || [];
-    const failedDigests = digests?.filter(d => d.status === 'failed') || [];
+    const todayDigests = (digests ?? []).filter((d) => d.digest_date === today);
+    const successfulDigests = (digests ?? []).filter((d) => d.status === 'sent');
+    const failedDigests = (digests ?? []).filter((d) => d.status === 'failed');
 
     // Get last sent date
-    const lastSent = successfulDigests.length > 0 
-      ? successfulDigests[0].digest_date || null
-      : null;
+    const lastSent = successfulDigests[0]?.digest_date ?? null;
 
     // Get next scheduled time (simplified for now since digest_preferences table doesn't exist)
     let nextScheduled = null;
@@ -123,10 +131,10 @@ export async function GET(request: NextRequest) {
         quota_limit: entitlements.digest_max_per_day || 1,
         total_sent: successfulDigests.length,
         total_failed: failedDigests.length,
-        success_rate: digests && digests.length > 0 
-          ? Math.round((successfulDigests.length / digests.length) * 100) 
+        success_rate: digests && digests.length > 0
+          ? Math.round((successfulDigests.length / digests.length) * 100)
           : 0,
-        recent_digests: digests?.slice(0, 10).map(digest => ({
+        recent_digests: (digests ?? []).slice(0, 10).map((digest) => ({
           id: digest.id,
           date: digest.digest_date,
           sent: digest.status === 'sent',

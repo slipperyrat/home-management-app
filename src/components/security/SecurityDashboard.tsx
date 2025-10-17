@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, AlertTriangle, Users, Activity } from 'lucide-react';
+import { Shield, AlertTriangle, Activity } from 'lucide-react';
 
 interface SecurityMetric {
   metric: string;

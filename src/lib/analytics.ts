@@ -72,10 +72,10 @@ class Analytics {
         feature,
         plan,
         action,
-        metadata,
+        ...(metadata ? { metadata } : {}),
       },
-      userId,
-      householdId,
+      ...(userId ? { userId } : {}),
+      ...(householdId ? { householdId } : {}),
       timestamp: new Date(),
     } satisfies FeatureUsageEvent);
   }
@@ -93,12 +93,12 @@ class Analytics {
       event,
       properties: {
         plan,
-        previous_plan: previousPlan,
-        stripe_customer_id: stripeCustomerId,
-        stripe_subscription_id: stripeSubscriptionId,
+        ...(previousPlan ? { previous_plan: previousPlan } : {}),
+        ...(stripeCustomerId ? { stripe_customer_id: stripeCustomerId } : {}),
+        ...(stripeSubscriptionId ? { stripe_subscription_id: stripeSubscriptionId } : {}),
       },
-      userId,
-      householdId,
+      ...(userId ? { userId } : {}),
+      ...(householdId ? { householdId } : {}),
       timestamp: new Date(),
     } satisfies SubscriptionEvent);
   }
@@ -116,11 +116,11 @@ class Analytics {
       properties: {
         action,
         page,
-        duration,
-        metadata,
+        duration: duration ?? 0,
+        ...(metadata ? { metadata } : {}),
       },
-      userId,
-      householdId,
+      ...(userId ? { userId } : {}),
+      ...(householdId ? { householdId } : {}),
       timestamp: new Date(),
     } satisfies UserEngagementEvent);
   }
@@ -171,9 +171,13 @@ class Analytics {
 
   private async sendToServerAnalytics(event: AnalyticsEvent) {
     try {
-      logger.info('Analytics event captured', { event: event.event, userId: event.userId, householdId: event.householdId });
+      logger.info('Analytics event captured', {
+        event: event.event,
+        ...(event.userId ? { userId: event.userId } : {}),
+        ...(event.householdId ? { householdId: event.householdId } : {}),
+      });
     } catch (error) {
-      logger.warn('Failed to record server analytics event', { error, event: event.event });
+      logger.warn('Failed to record server analytics event', { event: event.event }, error);
     }
   }
 

@@ -32,18 +32,18 @@ export function FileUpload({
   maxFileSize = 10 * 1024 * 1024, // 10MB default
   acceptedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf']
 }: FileUploadProps) {
-  const { user, isLoaded, isSignedIn, getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken, userId } = useAuth();
   const [uploads, setUploads] = useState<UploadProgress[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Debug logging
-  console.log('FileUpload auth state:', { user: !!user, isLoaded, isSignedIn });
+  console.log('FileUpload auth state:', { userId, isLoaded, isSignedIn });
 
   // Monitor authentication state changes
   React.useEffect(() => {
-    console.log('FileUpload auth state changed:', { user: !!user, isLoaded, isSignedIn });
-  }, [user, isLoaded, isSignedIn]);
+    console.log('FileUpload auth state changed:', { userId, isLoaded, isSignedIn });
+  }, [userId, isLoaded, isSignedIn]);
 
   // Test token availability
   React.useEffect(() => {
@@ -107,7 +107,7 @@ export function FileUpload({
         throw new Error('User not authenticated');
       }
 
-      console.log('✅ Upload starting - Auth state:', { isLoaded, isSignedIn, user: !!user });
+      console.log('✅ Upload starting - Auth state:', { isLoaded, isSignedIn, userId });
 
       // Upload file using FormData to the API route
       const formData = new FormData();

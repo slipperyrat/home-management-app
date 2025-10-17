@@ -14,7 +14,7 @@ interface RewardClaim {
   reward_id: string;
 }
 
-interface PowerUp {
+export interface PowerUp {
   type: string;
   expires_at: string | null;
 }
@@ -29,7 +29,10 @@ export async function getAllRewards(): Promise<Reward[]> {
     throw new Error(`Error fetching rewards: ${error.message}`);
   }
 
-  return data ?? [];
+  return (data || []).map(reward => ({
+    ...reward,
+    created_at: reward.created_at ?? '',
+  }));
 }
 
 export async function getClaimedRewards(userId: string): Promise<string[]> {

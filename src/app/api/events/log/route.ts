@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sb } from '@/lib/server/supabaseAdmin';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
       const userId = user?.id;
       if (!userId) {

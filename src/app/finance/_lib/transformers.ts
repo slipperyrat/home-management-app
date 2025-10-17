@@ -6,7 +6,14 @@ import type {
   SpendEntryDto,
 } from "./types";
 
-export function mapBill(raw: Record<string, unknown>): BillDto {
+type RawRecord = Record<string, unknown> | null | undefined;
+
+function getRecord(value: RawRecord): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+export function mapBill(rawInput: RawRecord): BillDto {
+  const raw = getRecord(rawInput) ?? {};
   const status = (raw.status ? String(raw.status) : "pending") as BillStatus;
   const priority = (raw.priority ? String(raw.priority) : "medium") as BillPriority;
 
@@ -27,7 +34,8 @@ export function mapBill(raw: Record<string, unknown>): BillDto {
   };
 }
 
-export function mapBudgetEnvelope(raw: Record<string, unknown>): BudgetEnvelopeDto {
+export function mapBudgetEnvelope(rawInput: RawRecord): BudgetEnvelopeDto {
+  const raw = getRecord(rawInput) ?? {};
   const allocated = Number(raw.allocated_amount ?? raw.allocatedAmount ?? 0);
   const spent = Number(raw.spent_amount ?? raw.spentAmount ?? 0);
   const remaining = Number(raw.remaining_amount ?? raw.remainingAmount ?? allocated - spent);
@@ -49,9 +57,13 @@ export function mapBudgetEnvelope(raw: Record<string, unknown>): BudgetEnvelopeD
   };
 }
 
-export function mapSpendEntry(raw: Record<string, unknown>): SpendEntryDto {
-  const envelope = raw.budget_envelopes ?? raw.envelope;
-  const bill = raw.bills ?? raw.bill;
+export function mapSpendEntry(rawInput: RawRecord): SpendEntryDto {
+  const raw = getRecord(rawInput) ?? {};
+  const container = raw as Record<string, unknown>;
+  const envelopeSource = (container["budget_envelopes"] ?? container["envelope"]) as RawRecord;
+  const billSource = (container["bills"] ?? container["bill"]) as RawRecord;
+  const envelopeRaw = getRecord(envelopeSource);
+  const billRaw = getRecord(billSource);
 
   return {
     id: String(raw.id ?? ""),
@@ -61,18 +73,18 @@ export function mapSpendEntry(raw: Record<string, unknown>): SpendEntryDto {
     transactionDate: String(raw.transaction_date ?? raw.transactionDate ?? new Date().toISOString()),
     merchant: raw.merchant ? String(raw.merchant) : null,
     paymentMethod: (raw.payment_method ? String(raw.payment_method) : "other") as SpendEntryDto["paymentMethod"],
-    envelope: envelope
+    envelope: envelopeRaw
       ? {
-          id: String(envelope.id ?? ""),
-          name: String(envelope.name ?? "Envelope"),
-          color: String(envelope.color ?? "#3B82F6"),
+          id: String(envelopeRaw.id ?? ""),
+          name: String(envelopeRaw.name ?? "Envelope"),
+          color: String(envelopeRaw.color ?? "#3B82F6"),
         }
       : null,
-    bill: bill
+    bill: billRaw
       ? {
-          id: String(bill.id ?? ""),
-          title: String(bill.title ?? "Bill"),
-          amount: Number(bill.amount ?? 0),
+          id: String(billRaw.id ?? ""),
+          title: String(billRaw.title ?? "Bill"),
+          amount: Number(billRaw.amount ?? 0),
         }
       : null,
     createdAt: String(raw.created_at ?? new Date().toISOString()),

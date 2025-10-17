@@ -30,12 +30,16 @@ export function createErrorResponse<TDetails = unknown>(
   const requestId = generateRequestId();
 
   // Log error for monitoring
-  logger.error('API Error', error instanceof Error ? error : new Error(errorMessage), {
-    status,
-    details,
-    requestId,
-    timestamp,
-  });
+  logger.error(
+    'API Error',
+    error instanceof Error ? error : new Error(errorMessage),
+    {
+      status,
+      ...(details !== undefined ? { details } : {}),
+      requestId,
+      timestamp,
+    },
+  );
 
   const response: ErrorResponse<TDetails> = {
     success: false,
@@ -100,14 +104,10 @@ export function createNotFoundErrorResponse(resource: string = 'Resource'): Next
  * @returns NextResponse with rate limit error
  */
 export function createRateLimitErrorResponse(retryAfter: number): NextResponse<ErrorResponse<{ type: 'rate_limit_error'; retryAfter: number }>> {
-  const response = createErrorResponse(
-    'Rate limit exceeded',
-    429,
-    {
-      type: 'rate_limit_error',
-      retryAfter,
-    },
-  );
+  const response = createErrorResponse<{ type: 'rate_limit_error'; retryAfter: number }>('Rate limit exceeded', 429, {
+    type: 'rate_limit_error',
+    retryAfter,
+  });
 
   response.headers.set('Retry-After', retryAfter.toString());
   return response;
@@ -142,7 +142,7 @@ export function handleApiError(
 
   if (error instanceof Error) {
     logger.error(`API Error in ${context.method} ${context.route}`, error, {
-      userId: context.userId,
+      ...(context.userId ? { userId: context.userId } : {}),
       route: context.route,
       method: context.method,
     });
@@ -151,7 +151,7 @@ export function handleApiError(
   }
 
   logger.error(`Unknown error in ${context.method} ${context.route}`, new Error('Unknown error'), {
-    userId: context.userId,
+    ...(context.userId ? { userId: context.userId } : {}),
     route: context.route,
     method: context.method,
     error,

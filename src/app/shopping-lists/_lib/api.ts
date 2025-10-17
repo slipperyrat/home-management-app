@@ -170,7 +170,7 @@ export async function markAllComplete({ listId }: { listId: string }): Promise<v
       )
     );
   } catch (error) {
-    logger.error("markAllComplete failed", { error, listId });
+    logger.error("markAllComplete failed", error instanceof Error ? error : new Error(String(error)), { listId });
     throw error instanceof Error ? error : new Error("Failed to mark items complete");
   }
 }

@@ -1,5 +1,9 @@
 import { sb } from './supabaseAdmin';
 import { logger } from '@/lib/logging/logger';
+import type { RecipeRow } from '@/types/database';
+import type { Database } from '@/types/supabase.generated';
+
+type ShoppingItemRow = Database['public']['Tables']['shopping_items']['Row'];
 
 // Helper to normalize ingredient names for comparison
 function normalizeName(name: string): string {
@@ -124,6 +128,8 @@ function getIngredientName(ingredient: unknown): string {
  * @param sourceMealPlan - Information about where this recipe was assigned
  * @returns Object with success status and detailed counts
  */
+type RecipeWithIngredients = RecipeRow & { ingredients: unknown };
+
 export async function addRecipeIngredientsToGroceriesAuto(
   userId: string,
   householdId: string,
@@ -157,7 +163,9 @@ export async function addRecipeIngredientsToGroceriesAuto(
 
     logger.info('Recipe fetched for auto addition', { recipeId: recipe.id, title: recipe.title });
 
-    const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+    const typedRecipe = recipe as RecipeWithIngredients;
+
+    const ingredients = Array.isArray(typedRecipe.ingredients) ? typedRecipe.ingredients : [];
     logger.debug('Recipe ingredients', { count: ingredients.length, ingredients });
     if (!ingredients.length) {
       logger.warn('No ingredients found in recipe during auto addition', { recipeId: recipe.id });
@@ -166,7 +174,7 @@ export async function addRecipeIngredientsToGroceriesAuto(
 
     const { data: list, error: listError } = await supabase
       .from('shopping_lists')
-      .select('*')
+      .select('id')
       .eq('household_id', householdId)
       .eq('title', 'Groceries')
       .maybeSingle();
@@ -193,7 +201,7 @@ export async function addRecipeIngredientsToGroceriesAuto(
     // Get existing shopping items for this list
     const { data: existingItems, error: existingItemsError } = await supabase
       .from('shopping_items')
-      .select('*')
+      .select('id, name, quantity, auto_added, pending_confirmation, auto_added_at, source_recipe_id, created_by')
       .eq('list_id', listId)
       .eq('is_complete', false);
 
@@ -202,9 +210,9 @@ export async function addRecipeIngredientsToGroceriesAuto(
     }
 
     // Create a map of existing items by normalized name
-    const existingItemsMap = new Map<string, ShoppingItem>();
+    const existingItemsMap = new Map<string, ShoppingItemRow>();
     existingItems?.forEach((item) => {
-      existingItemsMap.set(normalizeName(item.name), item as ShoppingItem);
+      existingItemsMap.set(normalizeName(item.name), item as ShoppingItemRow);
     });
 
     let addedCount = 0;
@@ -215,10 +223,10 @@ export async function addRecipeIngredientsToGroceriesAuto(
     for (const ingredient of ingredients) {
       logger.debug('Processing ingredient', { ingredient });
       logger.debug('Ingredient type', { type: typeof ingredient });
-    logger.debug('Ingredient keys', { keys: Object.keys(ingredient || {}) });
-    logger.debug('Ingredient.name', { name: (ingredient as Record<string, unknown>)?.name });
-    logger.debug('Ingredient.unit', { unit: (ingredient as Record<string, unknown>)?.unit });
-    logger.debug('Ingredient.amount', { amount: (ingredient as Record<string, unknown>)?.amount });
+      logger.debug('Ingredient keys', { keys: Object.keys((ingredient as Record<string, unknown>) || {}) });
+      logger.debug('Ingredient.name', { name: (ingredient as Record<string, unknown>)?.name });
+      logger.debug('Ingredient.unit', { unit: (ingredient as Record<string, unknown>)?.unit });
+      logger.debug('Ingredient.amount', { amount: (ingredient as Record<string, unknown>)?.amount });
 
       const parsedIngredient = parseQuantity(ingredient);
       const name = getIngredientName(ingredient);
@@ -240,25 +248,19 @@ export async function addRecipeIngredientsToGroceriesAuto(
           });
         }
 
-        let quantityValue: number | string;
-
-        // Shared logic for quantity math
-        if (parsedIngredient.amount !== null && typeof existingItem.quantity === 'number') {
-          quantityValue = existingItem.quantity + parsedIngredient.amount;
-        } else if (parsedIngredient.amount !== null) {
-          quantityValue = parsedIngredient.amount;
-        } else {
-          quantityValue = 1;
-        }
+        let quantityValue: string | null = parsedIngredient.amount !== null
+          ? `${parsedIngredient.amount}${parsedIngredient.unit ? ` ${parsedIngredient.unit}` : ''}`.trim()
+          : parsedIngredient.originalText.trim() || null;
 
         if (existingItem.auto_added && existingItem.pending_confirmation) {
+          const updatePayload: Partial<ShoppingItemRow> = {
+            quantity: quantityValue,
+            auto_added_at: new Date().toISOString(),
+            pending_confirmation: !autoConfirm,
+          };
           const { error: updateError } = await supabase
             .from('shopping_items')
-            .update({
-              quantity: quantityValue,
-              auto_added_at: new Date().toISOString(),
-              pending_confirmation: !autoConfirm,
-            })
+            .update(updatePayload)
             .eq('id', existingItem.id);
 
           if (updateError) {
@@ -297,26 +299,24 @@ export async function addRecipeIngredientsToGroceriesAuto(
       }
 
       // Insert new auto-added item
-      let quantityValue: number | string = 1;
-      if (parsedIngredient.amount !== null) {
-        quantityValue = parsedIngredient.amount;
-      }
+      const quantityText = parsedIngredient.amount !== null
+        ? `${parsedIngredient.amount}${parsedIngredient.unit ? ` ${parsedIngredient.unit}` : ''}`.trim()
+        : parsedIngredient.originalText.trim();
 
       const { error: insertError } = await supabase
         .from('shopping_items')
-        .insert([
-          {
-            list_id: listId,
-            name: name.trim(),
-            quantity: quantityValue,
-            is_complete: false,
-            auto_added: true,
-            source_recipe_id: recipeId,
-            pending_confirmation: !autoConfirm,
-            auto_added_at: new Date().toISOString(),
-            created_by: userId,
-          },
-        ]);
+        .insert({
+          list_id: listId,
+          name: name.trim(),
+          quantity: quantityText || null,
+          is_complete: false,
+          auto_added: true,
+          source_recipe_id: recipeId,
+          pending_confirmation: !autoConfirm,
+          auto_added_at: new Date().toISOString(),
+          created_by: userId,
+          category: null,
+        });
 
       if (insertError) {
         logger.error('Error inserting auto-added shopping item', insertError);
@@ -325,19 +325,18 @@ export async function addRecipeIngredientsToGroceriesAuto(
         if (insertError.message.includes('quantity')) {
           const { error: retryError } = await supabase
             .from('shopping_items')
-            .insert([
-              {
-                list_id: listId,
-                name: name.trim(),
-                quantity: 1,
-                is_complete: false,
-                auto_added: true,
-                source_recipe_id: recipeId,
-                pending_confirmation: !autoConfirm,
-                auto_added_at: new Date().toISOString(),
-                created_by: userId,
-              },
-            ]);
+            .insert({
+              list_id: listId,
+              name: name.trim(),
+              quantity: '1',
+              is_complete: false,
+              auto_added: true,
+              source_recipe_id: recipeId,
+              pending_confirmation: !autoConfirm,
+              auto_added_at: new Date().toISOString(),
+              created_by: userId,
+              category: null,
+            });
 
           if (!retryError) {
             addedCount += 1;
@@ -361,7 +360,7 @@ export async function addRecipeIngredientsToGroceriesAuto(
         }
         logger.debug('Added auto-added item', {
           name,
-          quantity: quantityValue,
+          quantity: quantityText || null,
         });
       }
     }

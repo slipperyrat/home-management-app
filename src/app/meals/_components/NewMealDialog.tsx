@@ -11,8 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 import { createMealPlan, importRecipeFromUrl, listRecipes } from "../_lib/api";
-import { isoToDayKey, isoToWeekStart } from "../_lib/types";
-import type { WeekCell } from "../_lib/grid";
+import { isoToDayKey, type WeekCell } from "../_lib/types";
 import { cn } from "@/lib/utils";
 
 type TabValue = "quick" | "attach" | "url";
@@ -79,11 +78,11 @@ export function NewMealDialog({ open, cell, onOpenChange, onCompleted }: NewMeal
         }
 
         const basePayload = {
-          weekStartISO: isoToWeekStart(cell.dateISO),
+          weekStartISO: cell.dateISO, // Assuming cell.dateISO is the week start
           dayKey: isoToDayKey(cell.dateISO),
           mealType: cell.mealType,
-          title: title || undefined,
-          notes: notes || undefined,
+          ...(title.trim() ? { title: title.trim() } : {}),
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
         };
 
         if (pendingTab === "url") {

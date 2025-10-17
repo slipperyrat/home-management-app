@@ -1,13 +1,24 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createBillSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/supabase.generated';
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Bill list retrieval attempted without authenticated user', {
+          url: request.url,
+          route: '/api/bills',
+          securityEvent: true,
+          severity: 'medium',
+        });
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Fetching bills', { userId: user.id });
 
       // Get user and household data
@@ -33,7 +44,11 @@ export async function GET(request: NextRequest) {
       return createSuccessResponse({ bills: bills || [] }, 'Bills fetched successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/bills', method: 'GET', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/bills',
+        method: 'GET',
+        ...(user ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,
@@ -43,8 +58,18 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Bill creation attempted without authenticated user', {
+          url: request.url,
+          route: '/api/bills',
+          securityEvent: true,
+          severity: 'medium',
+        });
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Creating bill', { userId: user.id });
 
       // Validate input using Zod schema
@@ -69,19 +94,22 @@ export async function POST(request: NextRequest) {
 
       // Create the bill with validated data
       const supabase = getDatabaseClient();
+      const insertPayload: Database['public']['Tables']['bills']['Insert'] = {
+        household_id: household.id,
+        title: validatedData.title,
+        name: validatedData.title,
+        description: validatedData.description ?? null,
+        amount: validatedData.amount,
+        due_date: validatedData.due_date,
+        category: validatedData.category ?? 'General',
+        priority: validatedData.priority ?? 'medium',
+        source: 'manual',
+        created_by: user.id,
+      };
+
       const { data: bill, error: createError } = await supabase
         .from('bills')
-        .insert({
-          household_id: household.id,
-          title: validatedData.title,
-          description: validatedData.description,
-          amount: validatedData.amount,
-          due_date: validatedData.due_date,
-          category: validatedData.category || 'General',
-          priority: validatedData.priority || 'medium',
-          source: 'manual',
-          created_by: user.id
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
@@ -96,17 +124,21 @@ export async function POST(request: NextRequest) {
         targetTable: 'bills',
         targetId: bill.id,
         userId: user.id,
-        metadata: { 
-          bill_title: validatedData.title,
+        metadata: {
+          bill_name: validatedData.title,
           amount: validatedData.amount,
-          household_id: household.id
-        }
+          household_id: household.id,
+        },
       });
 
       return createSuccessResponse({ bill }, 'Bill created successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/bills', method: 'POST', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/bills',
+        method: 'POST',
+        ...(user ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,

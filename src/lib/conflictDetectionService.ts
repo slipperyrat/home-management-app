@@ -67,7 +67,10 @@ export class ConflictDetectionService {
 
       // Check for conflicts with each other event
       for (const otherEvent of otherEvents || []) {
-        const conflict = await this.checkEventConflict(eventData, otherEvent, householdId);
+        const mappedEvent = this.mapCalendarEventToEventData(otherEvent, householdId);
+        if (!mappedEvent) continue;
+
+        const conflict = await this.checkEventConflict(mappedEvent, eventData, householdId);
         if (conflict) {
           conflicts.push(conflict);
           
@@ -205,13 +208,11 @@ export class ConflictDetectionService {
 
     // Return the highest severity conflict
     if (conflicts.length > 0) {
-      return conflicts.sort((a, b) => {
-        const severityOrder = { high: 3, medium: 2, low: 1 };
-        return severityOrder[b.severity] - severityOrder[a.severity];
-      })[0];
+      const severityOrder = { high: 3, medium: 2, low: 1 } as const
+      return conflicts.sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity])[0] ?? null
     }
 
-    return null;
+    return null
   }
 
   /**
@@ -387,6 +388,33 @@ export class ConflictDetectionService {
         conflictsByType: {},
         conflictsBySeverity: {}
       };
+    }
+  }
+
+  /**
+   * Map a calendar event to the EventData interface.
+   * This is a placeholder and needs to be implemented based on actual calendar event structure.
+   */
+  private static mapCalendarEventToEventData(
+    event: Record<string, unknown>,
+    householdId: string
+  ): EventData | null {
+    const id = typeof event.id === 'string' ? event.id : null
+    const title = typeof event.title === 'string' ? event.title : ''
+    const start_at = typeof event.start_at === 'string' ? event.start_at : null
+    const end_at = typeof event.end_at === 'string' ? event.end_at : null
+
+    if (!id || !start_at || !end_at) {
+      return null
+    }
+
+    return {
+      id,
+      title,
+      start_at,
+      end_at,
+      is_all_day: Boolean(event.is_all_day),
+      household_id: householdId,
     }
   }
 }

@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 
+export { vi }
+
 // Ensure consistent origin for client fetch calls
 ;(globalThis as typeof globalThis & { __TEST_ORIGIN__?: string }).__TEST_ORIGIN__ = 'http://localhost'
 

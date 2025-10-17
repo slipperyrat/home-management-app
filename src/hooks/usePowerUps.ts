@@ -1,14 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { getUserPowerUpDetails } from '@/lib/supabase/rewards';
-
-interface PowerUp {
-  id: string;
-  name: string;
-  type: string;
-  expires_at: string | null;
-  created_at: string;
-}
+import { getUserPowerUpDetails, type PowerUp } from '@/lib/supabase/rewards';
 
 interface UsePowerUpsReturn {
   powerUps: PowerUp[];

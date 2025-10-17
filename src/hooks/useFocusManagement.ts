@@ -39,9 +39,16 @@ export function useFocusManagement({
 
     if (focusableElements.length === 0) return;
 
+    const firstElement = focusableElements.item(0);
+    const lastElement = focusableElements.item(focusableElements.length - 1);
+
+    if (!firstElement || !lastElement) {
+      return;
+    }
+
     // Focus first element if requested
     if (focusFirstElement) {
-      focusableElements[0].focus();
+      firstElement.focus();
     }
 
     // Handle keyboard navigation
@@ -52,9 +59,6 @@ export function useFocusManagement({
       }
 
       if (event.key === 'Tab') {
-        const firstElement = focusableElements[0];
-        const lastElement = focusableElements[focusableElements.length - 1];
-
         if (event.shiftKey) {
           // Shift + Tab: go to previous element
           if (document.activeElement === firstElement) {
@@ -102,8 +106,12 @@ export function useFocusTrap(isOpen: boolean) {
 
     if (focusableElements.length === 0) return;
 
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
+    const firstElement = focusableElements.item(0);
+    const lastElement = focusableElements.item(focusableElements.length - 1);
+
+    if (!firstElement || !lastElement) {
+      return;
+    }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Tab') {

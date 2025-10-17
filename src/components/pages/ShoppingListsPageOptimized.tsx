@@ -21,8 +21,6 @@ import {
   TrendingUp, 
   Target,
   Clock,
-  CheckCircle,
-  Sparkles,
   BarChart3,
   Zap,
   X
@@ -32,19 +30,7 @@ import {
   useCreateShoppingList, 
   useOptimisticShoppingLists 
 } from '@/hooks/useShoppingLists';
-
-interface ShoppingList {
-  id: string;
-  name: string;
-  household_id: string;
-  created_by: string;
-  created_at: string;
-  is_completed: boolean;
-  total_items: number;
-  completed_items: number;
-  ai_suggestions_count: number;
-  ai_confidence: number;
-}
+import type { ShoppingList as ShoppingListModel } from '@/types/shopping';
 
 interface AIShoppingInsights {
   total_lists: number;
@@ -63,11 +49,11 @@ const ShoppingListCard = React.memo(({
   onView, 
   onAddItems 
 }: { 
-  list: ShoppingList; 
+  list: ShoppingListModel; 
   onView: (id: string) => void;
   onAddItems: (id: string) => void;
 }) => {
-  const getCompletionPercentage = useCallback((list: ShoppingList) => {
+  const getCompletionPercentage = useCallback((list: ShoppingListModel) => {
     if (list.total_items === 0) return 0;
     return Math.round((list.completed_items / list.total_items) * 100);
   }, []);
@@ -218,16 +204,18 @@ const CreateListModal = React.memo(({
             onChange={(e) => setValue('name', e.target.value)}
             placeholder="e.g., Groceries for this week"
             required
-            error={errors.find(e => e.field === 'name')?.message}
+            error={errors.find((e) => e.field === 'name')?.message ?? ''}
           />
-          
-          <FormInput
-            label="Description (optional)"
+
+          <label htmlFor="list-description" className="block text-sm font-medium text-gray-700">
+            Description (optional)
+          </label>
+          <textarea
+            id="list-description"
+            className="flex h-24 w-full rounded-md border border-gray-300 bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             value={formData.description}
             onChange={(e) => setValue('description', e.target.value)}
             placeholder="e.g., Weekly grocery shopping for family of 4"
-            multiline="true"
-            rows={3}
           />
           
           <div className="flex gap-3 pt-2">
@@ -273,39 +261,54 @@ export default function ShoppingListsPageOptimized() {
   const { addOptimisticList, removeOptimisticList } = useOptimisticShoppingLists();
 
   // Extract data from React Query
-  const shoppingLists = useMemo(() => shoppingListsData?.shoppingLists || [], [shoppingListsData?.shoppingLists]);
+  const shoppingLists = useMemo<ShoppingListModel[]>(
+    () => shoppingListsData ?? [],
+    [shoppingListsData],
+  );
 
   // Memoized handlers
   const handleCreateList = useCallback(async (data: { name: string; description: string }) => {
     if (!data.name.trim()) return;
     
+    const tempId = `temp-${Date.now()}`;
+
     try {
       // Add optimistic update
       addOptimisticList({
+        id: tempId,
         name: data.name.trim(),
-        household_id: '', // Will be filled by the API
-        created_by: userId || '',
+        household_id: userId ?? null,
+        created_by: userId ?? null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
         is_completed: false,
         total_items: 0,
         completed_items: 0,
         ai_suggestions_count: 0,
         ai_confidence: 0,
+        description: data.description ?? null,
       });
 
       // Create the shopping list
-      await createShoppingList.mutateAsync({
+      const payload: { name: string; description?: string } = {
         name: data.name.trim(),
-        household_id: '', // Will be filled by the API
-      });
+      };
+
+      const description = data.description.trim();
+      if (description) {
+        payload.description = description;
+      }
+
+      await createShoppingList.mutateAsync(payload);
 
       // Clear form and close modal
       setShowCreateModal(false);
+      clearError();
     } catch (error) {
-      // Remove optimistic update on error
-      removeOptimisticList(`temp-${Date.now()}`);
+      removeOptimisticList(tempId);
       handleError(error as Error);
     }
-  }, [addOptimisticList, createShoppingList, removeOptimisticList, userId, handleError]);
+  }, [addOptimisticList, createShoppingList, removeOptimisticList, userId, handleError, clearError]);
 
   const handleViewList = useCallback((id: string) => {
     router.push(`/shopping-lists/${id}`);
@@ -433,34 +436,13 @@ export default function ShoppingListsPageOptimized() {
             <CardContent>
               {recentLists.length > 0 ? (
                 <div className="space-y-4">
-                  {recentLists.map((list) => (
-                    <div key={list.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-medium">{list.name}</h4>
-                          {list.ai_suggestions_count > 0 && (
-                            <Badge variant="secondary" className="bg-purple-100 text-purple-800 text-xs">
-                              <Sparkles className="h-3 w-3 mr-1" />
-                              {list.ai_suggestions_count} AI suggestions
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-600">
-                          <span>{list.total_items} items</span>
-                          <span>{list.completed_items} completed</span>
-                          <span className={list.ai_confidence >= 80 ? 'text-green-600' : list.ai_confidence >= 60 ? 'text-yellow-600' : 'text-red-600'}>
-                            AI Confidence: {list.ai_confidence}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-gray-600 mb-1">Progress</div>
-                        <Progress value={list.total_items > 0 ? Math.round((list.completed_items / list.total_items) * 100) : 0} className="w-20" />
-                        <div className="text-xs text-gray-500 mt-1">
-                          {list.total_items > 0 ? Math.round((list.completed_items / list.total_items) * 100) : 0}%
-                        </div>
-                      </div>
-                    </div>
+                  {recentLists.map((list: ShoppingListModel) => (
+                    <ShoppingListCard
+                      key={list.id}
+                      list={list}
+                      onView={handleViewList}
+                      onAddItems={handleAddItems}
+                    />
                   ))}
                 </div>
               ) : (
@@ -487,7 +469,7 @@ export default function ShoppingListsPageOptimized() {
 
           {shoppingLists.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {shoppingLists.map((list) => (
+              {shoppingLists.map((list: ShoppingListModel) => (
                 <ShoppingListCard
                   key={list.id}
                   list={list}

@@ -8,6 +8,7 @@ export const uuidSchema = z.string().uuid();
 export const emailSchema = z.string().email();
 export const nonEmptyStringSchema = z.string().min(1).max(500);
 export const positiveNumberSchema = z.number().positive();
+export const nonNegativeNumberSchema = z.number().min(0);
 export const dateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format');
 
 // Shopping Lists
@@ -135,8 +136,11 @@ export const createMealPlanSchema = z.object({
   household_id: uuidSchema,
   meals: z.array(z.object({
     day: z.enum(['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']),
-    meal_type: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
-    recipe_id: uuidSchema.optional(),
+    slots: z.object({
+      breakfast: z.string().uuid().nullable().optional(),
+      lunch: z.string().uuid().nullable().optional(),
+      dinner: z.string().uuid().nullable().optional(),
+    }),
     notes: z.string().max(500).optional(),
   })),
 });
@@ -164,7 +168,7 @@ export const createRecipeSchema = z.object({
   cook_time: z.number().min(0).max(480),
   servings: z.number().min(1).max(50),
   tags: z.array(z.string().max(50)).optional(),
-  household_id: uuidSchema,
+  household_id: uuidSchema.optional(),
 });
 
 // Recipe input schema for frontend (accepts strings that get parsed)
@@ -260,10 +264,13 @@ export const confirmAutoAddedSchema = z.object({
 });
 
 export const mealPlannerAssignSchema = z.object({
-  week: dateStringSchema, // Changed from week_start to week to match frontend
+  week: dateStringSchema,
   day: z.enum(['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']),
-  slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack']), // Changed from meal_type to slot to match frontend
-  recipe_id: uuidSchema.optional(),
+  slots: z.object({
+    breakfast: z.string().uuid().nullable().optional(),
+    lunch: z.string().uuid().nullable().optional(),
+    dinner: z.string().uuid().nullable().optional(),
+  }),
   notes: z.string().max(500).optional(),
   alsoAddToList: z.boolean().optional(),
   autoConfirm: z.boolean().optional(),
@@ -291,8 +298,8 @@ export const createRewardSchema = z.object({
   name: nonEmptyStringSchema.max(100),
   description: z.string().max(500).optional(),
   points_cost: positiveNumberSchema,
-  household_id: uuidSchema,
-  created_by: uuidSchema,
+  coins_cost: nonNegativeNumberSchema.optional(),
+  pro_only: z.boolean().optional(),
   max_redemptions: z.number().min(1).max(1000).optional(),
   is_active: z.boolean().default(true),
 });
@@ -388,17 +395,18 @@ export const syncUserSchema = z.object({
 export const plannerCreateSchema = z.object({
   title: nonEmptyStringSchema.max(100),
   description: z.string().max(500).optional(),
-  date: dateStringSchema,
   household_id: uuidSchema,
+  due_date: dateStringSchema.optional(),
   category: z.string().max(50).optional(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),
 });
 
 export const plannerUpdateSchema = z.object({
   id: uuidSchema,
   title: nonEmptyStringSchema.max(100).optional(),
   description: z.string().max(500).optional(),
-  date: dateStringSchema.optional(),
+  due_date: dateStringSchema.optional(),
   category: z.string().max(50).optional(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).optional(),

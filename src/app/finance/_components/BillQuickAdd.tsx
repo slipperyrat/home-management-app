@@ -21,6 +21,12 @@ type CreateBillPayload = {
   due_date: string;
 };
 
+function getTodayISODate(): string {
+  const iso = new Date().toISOString();
+  const [date = iso] = iso.split("T");
+  return date;
+}
+
 async function createBill(payload: CreateBillPayload) {
   const response = await fetch("/api/finance/bills", {
     method: "POST",
@@ -44,9 +50,9 @@ async function createBill(payload: CreateBillPayload) {
 export function BillQuickAdd({ householdId }: BillQuickAddProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [title, setTitle] = useState("");
-  const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState(new Date().toISOString().split("T")[0]);
+  const [title, setTitle] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [dueDate, setDueDate] = useState<string>(() => getTodayISODate());
   const [pending, startTransition] = useTransition();
 
   const mutation = useMutation({
@@ -73,10 +79,13 @@ export function BillQuickAdd({ householdId }: BillQuickAddProps) {
       return;
     }
 
+    const fallbackDate = getTodayISODate();
+    const submittedDueDate = dueDate || fallbackDate;
+
     mutation.mutate({
       title: title.trim(),
       amount: Number.parseFloat(amount),
-      due_date: dueDate,
+      due_date: submittedDueDate,
     });
   };
 

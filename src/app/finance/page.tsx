@@ -4,7 +4,7 @@ import { canAccessFeature, getCurrentHousehold } from "@/lib/server/canAccessFea
 
 import { FinanceShell } from "./_components/FinanceShell";
 import { FinanceShellSkeleton } from "./_components/FinanceShellSkeleton";
-import { fetchBills, fetchBudgetEnvelopes, fetchFinanceSummary, fetchSpendEntries } from "./_lib/api";
+import { fetchBills, fetchBudgetEnvelopes, fetchSpendEntries } from "./_lib/api";
 import type { FinanceFeatureFlags } from "./_lib/types";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +42,6 @@ export default async function FinancePage() {
     );
   }
 
-  const summaryPromise = fetchFinanceSummary(featureFlags);
   const billsPromise = featureFlags.bills ? fetchBills({ limit: 100 }) : Promise.resolve([]);
   const envelopesPromise = featureFlags.envelopes ? fetchBudgetEnvelopes({ limit: 100 }) : Promise.resolve([]);
   const spendingPromise = featureFlags.spending ? fetchSpendEntries({ limit: 100 }) : Promise.resolve([]);
@@ -51,7 +50,6 @@ export default async function FinancePage() {
     <div className="px-4 py-6 lg:px-8">
       <Suspense fallback={<FinanceShellSkeleton />}>
         <FinanceShell
-          summaryPromise={summaryPromise}
           billsPromise={billsPromise}
           envelopesPromise={envelopesPromise}
           spendingPromise={spendingPromise}

@@ -264,7 +264,7 @@ export function templateToEventData(template: EventTemplate, startDate: Date): C
     end_time: endDate.toISOString(),
     event_type: template.category,
     priority: 'medium',
-    location: template.location
+    location: template.location ?? '',
   };
 }
 

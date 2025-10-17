@@ -1,13 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { NextRequest } from 'next/server';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { toggleShoppingItemSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logging/logger';
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       // Parse and validate input using Zod schema
       let validatedData;
       try {
@@ -26,7 +30,7 @@ export async function POST(request: NextRequest) {
       const { id: itemId, is_complete } = validatedData;
 
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -36,25 +40,20 @@ export async function POST(request: NextRequest) {
       const supabase = getDatabaseClient();
       const { data: currentItem, error: fetchError } = await supabase
         .from('shopping_items')
-        .select(`
-          is_complete,
-          shopping_lists!inner(household_id)
-        `)
+        .select('is_complete, shopping_lists!inner(household_id)')
         .eq('id', itemId)
-        .single();
+        .maybeSingle();
 
-      if (fetchError) {
-        logger.error('Error fetching shopping item before toggle', fetchError, {
+      if (fetchError || !currentItem) {
+        logger.error('Error fetching shopping item before toggle', fetchError ?? new Error('Item not found'), {
           userId: user.id,
           itemId,
         });
-        return createErrorResponse('Failed to fetch shopping item', 500, fetchError.message);
+        return createErrorResponse('Failed to fetch shopping item', 500, fetchError?.message ?? 'Item not found');
       }
 
-      // Check if item was previously incomplete (to award rewards only once)
       const wasIncomplete = !currentItem.is_complete;
-      // Fix: Access household_id correctly from the joined shopping_lists
-      const itemHouseholdId = (currentItem.shopping_lists as any)?.household_id;
+      const itemHouseholdId = (currentItem.shopping_lists as { household_id?: string } | null)?.household_id ?? null;
 
       if (!itemHouseholdId) {
         logger.error('Shopping item missing household_id', new Error('household_id missing'), {
@@ -72,30 +71,25 @@ export async function POST(request: NextRequest) {
       if (is_complete && wasIncomplete) {
         // Complete the item and award rewards
         // First, get the current user's XP and coins
-        const { data: userData, error: userError } = await supabase
+        const { data: userRecords, error: userError } = await supabase
           .from('users')
           .select('xp, coins')
-          .eq('id', user.id);
+          .eq('id', user.id)
+          .maybeSingle();
 
-        if (userError) {
-          logger.error('Error fetching user rewards before toggle', userError, {
+        if (userError || !userRecords) {
+          logger.error('Error fetching user rewards before toggle', userError ?? new Error('User record missing'), {
             userId: user.id,
             itemId,
           });
-          return createErrorResponse('Failed to fetch user data', 500, userError.message);
+          return createErrorResponse('Failed to fetch user data', 500, userError?.message ?? 'User not found');
         }
 
-        if (!userData || userData.length === 0) {
-          logger.warn('No user data found during shopping item toggle', {
-            userId: user.id,
-            itemId,
-          });
-          return createErrorResponse('User not found', 404);
-        }
+        const currentXp = userRecords.xp ?? 0;
+        const currentCoins = userRecords.coins ?? 0;
+        const newXp = currentXp + 10;
+        const newCoins = currentCoins + 1;
 
-        const userDataRecord = userData[0];
-
-        // Update the shopping item completion status
         const { data: updatedItem, error: itemError } = await supabase
           .from('shopping_items')
           .update({
@@ -116,11 +110,6 @@ export async function POST(request: NextRequest) {
         }
 
         // Update user XP and coins
-        const currentXp = userDataRecord?.xp ?? 0;
-        const currentCoins = userDataRecord?.coins ?? 0;
-        const newXp = currentXp + 10;
-        const newCoins = currentCoins + 1;
-
         const { error: updateError } = await supabase
           .from('users')
           .update({
@@ -210,10 +199,10 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
       logger.error('Shopping item toggle failed', error as Error, {
-        userId: user.id,
+        userId: user?.id ?? 'unknown',
         route: '/api/shopping-items/toggle',
       });
-      return handleApiError(error, { route: '/api/shopping-items/toggle', method: 'POST', userId: user.id });
+      return handleApiError(error, { route: '/api/shopping-items/toggle', method: 'POST', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,

@@ -94,18 +94,24 @@ export async function confirmAutoAddedItems(
       try {
         let totalQuantity = 0;
         for (const item of items) {
-          const qty = parseFloat(item.quantity) || 0;
+          const qty = Number.parseFloat(item.quantity ?? '0') || 0;
           totalQuantity += qty;
         }
 
         totalQuantity = Math.round(totalQuantity * 100) / 100;
 
+        const firstItem = items[0];
+        if (!firstItem?.list_id) {
+          errors.push(`Missing list ID for ${itemName}`);
+          continue;
+        }
+
         const { data: existingItems, error: existingError } = await supabase
           .from('shopping_items')
           .select('*')
-          .eq('list_id', items[0].list_id)
+          .eq('list_id', firstItem.list_id)
           .eq('name', itemName)
-          .neq('id', items[0].id)
+          .neq('id', firstItem.id)
           .order('created_at', { ascending: true });
 
         if (existingError) {
@@ -116,7 +122,11 @@ export async function confirmAutoAddedItems(
 
         if (existingItems && existingItems.length > 0) {
           const existingItem = existingItems[0];
-          const existingQty = parseFloat(existingItem.quantity) || 0;
+          if (!existingItem) {
+            errors.push(`Existing item missing for ${itemName}`);
+            continue;
+          }
+          const existingQty = Number.parseFloat(existingItem?.quantity ?? '0') || 0;
           const newQuantity = Math.round((existingQty + totalQuantity) * 100) / 100;
 
           const { error: updateError } = await supabase
@@ -125,7 +135,7 @@ export async function confirmAutoAddedItems(
               quantity: newQuantity.toString(),
               auto_added: true,
               auto_added_at: new Date().toISOString(),
-              source_recipe_id: items[0].source_recipe_id,
+              source_recipe_id: firstItem.source_recipe_id,
               pending_confirmation: false,
             })
             .eq('id', existingItem.id);
@@ -155,6 +165,10 @@ export async function confirmAutoAddedItems(
           });
         } else {
           const firstItem = items[0];
+          if (!firstItem) {
+            errors.push(`First item missing for ${itemName}`);
+            continue;
+          }
           const { error: updateError } = await supabase
             .from('shopping_items')
             .update({
@@ -195,8 +209,9 @@ export async function confirmAutoAddedItems(
     }
 
     if (itemsToConfirm.length > 0) {
-      const listId = itemsToConfirm[0].list_id;
-      const countUpdate = await updateShoppingListCounts(listId);
+      const listId = itemsToConfirm[0]?.list_id;
+      if (listId) {
+        const countUpdate = await updateShoppingListCounts(listId);
       if (countUpdate.ok) {
         logger.info('Updated shopping list counts after confirming auto-added items', {
           listId,
@@ -206,6 +221,7 @@ export async function confirmAutoAddedItems(
       } else {
         logger.warn('Failed to update shopping list counts after confirming items', { listId, error: countUpdate.error });
         errors.push(`Failed to update counts: ${countUpdate.error}`);
+      }
       }
     }
 

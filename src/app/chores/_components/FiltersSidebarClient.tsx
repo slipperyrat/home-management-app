@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import type { ChoreFilters, ChoreTag, HouseholdMember } from "../_lib/types";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,13 @@ const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
 ];
 
+type FilterUpdate = {
+  view?: ChoreFilters["view"] | null;
+  status?: ChoreFilters["status"] | null;
+  assignee?: string | null;
+  tag?: string | null;
+};
+
 export function FiltersSidebarClient({
   filters,
   members,
@@ -33,32 +41,38 @@ export function FiltersSidebarClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const searchParamsString = searchParams?.toString() ?? "";
 
-  const updateFilters = useMemo(
-    () =>
-      (next: Partial<ChoreFilters>) => {
-        const params = new URLSearchParams(searchParams.toString());
+  const updateFilters = useCallback(
+    (next: FilterUpdate) => {
+      const params = new URLSearchParams(searchParamsString);
 
-        for (const key of ["view", "status", "assignee", "tag"]) {
-          const value = next[key as keyof ChoreFilters];
-          if (value) {
-            params.set(key, String(value));
-          } else {
-            params.delete(key);
-          }
+      (["view", "status", "assignee", "tag"] as const).forEach((key) => {
+        const value = next[key];
+        if (value === undefined) {
+          return;
         }
 
-        router.push(`${pathname}?${params.toString()}`);
-      },
-    [pathname, router, searchParams]
+        if (value === null || value === "") {
+          params.delete(key);
+        } else {
+          params.set(key, String(value));
+        }
+      });
+
+      const queryString = params.toString();
+      const targetPath = pathname ?? "/chores";
+      router.push(queryString ? `${targetPath}?${queryString}` : targetPath);
+    },
+    [pathname, router, searchParamsString],
   );
 
-  const focusQuickAdd = useCallback(() => {
+  const focusQuickAdd = () => {
     const input = document.querySelector<HTMLInputElement>("[data-chores-quick-add-input]");
     if (input) {
       input.focus();
     }
-  }, []);
+  };
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
@@ -70,13 +84,18 @@ export function FiltersSidebarClient({
 
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, [focusQuickAdd]);
+  }, []);
 
   return (
     <aside className="flex h-full flex-col gap-6 rounded-3xl border border-white/5 bg-[#0b101d] p-6">
       <section>
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">View</h2>
-        <Select value={filters.view ?? "all"} onValueChange={(value) => updateFilters({ view: value as ChoreFilters["view"] })}>
+        <Select
+          value={filters.view ?? "all"}
+          onValueChange={(value) =>
+            updateFilters({ view: (value as ChoreFilters["view"]) ?? null })
+          }
+        >
           <SelectTrigger className="h-9 w-full bg-[#101522] text-left text-sm text-white">
             <SelectValue placeholder="Choose view" />
           </SelectTrigger>
@@ -93,27 +112,44 @@ export function FiltersSidebarClient({
       <section>
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Status</h2>
         <div className="flex flex-wrap gap-2">
-          {STATUS_OPTIONS.map((option) => (
-            <Badge
-              key={option.value}
-              variant={filters.status === option.value ? "default" : "outline"}
-              className="cursor-pointer"
-              onClick={() => updateFilters({ status: filters.status === option.value ? undefined : option.value })}
-            >
-              {option.label}
-            </Badge>
-          ))}
+          {STATUS_OPTIONS.map((option) => {
+            const isActive = filters.status === option.value;
+            return (
+              <Badge
+                key={option.value}
+                variant={isActive ? "default" : "outline"}
+                className="cursor-pointer"
+                onClick={() =>
+                  updateFilters({
+                    status: isActive
+                      ? null
+                      : (option.value as NonNullable<ChoreFilters["status"]>),
+                  })
+                }
+              >
+                {option.label}
+              </Badge>
+            );
+          })}
         </div>
       </section>
 
       <section className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Assignee</h2>
-          <Button variant="ghost" size="sm" className="text-xs text-slate-400" onClick={() => updateFilters({ assignee: undefined })}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-slate-400"
+            onClick={() => updateFilters({ assignee: null })}
+          >
             Reset
           </Button>
         </div>
-        <Select value={filters.assignee ?? ""} onValueChange={(value) => updateFilters({ assignee: value || undefined })}>
+        <Select
+          value={filters.assignee ?? ""}
+          onValueChange={(value) => updateFilters({ assignee: value || null })}
+        >
           <SelectTrigger className="h-9 w-full bg-[#101522] text-left text-sm text-white">
             <SelectValue placeholder="Anyone" />
           </SelectTrigger>
@@ -139,7 +175,9 @@ export function FiltersSidebarClient({
               key={tag.id}
               variant={filters.tag === tag.id ? "default" : "outline"}
               className="cursor-pointer"
-              onClick={() => updateFilters({ tag: filters.tag === tag.id ? undefined : tag.id })}
+              onClick={() =>
+                updateFilters({ tag: filters.tag === tag.id ? null : tag.id })
+              }
             >
               {tag.label}
               <span className="ml-2 text-[10px] text-slate-400">{tag.count}</span>

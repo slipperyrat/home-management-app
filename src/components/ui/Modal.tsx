@@ -178,7 +178,7 @@ export function ConfirmationModal({
           <Button
             variant={variant === 'destructive' ? 'destructive' : 'default'}
             onClick={onConfirm}
-            loading={loading}
+            isLoading={loading}
             disabled={loading}
           >
             {confirmText}

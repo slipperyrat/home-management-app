@@ -86,7 +86,22 @@ export async function addReward(reward: {
       createdBy: reward.created_by,
     });
 
-    return Array.isArray(result.data) ? result.data[0] : (result.data as RewardPayload);
+    if (!result.data) {
+      throw new Error('No reward returned');
+    }
+
+    if (Array.isArray(result.data)) {
+      if (!result.data[0]) {
+        throw new Error('Reward response was empty');
+      }
+      return result.data[0];
+    }
+
+    if ('rewards' in result.data && Array.isArray(result.data.rewards) && result.data.rewards[0]) {
+      return result.data.rewards[0];
+    }
+
+    throw new Error('Unexpected reward response shape');
   } catch (err) {
     logger.error('Exception in addReward', err as Error, {
       householdId: reward.household_id,

@@ -113,7 +113,7 @@ export class EmailService {
 
       return {
         success: true,
-        messageId: result.data?.id,
+        messageId: result.data?.id ?? '',
       };
     } catch (error) {
       logger.error('Error sending daily digest', error as Error, {
@@ -145,7 +145,7 @@ export class EmailService {
 
       return {
         success: true,
-        messageId: result.data?.id,
+        messageId: result.data?.id ?? '',
       };
     } catch (error) {
       logger.error('Error sending weekly digest', error as Error, {
@@ -436,83 +436,98 @@ export class EmailService {
    * Generate plain text for daily digest
    */
   private static generateDailyDigestText(data: DigestData): string {
-    const { user_name, household_name, date, chores, meals, shopping, events } = data;
-    
-    let text = `Daily Digest - ${date}\n`;
-    text += `Good morning, ${user_name}! Here's what's happening in ${household_name} today.\n\n`;
-    
-    if (chores?.pending?.length > 0) {
-      text += `CHORES (${chores.pending.length} pending):\n`;
-      chores.pending.forEach(chore => {
-        text += `- ${chore.title} (${chore.priority} priority)\n`;
-      });
-      text += '\n';
+    const { user_name, household_name, date } = data
+    const chores = data.chores ?? { pending: [], completed: [] }
+    const meals = data.meals ?? { today: [] }
+    const shopping = data.shopping ?? { pending: [] }
+    const events = data.events ?? { today: [], upcoming: [] }
+ 
+    let text = `Daily Digest - ${date}\n`
+    text += `Good morning, ${user_name}! Here's what's happening in ${household_name} today.\n\n`
+ 
+    if (chores.pending?.length) {
+      text += `CHORES (${chores.pending.length} pending):\n`
+      chores.pending.forEach((chore) => {
+        text += `- ${chore.title} (${chore.priority} priority)\n`
+      })
+      text += '\n'
     }
-    
-    if (events?.today?.length > 0) {
-      text += `TODAY'S EVENTS (${events.today.length}):\n`;
-      events.today.forEach(event => {
-        text += `- ${event.title} at ${new Date(event.start_time).toLocaleTimeString()}\n`;
-      });
-      text += '\n';
+ 
+    if (events.today?.length) {
+      text += `TODAY'S EVENTS (${events.today.length}):\n`
+      events.today.forEach((event) => {
+        text += `- ${event.title} at ${new Date(event.start_time).toLocaleTimeString()}\n`
+      })
+      text += '\n'
     }
-    
-    if (meals?.today?.length > 0) {
-      text += `TODAY'S MEALS (${meals.today.length}):\n`;
-      meals.today.forEach(meal => {
-        text += `- ${meal.name} (${meal.meal_type})\n`;
-      });
-      text += '\n';
+ 
+    if (meals.today?.length) {
+      text += `TODAY'S MEALS (${meals.today.length}):\n`
+      meals.today.forEach((meal) => {
+        text += `- ${meal.name} (${meal.meal_type})\n`
+      })
+      text += '\n'
     }
-    
-    if (shopping?.pending?.length > 0) {
-      text += `SHOPPING LIST (${shopping.pending.length} items):\n`;
-      shopping.pending.forEach(item => {
-        text += `- ${item.name}${item.quantity ? ` (${item.quantity} ${item.unit || ''})` : ''}\n`;
-      });
-      text += '\n';
+ 
+    if (shopping.pending?.length) {
+      text += `SHOPPING LIST (${shopping.pending.length} items):\n`
+      shopping.pending.forEach((item) => {
+        const quantity = item.quantity ? ` (${item.quantity} ${item.unit || ''})` : ''
+        text += `- ${item.name}${quantity}\n`
+      })
+      text += '\n'
     }
-    
-    text += `View your full dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/dashboard\n`;
-    text += `\nThis digest was generated for ${household_name} on ${date}.`;
-    
-    return text;
+ 
+    text += `View your full dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/dashboard\n`
+    text += `\nThis digest was generated for ${household_name} on ${date}.`
+ 
+    return text
   }
 
   /**
    * Generate plain text for weekly digest
    */
   private static generateWeeklyDigestText(data: DigestData): string {
-    const { user_name, household_name, date, chores, events, achievements } = data;
-    
-    let text = `Weekly Digest - ${date}\n`;
-    text += `Here's your weekly summary for ${household_name}, ${user_name}!\n\n`;
-    
-    if (achievements?.length > 0) {
-      text += `ACHIEVEMENTS (${achievements.length}):\n`;
-      achievements.forEach(achievement => {
-        text += `- ${achievement.title}: ${achievement.description} (+${achievement.xp} XP)\n`;
-      });
-      text += '\n';
+    const { user_name, household_name, date } = data
+    const chores = data.chores ?? { pending: [], completed: [] }
+    const events = data.events ?? { today: [], upcoming: [] }
+    const achievements = data.achievements ?? []
+ 
+    let text = `Weekly Digest - ${date}\n`
+    text += `Here's your weekly summary for ${household_name}, ${user_name}!\n\n`
+ 
+    if (achievements.length) {
+      text += `ACHIEVEMENTS (${achievements.length}):\n`
+      achievements.forEach((achievement) => {
+        text += `• ${achievement.title} - ${achievement.description}\n`
+      })
+      text += '\n'
     }
-    
-    if (chores) {
-      text += `CHORE SUMMARY:\n`;
-      text += `- Completed this week: ${chores.completed?.length || 0} chores\n`;
-      text += `- Still pending: ${chores.pending?.length || 0} chores\n\n`;
+ 
+    const upcomingEvents = events.upcoming ?? []
+    if (upcomingEvents.length) {
+      text += `UPCOMING EVENTS (${upcomingEvents.length}):\n`
+      upcomingEvents.forEach((event) => {
+        text += `• ${event.title} on ${new Date(event.start_time).toLocaleString()}\n`
+      })
+      text += '\n'
     }
-    
-    if (events?.upcoming?.length > 0) {
-      text += `UPCOMING EVENTS (${events.upcoming.length}):\n`;
-      events.upcoming.forEach(event => {
-        text += `- ${event.title} on ${new Date(event.start_time).toLocaleDateString()}\n`;
-      });
-      text += '\n';
+ 
+    text += `CHORE SUMMARY:\n`
+    text += `- Completed this week: ${chores.completed?.length ?? 0} chores\n`
+    text += `- Still pending: ${chores.pending?.length ?? 0} chores\n\n`
+ 
+    if (upcomingEvents.length) {
+      text += `UPCOMING EVENTS (${upcomingEvents.length}):\n`
+      upcomingEvents.forEach((event) => {
+        text += `- ${event.title} on ${new Date(event.start_time).toLocaleDateString()}\n`
+      })
+      text += '\n'
     }
-    
-    text += `View your full dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/dashboard\n`;
-    text += `\nThis weekly digest was generated for ${household_name} on ${date}.`;
-    
-    return text;
+ 
+    text += `View your full dashboard: ${process.env.NEXT_PUBLIC_APP_URL}/dashboard\n`
+    text += `\nThis weekly digest was generated for ${household_name} on ${date}.`
+ 
+    return text
   }
 }

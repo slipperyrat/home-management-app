@@ -1,13 +1,15 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
-interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
+type NativeCheckboxProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'>;
+
+interface CheckboxProps extends NativeCheckboxProps {
   label?: string;
   description?: string;
   error?: string;
   size?: 'sm' | 'md' | 'lg';
   onCheckedChange?: (checked: boolean) => void;
-  onChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  indeterminate?: boolean;
 }
 
 export function Checkbox({ 
@@ -19,6 +21,7 @@ export function Checkbox({
   id,
   onCheckedChange,
   onChange,
+  indeterminate = false,
   ...props 
 }: CheckboxProps) {
   const checkboxId = id || `checkbox-${Math.random().toString(36).substr(2, 9)}`;
@@ -65,6 +68,11 @@ export function Checkbox({
           className={classes}
           onChange={handleChange}
           {...props}
+          ref={(element) => {
+            if (element) {
+              element.indeterminate = indeterminate;
+            }
+          }}
         />
       </div>
       {(label || description) && (

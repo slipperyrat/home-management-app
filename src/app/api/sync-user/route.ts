@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { withAPISecurity } from "@/lib/security/apiProtection";
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { syncUser } from "@/lib/syncUser";
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
       console.log("🚀 API route called");
       console.log("🔄 Syncing user", user?.id);

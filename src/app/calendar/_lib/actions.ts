@@ -4,6 +4,7 @@ import { DateTime } from "luxon";
 import { revalidateTag } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { getDatabaseClient, getUserHouseholdId } from "@/lib/api/database";
+import type { Database } from "@/types/supabase.generated";
 import { logger } from "@/lib/logging/logger";
 import { DEFAULT_CALENDAR_TIMEZONE } from "./date";
 import { CALENDAR_DAY_TAG, CALENDAR_MONTH_TAG } from "./events";
@@ -51,23 +52,33 @@ export async function createEventAction(monthKey: string, formData: FormData): P
     }
 
     const supabase = getDatabaseClient();
-    const { error: insertError } = await supabase.from("events").insert({
+
+    const startIso = startsAt.toUTC().toISO();
+    const endIso = endsAt.toUTC().toISO();
+
+    if (!startIso || !endIso) {
+      return { error: "Failed to format event timestamps." };
+    }
+
+    const insertPayload: Database["public"]["Tables"]["events"]["Insert"] = {
       household_id: householdId,
       calendar_id: calendarId || null,
       title,
       description,
-      start_at: startsAt.toUTC().toISO(),
-      end_at: endsAt.toUTC().toISO(),
+      start_at: startIso,
+      end_at: endIso,
       timezone,
       is_all_day: isAllDay,
       rrule,
       location,
       created_by: userId,
       source: "first_party",
-    });
+    };
 
-    if (insertError) {
-      logger.error("Failed to create event", new Error(insertError.message), { userId, householdId });
+    const { error } = await supabase.from("events").insert(insertPayload);
+
+    if (error) {
+      logger.error("Failed to create event", new Error(error.message), { userId, householdId });
       return { error: "Failed to create event." };
     }
 

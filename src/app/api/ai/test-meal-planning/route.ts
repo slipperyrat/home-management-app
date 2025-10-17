@@ -4,13 +4,19 @@
 import { NextRequest } from "next/server";
 
 import { testMealPlanningAI, testMealTypes, testDietaryRestrictions } from "@/lib/ai/harness/mealPlanningHarness";
-import { createSuccessResponse } from "@/lib/api/errors";
-import { withAPISecurity } from "@/lib/security/apiProtection";
+import { createErrorResponse, createSuccessResponse, handleApiError } from "@/lib/api/errors";
+import { getUserAndHouseholdData } from "@/lib/api/database";
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { logger } from "@/lib/logging/logger";
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Meal planning AI test requested without authenticated user');
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Testing meal planning AI service', { userId: user.id });
 
       // Get user and household data
@@ -59,7 +65,20 @@ export async function GET(request: NextRequest) {
       }, 'Meal planning AI service test completed successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/ai/test-meal-planning', method: 'GET', userId: user.id });
+      const errorContext: {
+        route: string;
+        method: string;
+        userId?: string;
+      } = {
+        route: '/api/ai/test-meal-planning',
+        method: 'GET'
+      };
+
+      if (user?.id) {
+        errorContext.userId = user.id;
+      }
+
+      return handleApiError(error, errorContext);
     }
   }, {
     requireAuth: true,

@@ -12,7 +12,7 @@ type NutritionEstimate = {
   fat: number;
 };
 
-type AnalysisResult = {
+export type AnalysisResult = {
   nutrition: NutritionEstimate;
   pantryMatches: string[];
 };

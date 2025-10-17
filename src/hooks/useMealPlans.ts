@@ -247,7 +247,7 @@ export function useAssignMeal() {
     },
     onSuccess: (data) => {
       // Show success message with ingredient information
-      const ingredients = data.data?.ingredients;
+      const ingredients = data.ingredients;
       if (ingredients) {
         const { added, updated } = ingredients;
         if (added > 0 || updated > 0) {
@@ -276,7 +276,7 @@ export function useAssignMeal() {
     },
     onSettled: (data) => {
       // Always refetch after error or success
-      const plan = data?.data?.plan;
+      const plan = data?.plan;
       if (plan) {
         queryClient.invalidateQueries({ queryKey: ['mealPlan', plan.week_start_date] });
       }

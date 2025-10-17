@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { canAccessFeature } from '@/lib/server/canAccessFeature';
+import { canAccessFeature, type UserPlan } from '@/lib/server/canAccessFeature';
 import { updateBillCalendarEvent, deleteBillCalendarEvent } from '@/lib/finance/calendarIntegration';
+import type { Database } from '@/types/supabase.generated';
 import { z } from 'zod';
 import { logger } from '@/lib/logging/logger';
 
@@ -38,19 +39,24 @@ async function resolveParams(context: RouteContext): Promise<{ id: string }> {
 
 export async function GET(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   const { id: billId } = await resolveParams(context);
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
-      
+
       if (!household) {
         return createErrorResponse('Household not found', 404);
       }
 
-      // Check feature access
-      if (!canAccessFeature(household.plan || 'free', 'bill_management')) {
+      const userPlan: UserPlan = (household.plan as UserPlan | null) ?? 'free';
+
+      if (!canAccessFeature(userPlan, 'bill_management')) {
         return createErrorResponse('Bill management requires Pro plan or higher', 403, {
           requiredPlan: 'pro',
-          currentPlan: household.plan || 'free'
+          currentPlan: userPlan,
         });
       }
 
@@ -61,43 +67,48 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
         .select('*')
         .eq('id', billId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle<Database['public']['Tables']['bills']['Row']>();
 
-      if (error) {
-        if (error.code === 'PGRST116') {
+      if (error || !bill) {
+        if (error?.code === 'PGRST116') {
           return createErrorResponse('Bill not found', 404);
         }
-        logger.error('Error fetching bill', error, { billId, householdId: household.id });
+        const logError = error instanceof Error ? error : new Error('Postgrest error');
+        logger.error('Error fetching bill', logError, { billId, householdId: household.id });
         return createErrorResponse('Failed to fetch bill', 500);
       }
 
       return createSuccessResponse({ bill });
-
     } catch (error) {
-      return handleApiError(error, 'Failed to fetch bill');
+      return handleApiError(error, { route: `/api/finance/bills/${billId}`, method: 'GET', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: false,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }
 
 export async function PUT(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   const { id: billId } = await resolveParams(context);
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
-      
+
       if (!household) {
         return createErrorResponse('Household not found', 404);
       }
 
-      // Check feature access
-      if (!canAccessFeature(household.plan || 'free', 'bill_management')) {
+      const userPlan: UserPlan = (household.plan as UserPlan | null) ?? 'free';
+
+      if (!canAccessFeature(userPlan, 'bill_management')) {
         return createErrorResponse('Bill management requires Pro plan or higher', 403, {
           requiredPlan: 'pro',
-          currentPlan: household.plan || 'free'
+          currentPlan: userPlan,
         });
       }
 
@@ -106,49 +117,61 @@ export async function PUT(request: NextRequest, context: RouteContext): Promise<
 
       const db = getDatabaseClient();
 
-      // First, verify the bill exists and belongs to the household
       const { data: existingBill, error: fetchError } = await db
         .from('bills')
         .select('*')
         .eq('id', billId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle<Database['public']['Tables']['bills']['Row']>();
 
       if (fetchError || !existingBill) {
         return createErrorResponse('Bill not found', 404);
       }
 
-      // Prepare update data
       type UpdateBillInput = z.infer<typeof updateBillSchema>;
       const updateData = Object.fromEntries(
         Object.entries(validatedData).filter(([, value]) => value !== undefined),
       ) as Partial<UpdateBillInput>;
 
-      // Update bill
+      const updatePayload: Database['public']['Tables']['bills']['Update'] = {
+        title: updateData.title ?? existingBill.title,
+        description: updateData.description ?? existingBill.description ?? null,
+        amount: updateData.amount ?? existingBill.amount,
+        currency: updateData.currency ?? existingBill.currency,
+        due_date: updateData.due_date ?? existingBill.due_date,
+        issued_date: updateData.issued_date ?? existingBill.issued_date,
+        paid_at: updateData.paid_date ?? existingBill.paid_at,
+        category: updateData.category ?? existingBill.category ?? null,
+        priority: updateData.priority ?? existingBill.priority,
+        status: updateData.status ?? existingBill.status,
+        source: updateData.source ?? existingBill.source,
+        external_id: updateData.external_id ?? existingBill.external_id,
+      };
+
       const { data: bill, error } = await db
         .from('bills')
-        .update(updateData)
+        .update(updatePayload)
         .eq('id', billId)
         .eq('household_id', household.id)
-        .select()
-        .single();
+        .select('*')
+        .maybeSingle<Database['public']['Tables']['bills']['Row']>();
 
-      if (error) {
-        logger.error('Error updating bill', error, { billId, householdId: household.id });
+      if (error || !bill) {
+        const logError = error instanceof Error ? error : new Error('Postgrest error');
+        logger.error('Error updating bill', logError, { billId, householdId: household.id });
         return createErrorResponse('Failed to update bill', 500);
       }
 
-      // Update calendar event if needed
       try {
         const calendarUpdates: Record<string, unknown> = {};
-        
+
         if (updateData.status === 'paid') {
           calendarUpdates.paid = true;
         }
         if (updateData.due_date) {
           calendarUpdates.new_due_date = updateData.due_date;
         }
-        if (updateData.amount) {
+        if (updateData.amount !== undefined) {
           calendarUpdates.new_amount = updateData.amount;
         }
         if (updateData.title) {
@@ -159,75 +182,75 @@ export async function PUT(request: NextRequest, context: RouteContext): Promise<
           logger.info('Updated calendar event for bill', { billId, householdId: household.id });
         }
       } catch (calendarError) {
-        logger.error(
-          'Failed to update calendar event for bill',
-          calendarError instanceof Error ? calendarError : new Error(String(calendarError)),
-          { billId, householdId: household.id },
-        );
-        // Don't fail the bill update if calendar event update fails
+        const logError = calendarError instanceof Error ? calendarError : new Error(String(calendarError));
+        logger.error('Failed to update calendar event for bill', logError, {
+          billId,
+          householdId: household.id,
+        });
       }
 
-      // Log audit event
       await createAuditLog({
         action: 'bills.update',
         targetTable: 'bills',
         targetId: billId,
         userId: user.id,
-        metadata: { 
+        metadata: {
           changes: Object.keys(updateData),
           previous_status: existingBill.status,
-          new_status: bill.status
-        }
+          new_status: bill.status,
+        },
       });
 
       return createSuccessResponse({ bill });
-
     } catch (error) {
       if (error instanceof z.ZodError) {
         return createErrorResponse('Invalid input data', 400, { errors: error.errors });
       }
-      return handleApiError(error, 'Failed to update bill');
+      return handleApiError(error, { route: `/api/finance/bills/${billId}`, method: 'PUT', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   const { id: billId } = await resolveParams(context);
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
-      
+
       if (!household) {
         return createErrorResponse('Household not found', 404);
       }
 
-      // Check feature access
-      if (!canAccessFeature(household.plan || 'free', 'bill_management')) {
+      const userPlan: UserPlan = (household.plan as UserPlan | null) ?? 'free';
+
+      if (!canAccessFeature(userPlan, 'bill_management')) {
         return createErrorResponse('Bill management requires Pro plan or higher', 403, {
           requiredPlan: 'pro',
-          currentPlan: household.plan || 'free'
+          currentPlan: userPlan,
         });
       }
 
       const db = getDatabaseClient();
 
-      // First, get the bill details for audit logging
       const { data: existingBill, error: fetchError } = await db
         .from('bills')
         .select('*')
         .eq('id', billId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle<Database['public']['Tables']['bills']['Row']>();
 
       if (fetchError || !existingBill) {
         return createErrorResponse('Bill not found', 404);
       }
 
-      // Delete bill
       const { error } = await db
         .from('bills')
         .delete()
@@ -235,44 +258,41 @@ export async function DELETE(request: NextRequest, context: RouteContext): Promi
         .eq('household_id', household.id);
 
       if (error) {
-        logger.error('Error deleting bill', error, { billId, householdId: household.id });
+        const logError = error instanceof Error ? error : new Error('Postgrest error');
+        logger.error('Error deleting bill', logError, { billId, householdId: household.id });
         return createErrorResponse('Failed to delete bill', 500);
       }
 
-      // Delete associated calendar event
       try {
         await deleteBillCalendarEvent(billId, household.id);
         logger.info('Deleted calendar event for bill', { billId, householdId: household.id });
       } catch (calendarError) {
-        logger.error(
-          'Failed to delete calendar event for bill',
-          calendarError instanceof Error ? calendarError : new Error(String(calendarError)),
-          { billId, householdId: household.id },
-        );
-        // Don't fail the bill deletion if calendar event deletion fails
+        const logError = calendarError instanceof Error ? calendarError : new Error(String(calendarError));
+        logger.error('Failed to delete calendar event for bill', logError, {
+          billId,
+          householdId: household.id,
+        });
       }
 
-      // Log audit event
       await createAuditLog({
         action: 'bills.delete',
         targetTable: 'bills',
         targetId: billId,
         userId: user.id,
-        metadata: { 
+        metadata: {
           title: existingBill.title,
           amount: existingBill.amount,
-          status: existingBill.status
-        }
+          status: existingBill.status,
+        },
       });
 
       return createSuccessResponse({ message: 'Bill deleted successfully' });
-
     } catch (error) {
-      return handleApiError(error, 'Failed to delete bill');
+      return handleApiError(error, { route: `/api/finance/bills/${billId}`, method: 'DELETE', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }

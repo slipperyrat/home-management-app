@@ -7,7 +7,7 @@ export type ListsSidebarProps = {
 };
 
 export function ListsSidebar({ initialLists, activeListId }: ListsSidebarProps) {
-  return <ListsSidebarClient initialLists={initialLists} activeListId={activeListId} />;
+  return <ListsSidebarClient initialLists={initialLists} activeListId={activeListId ?? ''} />;
 }
 
 export { ListsSidebarClient };

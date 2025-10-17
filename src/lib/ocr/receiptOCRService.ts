@@ -1,14 +1,17 @@
 import { logger } from '@/lib/logging/logger';
 import { sb } from '@/lib/server/supabaseAdmin';
+import type { Database } from '@/types/supabase.generated';
 
-interface ReceiptItem {
+type ReceiptItemInsert = Database['public']['Tables']['receipt_items']['Insert'];
+
+type ReceiptItem = {
   name: string;
   price: number;
   quantity?: number;
   category?: string;
   brand?: string;
   unit?: string;
-}
+};
 
 interface ReceiptData {
   store_name?: string;
@@ -169,7 +172,7 @@ Thank you for shopping Safeway!`
       ];
 
       // Return a random mock receipt for demonstration
-      const randomReceipt = mockReceipts[Math.floor(Math.random() * mockReceipts.length)];
+      const randomReceipt = mockReceipts[Math.floor(Math.random() * mockReceipts.length)] ?? ''
 
       logger.info('Simulated OCR extraction completed', { imageUrl });
       return randomReceipt;
@@ -187,19 +190,18 @@ Thank you for shopping Safeway!`
     try {
       const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
       
-      let storeName = '';
-      let receiptDate = '';
+      let storeName: string | undefined
+      let receiptDate: string | undefined
       let totalAmount = 0;
       const items: ReceiptItem[] = [];
       let confidence = 0.8; // Base confidence
 
       // Extract store name (usually first few lines)
       for (let i = 0; i < Math.min(3, lines.length); i++) {
-        const line = lines[i].toUpperCase();
-        if (line.includes('WALMART') || line.includes('TARGET') || line.includes('SAFEWAY') || 
-            line.includes('STORE') || line.includes('MARKET')) {
-          storeName = lines[i];
-          break;
+        const line = lines[i]?.toUpperCase();
+        if (line && (line.includes('WALMART') || line.includes('TARGET') || line.includes('SAFEWAY') || 
+            line.includes('STORE') || line.includes('MARKET'))) {
+          storeName = lines[i]
         }
       }
 
@@ -211,13 +213,13 @@ Thank you for shopping Safeway!`
         /(\d{1,2}\/\d{1,2}\/\d{2,4})/
       ];
 
-      for (const pattern of datePatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          receiptDate = match[1];
-          break;
+      const match = datePatterns.map(pattern => lines.find(line => pattern.test(line))).find(Boolean)
+      if (match) {
+          const dateMatch = match.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/)
+          if (dateMatch && dateMatch[1]) {
+            receiptDate = dateMatch[1]
+          }
         }
-      }
 
       // Extract total amount
       const totalPatterns = [
@@ -227,9 +229,9 @@ Thank you for shopping Safeway!`
       ];
 
       for (const pattern of totalPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          totalAmount = parseFloat(match[1]);
+        const match = text.match(pattern)
+        if (match && match[1]) {
+          totalAmount = Number.parseFloat(match[1])
           break;
         }
       }
@@ -240,8 +242,12 @@ Thank you for shopping Safeway!`
       for (const line of lines) {
         const match = line.match(itemPattern);
         if (match) {
-          const itemName = match[1].trim();
-          const price = parseFloat(match[2]);
+          const itemName = match[1]?.trim() ?? ''
+          const price = Number.parseFloat(match[2] ?? '0')
+
+          if (!itemName) {
+            continue
+          }
 
           // Skip if it's a subtotal, tax, or total line
           if (itemName.toLowerCase().includes('subtotal') || 
@@ -255,9 +261,9 @@ Thank you for shopping Safeway!`
             name: itemName,
             price,
             quantity: 1,
-            category: this.categorizeItem(itemName),
-            brand: this.extractBrand(itemName),
-            unit: this.extractUnit(itemName),
+            category: this.categorizeItem(itemName) ?? 'uncategorized',
+            brand: this.extractBrand(itemName) ?? '',
+            unit: this.extractUnit(itemName) ?? '',
           });
         }
       }
@@ -269,12 +275,12 @@ Thank you for shopping Safeway!`
       if (items.length > 0) confidence += 0.1;
 
       return {
-        store_name: storeName,
-        receipt_date: receiptDate,
+        store_name: storeName ?? 'Unknown Store',
+        receipt_date: receiptDate ?? new Date().toISOString(),
         total_amount: totalAmount,
         items,
-        confidence: Math.min(confidence, 1.0)
-      };
+        confidence: Math.min(confidence, 1.0),
+      }
 
     } catch (error) {
       logger.error('Error parsing receipt text', error as Error);
@@ -347,20 +353,28 @@ Thank you for shopping Safeway!`
     rawText: string,
     receiptData: ReceiptData
   ): Promise<void> {
+    const receiptItemsPayload = receiptData.items.map((item) => ({
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity ?? 1,
+      category: item.category ?? null,
+      brand: item.brand ?? null,
+      unit: item.unit ?? null,
+    }))
+
     const { error } = await this.supabase
       .from('attachments')
       .update({
         ocr_status: 'completed',
         ocr_confidence: receiptData.confidence,
         ocr_text: rawText,
-        ocr_data: receiptData,
-        receipt_total: receiptData.total_amount,
-        receipt_date: receiptData.receipt_date ? new Date(receiptData.receipt_date) : null,
-        receipt_store: receiptData.store_name,
-        receipt_items: receiptData.items,
-        processing_completed_at: new Date().toISOString()
+        ocr_data: receiptData as unknown as Database['public']['Tables']['attachments']['Row']['ocr_data'],
+        receipt_total: receiptData.total_amount ?? 0,
+        receipt_date: receiptData.receipt_date ?? null,
+        receipt_items: receiptItemsPayload as unknown as Database['public']['Tables']['attachments']['Row']['receipt_items'],
+        processing_completed_at: new Date().toISOString(),
       })
-      .eq('id', attachmentId);
+      .eq('id', attachmentId)
 
     if (error) {
       logger.error('Error storing OCR results', error as Error, { attachmentId });
@@ -376,16 +390,20 @@ Thank you for shopping Safeway!`
     householdId: string,
     items: ReceiptItem[]
   ): Promise<void> {
-    const receiptItems = items.map(item => ({
+    const receiptItems: ReceiptItemInsert[] = items.map(item => ({
       attachment_id: attachmentId,
       household_id: householdId,
       item_name: item.name,
       item_price: item.price,
-      item_quantity: item.quantity || 1,
-      item_category: item.category,
-      item_brand: item.brand,
-      item_unit: item.unit,
-      confidence_score: 0.8 // Base confidence for extracted items
+      item_quantity: item.quantity ?? 1,
+      item_category: item.category ?? null,
+      item_brand: item.brand ?? null,
+      item_unit: item.unit ?? null,
+      confidence_score: 0.8,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      added_to_shopping_list: false,
+      user_notes: null
     }));
 
     const { error } = await this.supabase
@@ -414,12 +432,13 @@ Thank you for shopping Safeway!`
     const priceEntries = receiptData.items.map(item => ({
       household_id: householdId,
       item_name: item.name,
-      item_brand: item.brand,
+      item_brand: item.brand ?? null,
       store_name: receiptData.store_name!,
       price: item.price,
-      receipt_date: receiptData.receipt_date ? new Date(receiptData.receipt_date) : new Date(),
+      receipt_date: receiptData.receipt_date ?? new Date().toISOString(),
       price_per_unit: item.unit ? item.price : null,
-      unit_type: item.unit
+      unit_type: item.unit ?? null,
+      created_at: new Date().toISOString()
     }));
 
     const { error } = await this.supabase

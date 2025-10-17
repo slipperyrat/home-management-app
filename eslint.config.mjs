@@ -18,7 +18,8 @@ const eslintConfig = [
       "**/.next/**",
       "coverage",
       "public/fallback-build-*.js",
-      "**/src/types/database.types.ts"
+      "**/src/types/database.types.ts",
+      "src/types/supabase.generated.ts"
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),

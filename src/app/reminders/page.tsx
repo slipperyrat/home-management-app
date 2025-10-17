@@ -1,9 +1,9 @@
 'use client'
 
 import { useAuth, useUser } from '@clerk/nextjs';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getReminders, addReminder, deleteReminder } from '@/lib/reminders';
+import { addReminder, deleteReminder } from '@/lib/reminders';
 import { getCalendarEvents } from '@/lib/calendar';
 import { canAccessFeature } from '@/lib/planFeatures';
 
@@ -152,7 +152,33 @@ export default function RemindersPage() {
       const choresData = choresJson?.data ?? choresJson ?? [];
 
       setChores(Array.isArray(choresData) ? choresData : choresData?.chores ?? []);
-      setCalendarEvents(Array.isArray(eventsData) ? eventsData : eventsData?.events ?? []);
+      if (Array.isArray(eventsData)) {
+        const mappedEvents: CalendarEvent[] = eventsData.map((event) => ({
+          id: String(event.id ?? ''),
+          title: String(event.title ?? ''),
+          description: event.description ? String(event.description) : '',
+          start_time: String(event.start_time ?? new Date().toISOString()),
+          end_time: String(event.end_time ?? new Date().toISOString()),
+          created_by: event.created_by ? String(event.created_by) : '',
+          household_id: event.household_id ? String(event.household_id) : '',
+          created_at: new Date().toISOString(),
+        }));
+        setCalendarEvents(mappedEvents);
+      } else if (eventsData && typeof eventsData === 'object' && 'events' in eventsData && Array.isArray((eventsData as { events?: unknown[] }).events)) {
+        const eventList = (eventsData as { events: CalendarEvent[] }).events;
+        setCalendarEvents(eventList.map((event) => ({
+          id: String(event.id ?? ''),
+          title: String(event.title ?? ''),
+          description: event.description ? String(event.description) : '',
+          start_time: String(event.start_time ?? new Date().toISOString()),
+          end_time: String(event.end_time ?? new Date().toISOString()),
+          created_by: event.created_by ? String(event.created_by) : '',
+          household_id: event.household_id ? String(event.household_id) : '',
+          created_at: event.created_at ? String(event.created_at) : new Date().toISOString(),
+        })));
+      } else {
+        setCalendarEvents([]);
+      }
     } catch (err) {
       console.error('Error fetching related items:', err);
       setError('Failed to load chores and events');
@@ -166,8 +192,57 @@ export default function RemindersPage() {
 
     try {
       setLoading(true);
-      const data = await getReminders(householdId);
-      setReminders(data);
+      const response = await fetch(`/api/reminders`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const payload = (await response.json()) as { reminders?: Reminder[]; calendarEvents?: CalendarEvent[] } | Reminder[];
+
+      let reminderRows: Reminder[] = [];
+      let calendarEvents: CalendarEvent[] = [];
+
+      if (Array.isArray(payload)) {
+        reminderRows = payload as Reminder[];
+      } else {
+        if (Array.isArray(payload.reminders)) {
+          reminderRows = payload.reminders;
+        }
+        if (Array.isArray(payload.calendarEvents)) {
+          calendarEvents = payload.calendarEvents;
+        }
+      }
+
+      if (Array.isArray(reminderRows)) {
+        const mapped: Reminder[] = reminderRows.map((reminder: any) => ({
+          id: String(reminder.id ?? ''),
+          title: String(reminder.title ?? ''),
+          related_type: reminder.related_type === 'chore' ? 'chore' : 'calendar_event',
+          related_id: String(reminder.related_id ?? ''),
+          remind_at: String(reminder.remind_at ?? new Date().toISOString()),
+          created_by: reminder.created_by ? String(reminder.created_by) : '',
+          household_id: reminder.household_id ? String(reminder.household_id) : '',
+          created_at: reminder.created_at ? String(reminder.created_at) : new Date().toISOString(),
+        }));
+        setReminders(mapped);
+      } else {
+        setReminders([]);
+      }
+
+      if (Array.isArray(calendarEvents)) {
+        const mappedEvents: CalendarEvent[] = calendarEvents.map((event) => ({
+          id: String(event.id ?? ''),
+          title: String(event.title ?? ''),
+          start_time: String(event.start_time ?? new Date().toISOString()),
+          end_time: String(event.end_time ?? new Date().toISOString()),
+          created_by: event.created_by ? String(event.created_by) : '',
+          household_id: event.household_id ? String(event.household_id) : '',
+          created_at: event.created_at ?? new Date().toISOString(),
+        }));
+        setCalendarEvents(mappedEvents);
+      }
     } catch (err) {
       console.error('Error fetching reminders:', err);
       setError('Failed to load reminders');

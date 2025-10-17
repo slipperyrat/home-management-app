@@ -43,8 +43,19 @@ export async function POST(request: NextRequest) {
   let status = 200;
   return withAPISecurity(
     request,
-    async (req, user) => {
+    async (req: NextRequest, user) => {
       try {
+        if (!user) {
+          status = 401;
+          logger.warn('Analytics event attempted without authenticated user', {
+            url: req.url,
+            securityEvent: true,
+            severity: 'medium',
+          });
+
+          return NextResponse.json({ error: 'Unauthorized' }, { status });
+        }
+
         const payload = await req.json();
         const validated = analyticsEventSchema.parse(payload);
 
@@ -75,7 +86,7 @@ export async function POST(request: NextRequest) {
         status = 200;
         logger.info('Analytics event stored', {
           userId: user.id,
-          householdId: validated.householdId,
+          ...(validated.householdId ? { householdId: validated.householdId } : {}),
           analyticsEvent: validated.event,
         });
 
@@ -83,10 +94,11 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         if (error instanceof z.ZodError) {
           status = 400;
-          logger.warn('Analytics event validation failed', {
-            userId: user?.id,
+          const validationContext = {
+            ...(user ? { userId: user.id } : {}),
             errors: error.flatten().fieldErrors,
-          });
+          };
+          logger.warn('Analytics event validation failed', validationContext);
 
           return NextResponse.json({
             error: 'Invalid analytics payload',
@@ -95,12 +107,13 @@ export async function POST(request: NextRequest) {
         }
 
         status = 500;
-        logger.error('Error processing analytics event', error as Error, {
+        const errorContext = {
           url: req.url,
-          userId: user?.id,
+          ...(user ? { userId: user.id } : {}),
           securityEvent: true,
-          severity: 'medium',
-        });
+          severity: 'medium' as const,
+        };
+        logger.error('Error processing analytics event', error as Error, errorContext);
 
         return NextResponse.json({ error: 'Failed to process event' }, { status });
       } finally {

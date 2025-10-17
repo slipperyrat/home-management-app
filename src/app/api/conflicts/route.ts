@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getAuth } from '@clerk/nextjs/server';
-import { z } from 'zod';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,10 +10,6 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-
-const GetConflictsSchema = z.object({
-  household_id: z.string().uuid(),
-});
 
 export async function GET(request: NextRequest) {
   try {
@@ -144,7 +139,7 @@ export async function GET(request: NextRequest) {
         event2
       ),
       detected_at: conflict.created_at,
-      resolved_at: conflict.is_resolved ? conflict.updated_at : null,
+      resolved_at: conflict.is_resolved ? conflict.resolved_at : null,
       resolution_notes: null,
       event1: event1 ? {
         id: event1.id,

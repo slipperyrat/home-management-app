@@ -5,8 +5,11 @@ import { getUserAndHouseholdData } from '@/lib/api/database';
 import { logger } from '@/lib/logging/logger';
 
 export async function GET(req: NextRequest) {
-  return withAPISecurity(req, async (request, user) => {
+  return withAPISecurity(req, async (_request, user) => {
     try {
+      if (!user?.id) {
+        return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
+      }
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
 
       if (userError || !household) {
@@ -32,7 +35,7 @@ export async function GET(req: NextRequest) {
       });
     } catch (error: unknown) {
       logger.error('Error in pending-confirmations API', error instanceof Error ? error : new Error(String(error)), {
-        userId: user?.id,
+        userId: user?.id ?? 'unknown',
       });
       return NextResponse.json({
         error: error instanceof Error ? error.message : 'Internal server error',

@@ -2,10 +2,11 @@
 // This can be easily removed if the real-time processing doesn't work
 
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { RealTimeAIProcessor, RealTimeAIRequest } from '@/lib/ai/services/RealTimeAIProcessor';
+import { RealTimeAIProcessor } from '@/lib/ai/services/RealTimeAIProcessor';
+import type { RealTimeAIRequest, RealTimeRequestBody } from '@/types/websocket';
 import { webSocketManager } from '@/lib/websocket/WebSocketServer';
 import { isAIEnabled } from '@/lib/ai/config/aiConfig';
 import { logger } from '@/lib/logging/logger';
@@ -14,8 +15,13 @@ import { logger } from '@/lib/logging/logger';
 const realTimeProcessor = new RealTimeAIProcessor(webSocketManager);
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Real-time AI processing request without authenticated user');
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Real-time AI processing request received', { userId: user.id });
 
       // Get user and household data
@@ -26,12 +32,64 @@ export async function POST(request: NextRequest) {
       }
 
       const body = await req.json();
-      const { type, context, priority = 'medium' } = body;
+      const parsedBody = body as RealTimeRequestBody;
 
-      // Validate request
-      if (!type || !context) {
+      if (!parsedBody?.type || !parsedBody?.context) {
         return createErrorResponse('Type and context are required', 400);
       }
+
+      const priority = parsedBody.priority ?? 'medium';
+
+      // Generate request ID
+      const requestId = `realtime_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      let aiRequest: RealTimeAIRequest;
+      switch (parsedBody.type) {
+        case 'shopping_suggestions':
+          aiRequest = {
+            type: 'shopping_suggestions',
+            context: parsedBody.context,
+            requestId,
+            userId: user.id,
+            householdId: household.id,
+            priority,
+          };
+          break;
+        case 'meal_planning':
+          aiRequest = {
+            type: 'meal_planning',
+            context: parsedBody.context,
+            requestId,
+            userId: user.id,
+            householdId: household.id,
+            priority,
+          };
+          break;
+        case 'chore_assignment':
+          aiRequest = {
+            type: 'chore_assignment',
+            context: parsedBody.context,
+            requestId,
+            userId: user.id,
+            householdId: household.id,
+            priority,
+          };
+          break;
+        case 'email_processing':
+          aiRequest = {
+            type: 'email_processing',
+            context: parsedBody.context,
+            requestId,
+            userId: user.id,
+            householdId: household.id,
+            priority,
+          };
+          break;
+        default:
+          return createErrorResponse('Unsupported AI request type', 400);
+      }
+
+      const { type } = aiRequest;
 
       // Check if AI is enabled for the requested type
       if (type === 'shopping_suggestions' && !isAIEnabled('shoppingSuggestions')) {
@@ -41,19 +99,6 @@ export async function POST(request: NextRequest) {
       if (type === 'meal_planning' && !isAIEnabled('mealPlanning')) {
         return createErrorResponse('Meal planning AI is disabled', 403);
       }
-
-      // Generate request ID
-      const requestId = `realtime_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      // Create real-time AI request
-      const aiRequest: RealTimeAIRequest = {
-        type,
-        context,
-        requestId,
-        userId: user.id,
-        householdId: household.id,
-        priority: priority as 'low' | 'medium' | 'high' | 'urgent'
-      };
 
       // Process the request
       const result = await realTimeProcessor.processRequest(aiRequest);
@@ -78,7 +123,20 @@ export async function POST(request: NextRequest) {
       }, 'Real-time AI processing completed successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/ai/realtime', method: 'POST', userId: user.id });
+      const errorContext: {
+        route: string;
+        method: string;
+        userId?: string;
+      } = {
+        route: '/api/ai/realtime',
+        method: 'POST'
+      };
+
+      if (user?.id) {
+        errorContext.userId = user.id;
+      }
+
+      return handleApiError(error, errorContext);
     }
   }, {
     requireAuth: true,
@@ -88,8 +146,13 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Real-time AI status request without authenticated user');
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Real-time AI status request received', { userId: user.id });
 
       // Get user and household data
@@ -139,7 +202,20 @@ export async function GET(request: NextRequest) {
       }
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/ai/realtime', method: 'GET', userId: user.id });
+      const errorContext: {
+        route: string;
+        method: string;
+        userId?: string;
+      } = {
+        route: '/api/ai/realtime',
+        method: 'GET'
+      };
+
+      if (user?.id) {
+        errorContext.userId = user.id;
+      }
+
+      return handleApiError(error, errorContext);
     }
   }, {
     requireAuth: true,

@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { DigestDataService } from '@/lib/digestDataService';
 import { EmailService } from '@/lib/emailService';
 import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/supabase.generated';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,18 +12,22 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
-/**
- * Cron job for sending daily and weekly digests
- * This should be called by a cron service every hour
- */
+type EntitlementRow = Database['public']['Tables']['entitlements']['Row'];
+type HouseholdRow = Pick<Database['public']['Tables']['households']['Row'], 'id' | 'name'>;
+type HouseholdMemberWithUser = {
+  user_id: string;
+  users: Pick<Database['public']['Tables']['users']['Row'], 'id' | 'email' | 'first_name' | 'last_name'> | null;
+};
+
+type HouseholdMemberUser = NonNullable<HouseholdMemberWithUser['users']>;
+
 export async function POST(request: NextRequest) {
   try {
-    // Verify this is a legitimate cron request
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
-    
+
     if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -31,35 +36,51 @@ export async function POST(request: NextRequest) {
 
     const now = new Date();
     const currentHour = now.getHours();
-    const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const today = now.toISOString().split('T')[0];
+    const currentDay = now.getDay();
+    const today = now.toISOString().slice(0, 10);
 
-    // Get all households with active digest preferences
-    const { data: households, error: householdsError } = await supabase
-      .from('households')
-      .select(`
-        id,
-        name,
-        entitlements!households_id_fkey(
-          tier,
-          digest_max_per_day,
-          daily_digests_enabled
-        )
-      `)
-      .eq('entitlements.tier', 'pro')
-      .eq('entitlements.daily_digests_enabled', true);
+    const { data: entitlementRows, error: entitlementsError } = await supabase
+      .from('entitlements')
+      .select('*')
+      .gt('digest_max_per_day', 0);
+
+    if (entitlementsError) {
+      logger.error('Error fetching entitlements for digest cron', entitlementsError);
+      return NextResponse.json({ error: 'Failed to fetch entitlements' }, { status: 500 });
+    }
+
+    const householdIds = (entitlementRows ?? []).map((row) => row.household_id);
+
+    const { data: householdRows, error: householdsError } = householdIds.length > 0
+      ? await supabase
+        .from('households')
+        .select('id, name')
+        .in('id', householdIds)
+      : { data: [], error: null } as { data: HouseholdRow[]; error: null };
 
     if (householdsError) {
       logger.error('Error fetching households for digest cron', householdsError);
       return NextResponse.json({ error: 'Failed to fetch households' }, { status: 500 });
     }
 
-    if (!households || households.length === 0) {
+    const householdMap = new Map<string, HouseholdRow>();
+    for (const household of householdRows ?? []) {
+      householdMap.set(household.id, household);
+    }
+
+    const eligibleEntries: Array<{ entitlement: EntitlementRow; household: HouseholdRow | null }> = (entitlementRows ?? [])
+      .map((entitlement) => ({
+        entitlement,
+        household: householdMap.get(entitlement.household_id) ?? null,
+      }))
+      .filter((entry) => entry.entitlement.digest_max_per_day > 0);
+
+    if (eligibleEntries.length === 0) {
       logger.info('No households with digest enabled found');
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         message: 'No households to process',
-        processed: 0 
+        processed: 0,
       });
     }
 
@@ -68,82 +89,73 @@ export async function POST(request: NextRequest) {
     let weeklyDigestsSent = 0;
     const errors: string[] = [];
 
-    // Process each household
-    for (const household of households) {
-      try {
-        logger.info('Processing household digests', { householdId: household.id });
+    for (const entry of eligibleEntries) {
+      const { entitlement, household } = entry;
+      const householdId = entitlement.household_id;
+      const householdName = household?.name ?? 'Household';
 
-        // Get digest preferences for this household
+      try {
+        logger.info('Processing household digests', { householdId });
+
         const { data: preferences, error: prefsError } = await supabase
           .from('digest_preferences')
           .select('*')
-          .eq('household_id', household.id)
+          .eq('household_id', householdId)
           .eq('daily_digest_enabled', true)
-          .single();
+          .maybeSingle<Database['public']['Tables']['digest_preferences']['Row']>();
 
         if (prefsError || !preferences) {
-          logger.warn('No digest preferences found for household; skipping', { householdId: household.id });
+          logger.warn('No digest preferences found for household; skipping', { householdId });
           continue;
         }
 
-        // Check if it's time for daily digest
-        const dailyDigestHour = parseInt(preferences.daily_digest_time.split(':')[0]);
-        if (currentHour === dailyDigestHour) {
-          // Check if daily digest was already sent today
+        const dailyDigestHour = safeParseHour(preferences.daily_digest_time);
+        if (dailyDigestHour !== null && currentHour === dailyDigestHour) {
           const { data: todayDigests } = await supabase
             .from('daily_digests')
             .select('id')
-            .eq('household_id', household.id)
+            .eq('household_id', householdId)
             .eq('digest_date', today)
             .eq('digest_type', 'daily');
 
-          if (!todayDigests || todayDigests.length === 0) {
-            // Check quota
-            const { entitlements } = household;
-            if (!entitlements || todayDigests.length >= entitlements.digest_max_per_day) {
-              logger.warn('Daily digest quota exceeded; skipping household', { householdId: household.id });
-              continue;
-            }
-
-            // Send daily digest
-            await sendDigestToHousehold(household.id, household.name, 'daily');
+          const dailyCount = todayDigests?.length ?? 0;
+          if (dailyCount === 0 && dailyCount < entitlement.digest_max_per_day) {
+            await sendDigestToHousehold(householdId, householdName, 'daily');
             dailyDigestsSent++;
+          } else if (dailyCount >= entitlement.digest_max_per_day) {
+            logger.warn('Daily digest quota exceeded; skipping household', { householdId });
           }
         }
 
-        // Check if it's time for weekly digest
         if (preferences.weekly_digest_enabled) {
-          const weeklyDigestDay = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].indexOf(preferences.weekly_digest_day);
-          const weeklyDigestHour = parseInt(preferences.weekly_digest_time.split(':')[0]);
-          
-          if (currentDay === weeklyDigestDay && currentHour === weeklyDigestHour) {
-            // Check if weekly digest was already sent this week
+          const weeklyDigestDay = safeParseWeekday(preferences.weekly_digest_day);
+          const weeklyDigestHour = safeParseHour(preferences.weekly_digest_time);
+
+          if (weeklyDigestDay !== null && weeklyDigestHour !== null && currentDay === weeklyDigestDay && currentHour === weeklyDigestHour) {
             const startOfWeek = new Date(now);
             startOfWeek.setDate(now.getDate() - now.getDay());
-            const weekStart = startOfWeek.toISOString().split('T')[0];
+            const weekStart = startOfWeek.toISOString().slice(0, 10);
 
             const { data: weekDigests } = await supabase
               .from('daily_digests')
               .select('id')
-              .eq('household_id', household.id)
+              .eq('household_id', householdId)
               .eq('digest_date', weekStart)
               .eq('digest_type', 'weekly');
 
             if (!weekDigests || weekDigests.length === 0) {
-              // Send weekly digest
-              await sendDigestToHousehold(household.id, household.name, 'weekly');
+              await sendDigestToHousehold(householdId, householdName, 'weekly');
               weeklyDigestsSent++;
             }
           }
         }
 
         totalProcessed++;
-
       } catch (error) {
         logger.error('Error processing household for digest cron', error instanceof Error ? error : new Error(String(error)), {
-          householdId: household.id,
+          householdId,
         });
-        errors.push(`Household ${household.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        errors.push(`Household ${householdId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
@@ -161,89 +173,102 @@ export async function POST(request: NextRequest) {
         households_processed: totalProcessed,
         daily_digests_sent: dailyDigestsSent,
         weekly_digests_sent: weeklyDigestsSent,
-        errors: errors.length
+        errors: errors.length,
       },
-      errors: errors.length > 0 ? errors : undefined
+      errors: errors.length > 0 ? errors : undefined,
     });
-
   } catch (error) {
     logger.error('Error in digest cron job', error instanceof Error ? error : new Error(String(error)));
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-/**
- * Send digest to all members of a household
- */
 async function sendDigestToHousehold(
-  householdId: string, 
-  householdName: string, 
-  type: 'daily' | 'weekly'
+  householdId: string,
+  householdName: string | null,
+  type: 'daily' | 'weekly',
 ) {
   try {
-    // Get all household members
     const { data: members, error: membersError } = await supabase
       .from('household_members')
-      .select(`
+      .select(
+        `
         user_id,
-        users!household_members_user_id_fkey(id, email, name)
-      `)
+        users:users!household_members_user_id_fkey(id, email, first_name, last_name)
+      `,
+      )
       .eq('household_id', householdId);
 
     if (membersError || !members) {
       throw new Error('Failed to fetch household members');
     }
 
-    const users = members
-      .map(member => member.users)
-      .filter((user): user is NonNullable<typeof user> => Boolean(user?.email));
+    const rawMembers = (members ?? []) as Array<{ user_id: string; users: unknown }>;
+
+    const typedMembers: HouseholdMemberWithUser[] = rawMembers.map((member) => {
+      const userRecord = member.users;
+      if (userRecord && typeof userRecord === 'object' && 'id' in userRecord) {
+        return {
+          user_id: member.user_id,
+          users: userRecord as HouseholdMemberUser,
+        };
+      }
+      return {
+        user_id: member.user_id,
+        users: null,
+      };
+    });
+
+    const users = typedMembers
+      .map((member) => member.users)
+      .filter((user): user is HouseholdMemberUser => Boolean(user?.email));
 
     if (users.length === 0) {
       throw new Error('No users found in household');
     }
 
-    // Send digest to each user
     for (const user of users) {
       try {
-        // Collect digest data
-        const digestData = type === 'daily' 
+        const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'User';
+        const digestData = type === 'daily'
           ? await DigestDataService.collectDailyDigestData(
               householdId,
               user.id,
-              user.email,
-              user.name || 'User',
-              householdName
+              user.email ?? '',
+              userName,
+              householdName ?? 'Household',
             )
           : await DigestDataService.collectWeeklyDigestData(
               householdId,
               user.id,
-              user.email,
-              user.name || 'User',
-              householdName
+              user.email ?? '',
+              userName,
+              householdName ?? 'Household',
             );
 
-        // Send email
         const emailResult = type === 'daily'
           ? await EmailService.sendDailyDigest(digestData)
           : await EmailService.sendWeeklyDigest(digestData);
 
+        const digestDate = new Date().toISOString().slice(0, 10);
+
         if (emailResult.success) {
-          // Log successful digest
-          await supabase
-            .from('daily_digests')
-            .insert({
-              household_id: householdId,
-              user_id: user.id,
-              digest_type: type,
-              digest_date: new Date().toISOString().split('T')[0],
-              email_sent: true,
-              message_id: emailResult.messageId,
-              created_at: new Date().toISOString()
-            });
+          const insertPayload: Database['public']['Tables']['daily_digests']['Insert'] = {
+            household_id: householdId,
+            digest_date: digestDate,
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+          };
+
+          await supabase.from('daily_digests').insert(insertPayload);
 
           logger.info('Digest email sent', { type, userId: user.id, email: user.email, householdId });
         } else {
-          logger.error('Failed to send digest email', emailResult.error ?? new Error('Unknown error'), {
+          const emailErrorMessage = typeof emailResult.error === 'string'
+            ? emailResult.error
+            : 'Unknown error';
+          const emailError = new Error(emailErrorMessage);
+          logger.error('Failed to send digest email', emailError, {
             type,
             userId: user.id,
             email: user.email,
@@ -265,4 +290,21 @@ async function sendDigestToHousehold(
     });
     throw error;
   }
+}
+
+function safeParseHour(time: string | null | undefined): number | null {
+  if (!time) {
+    return null;
+  }
+  const hourString = time.split(':')[0];
+  const hour = hourString ? Number.parseInt(hourString, 10) : Number.NaN;
+  return Number.isNaN(hour) ? null : hour;
+}
+
+function safeParseWeekday(day: string | null | undefined): number | null {
+  if (!day) {
+    return null;
+  }
+  const index = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].indexOf(day.toLowerCase());
+  return index >= 0 ? index : null;
 }

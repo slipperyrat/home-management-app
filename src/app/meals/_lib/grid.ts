@@ -1,16 +1,25 @@
 import { DateTime } from "luxon";
 
-import { MEAL_TYPES, type MealType, type WeekCell, type WeekMatrix } from "./types";
+import { MEAL_TYPES, type MealType, type WeekCell, type WeekHeader, type WeekMatrix } from "./types";
+
+const DAYS_IN_WEEK = 7;
 
 export function buildWeekMatrix(weekStartISO: string): WeekMatrix {
-  const start = DateTime.fromISO(weekStartISO, { setZone: true }).startOf("day");
-  const headers = Array.from({ length: 7 }, (_, index) => {
+  const fallback = DateTime.now().startOf("week");
+  const base = weekStartISO
+    ? DateTime.fromISO(weekStartISO).startOf("day")
+    : fallback;
+  const start = base.isValid ? base : fallback;
+
+  const headers: WeekHeader[] = Array.from({ length: DAYS_IN_WEEK }, (_, index) => {
     const date = start.plus({ days: index });
+    const iso = date.toISODate() ?? fallback.toISODate() ?? "";
+    const label = date.toFormat("ccc dd");
     return {
       columnIndex: index,
-      iso: date.toISODate(),
-      label: date.toFormat("ccc"),
-    };
+      iso,
+      label,
+    } satisfies WeekHeader;
   });
 
   const cells: WeekCell[][] = headers.map((header) =>
@@ -24,6 +33,8 @@ export function buildWeekMatrix(weekStartISO: string): WeekMatrix {
 
   return { headers, cells };
 }
+
+export type { WeekCell } from "./types";
 
 export function mealTypeLabel(value: MealType): string {
   switch (value) {

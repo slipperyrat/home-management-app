@@ -54,17 +54,18 @@ export async function awardPoints({
       .single();
 
     if (fetchError) {
-      console.error(`❌ Error fetching current ${type} for user ${userId}:`, fetchError);
-      return { 
-        success: false, 
-        error: `Failed to fetch current ${type}: ${fetchError.message}` 
+      logger.error(`Error fetching current ${type} for user`, fetchError, { userId });
+      return {
+        success: false,
+        error: `Failed to fetch current ${type}: ${fetchError.message}`,
       };
     }
 
     if (!currentData) {
-      return { 
-        success: false, 
-        error: 'User not found' 
+      return {
+        success: false,
+        error: 'User not found',
+        newTotal: 0,
       };
     }
 
@@ -81,32 +82,34 @@ export async function awardPoints({
 
     if (error) {
       logger.error('Error awarding points', error, { userId, type, amount });
-      return { 
-        success: false, 
-        error: `Failed to award ${type}: ${error.message}` 
+      return {
+        success: false,
+        error: `Failed to award ${type}: ${error.message}`,
       };
     }
 
     if (!data) {
-      return { 
-        success: false, 
-        error: 'User not found' 
+      return {
+        success: false,
+        error: 'User not found',
+        newTotal: currentValue,
       };
     }
 
-    const newTotal = data?.[type as keyof typeof data] as number | undefined;
+    const newTotal = (data[type as keyof typeof data] as number | null) ?? null;
     logger.info('Award points operation complete', { userId, amount, type, newTotal });
 
     return {
       success: true,
-      newTotal
+      newTotal: newTotal ?? currentValue,
     };
 
   } catch (error) {
-    logger.error('Exception awarding points', error as Error, { userId, amount, type });
+    const err = error instanceof Error ? error : new Error('Unknown error occurred');
+    logger.error('Exception awarding points', err, { userId, amount, type });
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: err.message,
     };
   }
 }

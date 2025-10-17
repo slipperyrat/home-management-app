@@ -9,7 +9,7 @@ import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 
 export default function DigestPreferencesPage() {
   const router = useRouter();
-  const { userData, isLoading, isError, error, refetch, isLoaded, isSignedIn } = useUserData();
+  const { isLoading, isError, error, refetch, isLoaded, isSignedIn } = useUserData();
 
   useEffect(() => {
     if (!isLoaded) return;

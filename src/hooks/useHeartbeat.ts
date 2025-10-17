@@ -15,7 +15,7 @@ export function useHeartbeat() {
       logger.debug?.('useHeartbeat: Skipping setup', {
         hasUser: !!user,
         hasUserData: !!userData,
-        householdId: userData?.household_id,
+        ...(userData?.household_id ? { householdId: userData.household_id } : {}),
       });
       return;
     }
@@ -36,9 +36,9 @@ export function useHeartbeat() {
 
     const setupTimer = setTimeout(() => {
       if (!userData?.household_id?.trim()) {
-        logger.warn('useHeartbeat: No valid household_id after delay', {
-          householdId: userData?.household_id,
-        });
+        logger.warn('useHeartbeat: No valid household_id after delay',
+          userData?.household_id ? { householdId: userData.household_id } : undefined,
+        );
         return;
       }
 
@@ -47,17 +47,13 @@ export function useHeartbeat() {
       });
 
       postEventTypes.heartbeat({ household_id: userData.household_id }).catch((error) => {
-        logger.warn('Failed to post initial heartbeat', error, {
-          householdId: userData.household_id,
-        });
+        logger.warn('Failed to post initial heartbeat', error, { householdId: userData.household_id });
       });
 
       intervalRef.current = setInterval(() => {
         if (userData?.household_id?.trim()) {
           postEventTypes.heartbeat({ household_id: userData.household_id }).catch((error) => {
-            logger.warn('Failed to post periodic heartbeat', error, {
-              householdId: userData.household_id,
-            });
+            logger.warn('Failed to post periodic heartbeat', error, { householdId: userData.household_id });
           });
         }
       }, 30 * 60 * 1000);
@@ -88,9 +84,7 @@ export function useHeartbeat() {
   const triggerHeartbeat = () => {
     if (userData?.household_id?.trim()) {
       postEventTypes.heartbeat({ household_id: userData.household_id }).catch((error) => {
-        logger.warn('Failed to post manual heartbeat', error, {
-          householdId: userData.household_id,
-        });
+        logger.warn('Failed to post manual heartbeat', error, { householdId: userData.household_id });
       });
     } else {
       logger.warn('triggerHeartbeat: No valid household_id available');

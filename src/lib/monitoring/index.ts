@@ -66,7 +66,7 @@ export class MonitoringService {
       value: duration,
       unit: 'ms',
       timestamp: Date.now(),
-        context: { endpoint, ...context }
+      context: { endpoint, ...(context ?? {}) },
     });
   }
 
@@ -76,7 +76,7 @@ export class MonitoringService {
       value: loadTime,
       unit: 'ms',
       timestamp: Date.now(),
-      context: { page, ...context }
+      context: { page, ...(context ?? {}) },
     });
   }
 
@@ -86,7 +86,7 @@ export class MonitoringService {
       value: duration,
       unit: 'ms',
       timestamp: Date.now(),
-      context: { query, ...context }
+      context: { query, ...(context ?? {}) },
     });
   }
 
@@ -96,7 +96,7 @@ export class MonitoringService {
       value: duration,
       unit: 'ms',
       timestamp: Date.now(),
-      context: context || {}
+      context: context || {},
     });
   }
 
@@ -199,7 +199,7 @@ export class MonitoringService {
     const slowestEndpoints = Object.entries(endpointGroups)
       .map(([endpoint, metrics]) => ({
         endpoint,
-        avgDuration: metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length
+        avgDuration: metrics.reduce((sum: number, m: PerformanceMetric) => sum + m.value, 0) / metrics.length,
       }))
       .sort((a, b) => b.avgDuration - a.avgDuration)
       .slice(0, 5);
@@ -209,27 +209,27 @@ export class MonitoringService {
     const pageLoadPerformance = Object.entries(pageGroups)
       .map(([page, metrics]) => ({
         page,
-        avgLoadTime: metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length
+        avgLoadTime: metrics.reduce((sum: number, m: PerformanceMetric) => sum + m.value, 0) / metrics.length,
       }))
       .sort((a, b) => b.avgLoadTime - a.avgLoadTime);
 
     // Calculate database performance
     const avgQueryTime = dbMetrics.length > 0 
-      ? dbMetrics.reduce((sum, m) => sum + m.value, 0) / dbMetrics.length 
+      ? dbMetrics.reduce((sum: number, m: PerformanceMetric) => sum + m.value, 0) / dbMetrics.length 
       : 0;
 
     // Calculate cache performance
     const hitRate = cacheHitMetrics.length / (cacheHitMetrics.length + cacheMissMetrics.length);
     const avgHitTime = cacheHitMetrics.length > 0 
-      ? cacheHitMetrics.reduce((sum, m) => sum + m.value, 0) / cacheHitMetrics.length 
+      ? cacheHitMetrics.reduce((sum: number, m: PerformanceMetric) => sum + m.value, 0) / cacheHitMetrics.length 
       : 0;
     const avgMissTime = cacheMissMetrics.length > 0 
-      ? cacheMissMetrics.reduce((sum, m) => sum + m.value, 0) / cacheMissMetrics.length 
+      ? cacheMissMetrics.reduce((sum: number, m: PerformanceMetric) => sum + m.value, 0) / cacheMissMetrics.length 
       : 0;
 
     return {
       averageAPIDuration: apiMetrics.length > 0 
-        ? apiMetrics.reduce((sum, m) => sum + m.value, 0) / apiMetrics.length 
+        ? apiMetrics.reduce((sum: number, m: PerformanceMetric) => sum + m.value, 0) / apiMetrics.length 
         : 0,
       slowestEndpoints,
       pageLoadPerformance,
@@ -318,7 +318,7 @@ export class MonitoringService {
 
     // Model performance
     const modelGroups = this.groupAIMetricsByModel(this.aiMetrics);
-    const modelPerformance = Object.entries(modelGroups).map(([model, metrics]) => ({
+    const modelPerformance = Array.from(modelGroups.entries()).map(([model, metrics]) => ({
       model,
       avgConfidence: metrics.reduce((sum, m) => sum + m.confidence, 0) / metrics.length,
       avgProcessingTime: metrics.reduce((sum, m) => sum + m.processingTime, 0) / metrics.length
@@ -386,32 +386,35 @@ export class MonitoringService {
     }
   }
 
-  private groupMetricsByEndpoint(metrics: PerformanceMetric[]): Record<string, PerformanceMetric[]> {
-    const groups: Record<string, PerformanceMetric[]> = {};
-    metrics.forEach(metric => {
-      const endpoint = metric.context?.endpoint || 'unknown';
-      if (!groups[endpoint]) groups[endpoint] = [];
-      groups[endpoint].push(metric);
+  private groupMetricsByEndpoint(metrics: PerformanceMetric[]): Map<string, PerformanceMetric[]> {
+    const groups = new Map<string, PerformanceMetric[]>();
+    metrics.forEach((metric) => {
+      const endpoint = (metric.context?.endpoint as string | undefined) ?? 'unknown';
+      const bucket = groups.get(endpoint) ?? [];
+      bucket.push(metric);
+      groups.set(endpoint, bucket);
     });
     return groups;
   }
 
-  private groupMetricsByPage(metrics: PerformanceMetric[]): Record<string, PerformanceMetric[]> {
-    const groups: Record<string, PerformanceMetric[]> = {};
-    metrics.forEach(metric => {
-      const page = metric.context?.page || 'unknown';
-      if (!groups[page]) groups[page] = [];
-      groups[page].push(metric);
+  private groupMetricsByPage(metrics: PerformanceMetric[]): Map<string, PerformanceMetric[]> {
+    const groups = new Map<string, PerformanceMetric[]>();
+    metrics.forEach((metric) => {
+      const page = (typeof metric.context?.page === 'string' ? metric.context.page : undefined) ?? 'unknown';
+      const bucket = groups.get(page) ?? [];
+      bucket.push(metric);
+      groups.set(page, bucket);
     });
     return groups;
   }
 
-  private groupAIMetricsByModel(metrics: AIMetric[]): Record<string, AIMetric[]> {
-    const groups: Record<string, AIMetric[]> = {};
-    metrics.forEach(metric => {
-      const model = metric.model || 'unknown';
-      if (!groups[model]) groups[model] = [];
-      groups[model].push(metric);
+  private groupAIMetricsByModel(metrics: AIMetric[]): Map<string, AIMetric[]> {
+    const groups = new Map<string, AIMetric[]>();
+    metrics.forEach((metric) => {
+      const model = (typeof metric.model === 'string' && metric.model.length > 0 ? metric.model : undefined) ?? 'unknown';
+      const bucket = groups.get(model) ?? [];
+      bucket.push(metric);
+      groups.set(model, bucket);
     });
     return groups;
   }
@@ -436,21 +439,31 @@ export class MonitoringService {
   }
 
   private calculateAccuracyTrend(metrics: AIMetric[]): Array<{ date: string; accuracy: number }> {
-    // Group metrics by day and calculate daily accuracy
-    const dailyGroups: Record<string, AIMetric[]> = {};
-    
-    metrics.forEach(metric => {
-      const date = new Date(metric.timestamp).toISOString().split('T')[0] ?? 'unknown';
-      if (!dailyGroups[date]) dailyGroups[date] = [];
-      dailyGroups[date].push(metric);
+    const dailyGroups = new Map<string, AIMetric[]>();
+
+    metrics.forEach((metric) => {
+      const timestamp = metric.timestamp ? new Date(metric.timestamp) : null;
+      if (!timestamp || Number.isNaN(timestamp.getTime())) {
+        return;
+      }
+      const dateKey = timestamp.toISOString().split('T')[0];
+      if (!dateKey) {
+        return;
+      }
+      const bucket = dailyGroups.get(dateKey) ?? [];
+      bucket.push(metric);
+      dailyGroups.set(dateKey, bucket);
     });
 
-    return Object.entries(dailyGroups)
+    return Array.from(dailyGroups.entries())
       .map(([date, dayMetrics]) => {
-      const totalAccuracy = dayMetrics.reduce((sum, m) => sum + this.calculateAccuracy(m.prediction, m.actual), 0);
+        const totalAccuracy = dayMetrics.reduce(
+          (sum, m) => sum + this.calculateAccuracy(m.prediction, m.actual),
+          0,
+        );
         return {
           date,
-          accuracy: dayMetrics.length > 0 ? totalAccuracy / dayMetrics.length : 0
+          accuracy: dayMetrics.length > 0 ? totalAccuracy / dayMetrics.length : 0,
         };
       })
       .sort((a, b) => a.date.localeCompare(b.date));

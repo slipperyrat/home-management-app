@@ -1,28 +1,37 @@
-import { getDatabaseClient } from '@/lib/api/database';
-import { canAccessFeature } from '@/lib/server/canAccessFeature';
-import { logger } from '@/lib/logging/logger';
-import type { Database, ReceiptItem } from '@/types/database';
+import { getDatabaseClient } from '@/lib/api/database'
+import { canAccessFeature, type UserPlan } from '@/lib/server/canAccessFeature'
+import { logger } from '@/lib/logging/logger'
+import type { Database } from '@/types/supabase.generated'
+import type { ReceiptItem } from '@/types/database'
 
 interface SpendEntryInput {
   household_id: string;
   amount: number;
   description: string;
-  category: string;
-  envelope_id?: string;
+  category: string | null;
+  envelope_id?: string | null;
   receipt_attachment_id: string;
   transaction_date: string;
-  merchant: string;
+  merchant: string | null;
   payment_method: 'cash' | 'card' | 'bank_transfer' | 'other';
   source: 'receipt_ocr';
   created_by: string;
+  external_id?: string | null;
+}
+
+function getReceiptAmount(item: ReceiptItem): number {
+  if (typeof item.item_price === 'number') {
+    return item.item_price;
+  }
+  return 0;
 }
 
 export async function createSpendEntriesFromReceipt(
   receiptItems: ReceiptItem[],
-  householdPlan: string,
+  householdPlan: UserPlan,
   createdBy: string,
   options: {
-    envelope_id?: string;
+    envelope_id?: string | undefined;
     payment_method?: 'cash' | 'card' | 'bank_transfer' | 'other';
     create_single_entry?: boolean;
   } = {},
@@ -35,19 +44,25 @@ export async function createSpendEntriesFromReceipt(
   const spendEntries: Database['public']['Tables']['spend_entries']['Row'][] = [];
   const paymentMethod = options.payment_method ?? 'card';
 
+  const todayISODate = () => new Date().toISOString().slice(0, 10);
+
   if (options.create_single_entry && receiptItems.length > 0) {
-    const totalAmount = receiptItems.reduce((sum, item) => sum + item.item_price, 0);
-    const storeName = receiptItems[0].attachment?.receipt_store ?? 'Unknown Store';
-    const receiptDate = receiptItems[0].attachment?.receipt_date ?? new Date().toISOString().split('T')[0];
+    const [firstItem] = receiptItems;
+    if (!firstItem) {
+      return [];
+    }
+    const totalAmount = receiptItems.reduce((sum, item) => sum + getReceiptAmount(item), 0);
+    const storeName = firstItem.attachment?.receipt_store ?? 'Unknown Store';
+    const receiptDate = (firstItem.attachment?.receipt_date ?? todayISODate()).slice(0, 10);
     const description = `Receipt from ${storeName}: ${receiptItems.map((item) => item.item_name).join(', ')}`;
 
     const spendEntryInput: SpendEntryInput = {
-      household_id: receiptItems[0].household_id,
+      household_id: firstItem.household_id,
       amount: totalAmount,
       description,
       category: 'groceries',
-      envelope_id: options.envelope_id,
-      receipt_attachment_id: receiptItems[0].attachment_id,
+      envelope_id: options.envelope_id ?? null,
+      receipt_attachment_id: firstItem.attachment_id,
       transaction_date: receiptDate,
       merchant: storeName,
       payment_method: paymentMethod,
@@ -58,38 +73,37 @@ export async function createSpendEntriesFromReceipt(
     const { data: createdEntry, error } = await db
       .from('spend_entries')
       .insert(spendEntryInput)
-      .select()
-      .single();
+      .select('*')
+      .maybeSingle();
 
     if (error || !createdEntry) {
-      logger.error('Error creating spend entry from receipt', error ?? new Error('No entry returned'), {
-        householdId: receiptItems[0].household_id,
+      const errorMessage = error && 'message' in error ? (error.message as string | undefined) : undefined;
+      logger.error('Error creating spend entry from receipt', error ?? undefined, {
+        householdId: firstItem.household_id,
+        ...(errorMessage ? { error: errorMessage } : {}),
       });
-      throw new Error(`Failed to create spend entry: ${error?.message ?? 'Unknown error'}`);
+      throw error;
     }
-
-    await db
-      .from('receipt_items')
-      .update({
-        spend_entry_id: createdEntry.id,
-        added_to_spending: true,
-      })
-      .in('id', receiptItems.map((item) => item.id));
 
     spendEntries.push(createdEntry);
     return spendEntries;
   }
 
   for (const item of receiptItems) {
+    const amount = getReceiptAmount(item);
+    if (amount <= 0) {
+      continue;
+    }
+
     const storeName = item.attachment?.receipt_store ?? 'Unknown Store';
-    const receiptDate = item.attachment?.receipt_date ?? new Date().toISOString().split('T')[0];
+    const receiptDate = (item.attachment?.receipt_date ?? todayISODate()).slice(0, 10);
 
     const spendEntryInput: SpendEntryInput = {
       household_id: item.household_id,
-      amount: item.item_price,
+      amount,
       description: `${item.item_name} from ${storeName}`,
       category: item.item_category ?? 'groceries',
-      envelope_id: options.envelope_id,
+      envelope_id: options.envelope_id ?? null,
       receipt_attachment_id: item.attachment_id,
       transaction_date: receiptDate,
       merchant: storeName,
@@ -101,21 +115,17 @@ export async function createSpendEntriesFromReceipt(
     const { data: createdEntry, error } = await db
       .from('spend_entries')
       .insert(spendEntryInput)
-      .select()
-      .single();
+      .select('*')
+      .maybeSingle();
 
     if (error || !createdEntry) {
-      logger.warn('Error creating spend entry for item', { itemId: item.id, error });
+      const errorMessage = error && 'message' in error ? (error.message as string | undefined) : undefined;
+      logger.warn('Error creating spend entry for item', {
+        itemId: item.id,
+        ...(errorMessage ? { error: errorMessage } : {}),
+      });
       continue;
     }
-
-    await db
-      .from('receipt_items')
-      .update({
-        spend_entry_id: createdEntry.id,
-        added_to_spending: true,
-      })
-      .eq('id', item.id);
 
     spendEntries.push(createdEntry);
   }
@@ -180,10 +190,7 @@ export async function deleteSpendEntriesFromReceipt(
 
   await db
     .from('receipt_items')
-    .update({
-      spend_entry_id: null,
-      added_to_spending: false,
-    })
+    .update({ updated_at: new Date().toISOString(), added_to_spending: false })
     .in('id', receiptItemIds);
 
   logger.info('Deleted spend entries from receipt items', {

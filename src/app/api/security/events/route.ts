@@ -70,11 +70,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(events || []);
     
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    log.apiError('GET', '/api/security/events', new Error(errorMessage), { userId: clerkUser?.id });
-    
+    const err = error instanceof Error ? error : new Error('Unknown error');
+    log.apiError('GET', '/api/security/events', err);
+ 
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

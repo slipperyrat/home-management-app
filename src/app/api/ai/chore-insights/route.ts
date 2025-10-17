@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database.types';
+import type { Database } from '@/types/supabase.generated';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -265,7 +265,13 @@ function calculateAIChoreInsights(
   // Identify skill gaps
   const requiredSkills = new Set<string>();
   chores.forEach(chore => {
-    chore.ai_skill_requirements?.forEach((skill: string) => requiredSkills.add(skill));
+    if (chore.ai_skill_requirements && Array.isArray(chore.ai_skill_requirements)) {
+      chore.ai_skill_requirements.forEach((skill: unknown) => {
+        if (typeof skill === 'string' && skill.trim().length > 0) {
+          requiredSkills.add(skill);
+        }
+      });
+    }
   });
 
   if (requiredSkills.size > 0) {

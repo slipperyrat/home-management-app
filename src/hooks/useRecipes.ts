@@ -182,13 +182,14 @@ export function useCreateRecipe() {
   return useMutation({
     mutationFn: createRecipe,
     onSuccess: (data) => {
+      const { recipe } = data;
       // Invalidate and refetch recipes
       queryClient.invalidateQueries({ queryKey: queryKeys.recipes.all });
       
       // Add the new recipe to cache
       queryClient.setQueryData(
-        queryKeys.recipes.byId(data.data.recipe.id),
-        { success: true, recipe: data.data.recipe }
+        queryKeys.recipes.byId(recipe.id),
+        { success: true, recipe }
       );
     },
     onError: (error) => {
@@ -204,10 +205,11 @@ export function useUpdateRecipe() {
   return useMutation({
     mutationFn: updateRecipe,
     onSuccess: (data) => {
+      const { recipe } = data;
       // Update the specific recipe in cache
       queryClient.setQueryData(
-        queryKeys.recipes.byId(data.data.recipe.id),
-        { success: true, recipe: data.data.recipe }
+        queryKeys.recipes.byId(recipe.id),
+        { success: true, recipe }
       );
       
       // Invalidate the list to reflect changes

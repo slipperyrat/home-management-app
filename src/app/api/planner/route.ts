@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { z } from 'zod'
 
+import type { Database } from '@/types/supabase.generated'
 import { getUserAndHousehold } from '@/lib/server/supabaseAdmin'
-import { withAPISecurity } from '@/lib/security/apiProtection'
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection'
 import { sanitizeDeep, sanitizeText } from '@/lib/security/sanitize'
 import { logger } from '@/lib/logging/logger'
 import { createSuccessResponse, createValidationErrorResponse, handleApiError } from '@/lib/api/errors'
@@ -12,12 +13,15 @@ import { getDatabaseClient } from '@/lib/api/database'
 const plannerQuerySchema = z.object({
   category: z.string().max(50).optional(),
   status: z.string().max(50).optional(),
-  priority: z.string().max(20).optional()
+  priority: z.string().max(20).optional(),
 })
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createValidationErrorResponse([{ path: ['user'], message: 'User not authenticated', code: 'custom' }])
+      }
       const { householdId } = await getUserAndHousehold()
 
       const url = new URL(req.url)
@@ -46,18 +50,22 @@ export async function GET(request: NextRequest) {
 
       return createSuccessResponse({ items: data ?? [] }, 'Planner items fetched successfully')
     } catch (error) {
-      return handleApiError(error, { route: '/api/planner', method: 'GET', userId: user?.id })
+      return handleApiError(error, { route: '/api/planner', method: 'GET', userId: user?.id ?? '' })
     }
   }, {
     requireAuth: true,
     requireCSRF: false,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   })
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createValidationErrorResponse([{ path: ['user'], message: 'User not authenticated', code: 'custom' }])
+      }
+
       const { userId, householdId } = await getUserAndHousehold()
 
       const body = await req.json()
@@ -71,33 +79,48 @@ export async function POST(request: NextRequest) {
       const payload = validation.data
       const supabase = getDatabaseClient()
 
+      const insertPayload = {
+        title: payload.title,
+        category: payload.category ?? 'general',
+        status: payload.status ?? 'pending',
+        priority: payload.priority ?? 'medium',
+        household_id: householdId,
+        created_by: userId,
+        description: payload.description ?? null,
+        due_date: payload.due_date ?? null,
+      } satisfies Database['public']['Tables']['planner_items']['Insert'];
+
       const { data, error } = await supabase
         .from('planner_items')
-        .insert([{ ...payload, created_by: userId }])
+        .insert(insertPayload)
         .select('*')
-        .single()
+        .maybeSingle()
 
-      if (error) {
-        throw error
+      if (error || !data) {
+        throw error ?? new Error('Failed to create planner item')
       }
 
       await logger.info('Planner item created', {
         userId,
         householdId,
         plannerItemId: data.id,
-        securityEvent: false
+        securityEvent: false,
       })
 
       return createSuccessResponse({ item: data }, 'Planner item created', 201)
     } catch (error) {
-      return handleApiError(error, { route: '/api/planner', method: 'POST', userId: user?.id })
+      return handleApiError(error, { route: '/api/planner', method: 'POST', userId: user?.id ?? '' })
     }
   })
 }
 
 export async function PUT(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createValidationErrorResponse([{ path: ['user'], message: 'User not authenticated', code: 'custom' }])
+      }
+
       const { householdId } = await getUserAndHousehold()
       const body = await req.json()
       const sanitizedBody = sanitizeDeep(body, { description: 'rich' })
@@ -110,28 +133,40 @@ export async function PUT(request: NextRequest) {
       const { id, ...updates } = validation.data
 
       const supabase = getDatabaseClient()
+      const updatePayload: Record<string, unknown> = {}
+      if (updates.title !== undefined) updatePayload.title = updates.title
+      if (updates.description !== undefined) updatePayload.description = updates.description ?? null
+      if (updates.category !== undefined) updatePayload.category = updates.category ?? 'general'
+      if (updates.due_date !== undefined) updatePayload.due_date = updates.due_date ?? null;
+      if (updates.status !== undefined) updatePayload.status = updates.status ?? 'pending'
+      if (updates.priority !== undefined) updatePayload.priority = updates.priority ?? 'medium'
+
       const { data, error } = await supabase
         .from('planner_items')
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update(updatePayload)
         .eq('id', id)
         .eq('household_id', householdId)
         .select('*')
-        .single()
+        .maybeSingle()
 
-      if (error) {
-        throw error
+      if (error || !data) {
+        throw error ?? new Error('Failed to update planner item')
       }
 
       return createSuccessResponse({ item: data }, 'Planner item updated')
     } catch (error) {
-      return handleApiError(error, { route: '/api/planner', method: 'PUT', userId: user?.id })
+      return handleApiError(error, { route: '/api/planner', method: 'PUT', userId: user?.id ?? '' })
     }
   })
 }
 
 export async function DELETE(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createValidationErrorResponse([{ path: ['user'], message: 'User not authenticated', code: 'custom' }])
+      }
+
       const { householdId } = await getUserAndHousehold()
       const url = new URL(req.url)
       const id = url.searchParams.get('id')
@@ -141,8 +176,8 @@ export async function DELETE(request: NextRequest) {
           {
             path: ['id'],
             message: 'id is required',
-            code: 'custom'
-          }
+            code: 'custom',
+          },
         ])
       }
 
@@ -159,9 +194,11 @@ export async function DELETE(request: NextRequest) {
 
       return createSuccessResponse({ id }, 'Planner item deleted')
     } catch (error) {
-      return handleApiError(error, { route: '/api/planner', method: 'DELETE', userId: user?.id })
+      return handleApiError(error, { route: '/api/planner', method: 'DELETE', userId: user?.id ?? '' })
     }
   }, {
-    requireCSRF: true
+    requireAuth: true,
+    requireCSRF: true,
+    rateLimitConfig: 'api',
   })
 }

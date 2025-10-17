@@ -12,10 +12,22 @@ import {
   Clock,
   AlertTriangle
 } from 'lucide-react';
-import { CorrectionModal, CorrectionData, AISuggestion } from './CorrectionModal';
+import { CorrectionModal } from './CorrectionModal';
+import type { AISuggestion as BaseAISuggestion } from '@/lib/ai/suggestionProcessor';
+import type { CorrectionData } from '@/lib/ai/types/learning';
+
+type UISuggestion = BaseAISuggestion & {
+  parsed_item?: {
+    review_status: 'auto_approved' | 'needs_review' | 'manual_review';
+    confidence_score: number;
+  };
+  user_feedback: string;
+  created_at: string;
+  ai_reasoning?: string;
+};
 
 interface SuggestionCardProps {
-  suggestion: AISuggestion;
+  suggestion: UISuggestion;
   onCorrectionSaved?: () => void;
 }
 
@@ -93,7 +105,7 @@ export function SuggestionCard({ suggestion, onCorrectionSaved }: SuggestionCard
             <div className="flex items-center gap-2">
               {getSuggestionIcon(suggestion.suggestion_type)}
               <CardTitle className="text-lg">
-                {suggestion.suggestion_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                {suggestion.suggestion_type.replace(/_/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase())}
               </CardTitle>
             </div>
             <div className="flex items-center gap-2">
@@ -203,13 +215,7 @@ export function SuggestionCard({ suggestion, onCorrectionSaved }: SuggestionCard
         </CardContent>
       </Card>
 
-      {/* Correction Modal */}
-      <CorrectionModal
-        isOpen={isCorrectionModalOpen}
-        onClose={() => setIsCorrectionModalOpen(false)}
-        suggestion={suggestion}
-        onSaveCorrection={handleSaveCorrection}
-      />
+      <CorrectionModal open={isCorrectionModalOpen} onClose={() => setIsCorrectionModalOpen(false)} />
     </>
   );
 }

@@ -139,7 +139,6 @@ export function QuickAdd({ filters, members }: QuickAddProps) {
                 mode="single"
                 selected={dueDate}
                 onSelect={(date) => setDueDate(date ?? undefined)}
-                initialFocus
               />
               <div className="flex items-center justify-between border-t border-white/10 p-2 text-xs text-slate-400">
                 <Button variant="ghost" size="sm" className="text-xs" onClick={() => setDueDate(undefined)}>

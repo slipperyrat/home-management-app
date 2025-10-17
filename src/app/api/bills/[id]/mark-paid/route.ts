@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { markBillPaidSchema } from '@/lib/validation/schemas';
@@ -9,8 +9,18 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Mark paid attempted without authenticated user', {
+          url: req.url,
+          route: '/api/bills/[id]/mark-paid',
+          securityEvent: true,
+          severity: 'medium',
+        });
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       const resolvedParams = await params;
       const billId = resolvedParams.id;
       
@@ -100,7 +110,11 @@ export async function POST(
       }, 'Bill marked as paid successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/bills/[id]/mark-paid', method: 'POST', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/bills/[id]/mark-paid',
+        method: 'POST',
+        ...(user ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database.types';
+import type { Database } from '@/types/supabase.generated';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -98,6 +98,20 @@ type ChoreSuggestion = {
 
 type EnergyDistribution = Record<'low' | 'medium' | 'high', number>;
 
+function createSuggestion(
+  householdId: string,
+  base: Omit<ChoreSuggestion, 'household_id' | 'created_at' | 'updated_at' | 'ai_suggested'>
+): ChoreSuggestion {
+  const timestamp = new Date().toISOString();
+  return {
+    ...base,
+    household_id: householdId,
+    ai_suggested: true,
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+}
+
 function generateAIChoreSuggestions(
   chores: ChoreRecord[],
   completions: CompletionRecord[],
@@ -142,7 +156,7 @@ function generateAIChoreSuggestions(
 
     // Suggest complementary chores
     if (category === 'cleaning') {
-      suggestions.push({
+      suggestions.push(createSuggestion(householdId, {
         id: 'deep-clean-suggestion',
         title: 'Deep Clean Session',
         description: 'Based on your cleaning patterns, consider a comprehensive deep cleaning session',
@@ -154,11 +168,11 @@ function generateAIChoreSuggestions(
         reasoning: 'You frequently do cleaning chores, suggesting a preference for maintaining a clean environment',
         suggested_frequency: 'monthly',
         priority: 'medium'
-      });
+      }));
     }
 
     if (category === 'maintenance') {
-      suggestions.push({
+      suggestions.push(createSuggestion(householdId, {
         id: 'preventive-maintenance',
         title: 'Preventive Maintenance Check',
         description: 'Schedule regular maintenance to prevent larger issues',
@@ -170,11 +184,11 @@ function generateAIChoreSuggestions(
         reasoning: 'Regular maintenance can reduce the need for complex repairs',
         suggested_frequency: 'quarterly',
         priority: 'high'
-      });
+      }));
     }
 
     if (category === 'cooking') {
-      suggestions.push({
+      suggestions.push(createSuggestion(householdId, {
         id: 'meal-prep-suggestion',
         title: 'Weekly Meal Prep',
         description: 'Batch cooking can save time and ensure healthy meals',
@@ -186,13 +200,13 @@ function generateAIChoreSuggestions(
         reasoning: 'Meal prep can complement your existing cooking routine',
         suggested_frequency: 'weekly',
         priority: 'medium'
-      });
+      }));
     }
   });
 
   // Generate difficulty-based suggestions
   if (avgDifficulty > 70) {
-    suggestions.push({
+    suggestions.push(createSuggestion(householdId, {
       id: 'easy-chore-balance',
       title: 'Quick Daily Tasks',
       description: 'Add some simple daily chores to balance your routine',
@@ -204,11 +218,11 @@ function generateAIChoreSuggestions(
       reasoning: 'Your current chores are mostly high-difficulty, adding easy tasks can provide balance',
       suggested_frequency: 'daily',
       priority: 'low'
-    });
+    }));
   }
 
   if (avgDifficulty < 40) {
-    suggestions.push({
+    suggestions.push(createSuggestion(householdId, {
       id: 'challenge-suggestion',
       title: 'Skill-Building Project',
       description: 'Consider a more challenging chore to develop new skills',
@@ -220,12 +234,12 @@ function generateAIChoreSuggestions(
       reasoning: 'Adding challenging tasks can help develop new household skills',
       suggested_frequency: 'monthly',
       priority: 'medium'
-    });
+    }));
   }
 
   // Generate energy-level based suggestions
   if (energyDistribution.high > energyDistribution.low) {
-    suggestions.push({
+    suggestions.push(createSuggestion(householdId, {
       id: 'low-energy-balance',
       title: 'Evening Relaxation Tasks',
       description: 'Add some low-energy evening chores for better balance',
@@ -237,14 +251,14 @@ function generateAIChoreSuggestions(
       reasoning: 'You have many high-energy tasks, adding low-energy evening tasks can provide balance',
       suggested_frequency: 'daily',
       priority: 'low'
-    });
+    }));
   }
 
   // Generate seasonal suggestions
   const currentMonth = now.getMonth();
   
   if (currentMonth >= 2 && currentMonth <= 4) { // Spring
-    suggestions.push({
+    suggestions.push(createSuggestion(householdId, {
       id: 'spring-cleaning',
       title: 'Spring Cleaning',
       description: 'Perfect time for deep cleaning and organization',
@@ -256,33 +270,56 @@ function generateAIChoreSuggestions(
       reasoning: 'Spring is ideal for comprehensive cleaning and organization',
       suggested_frequency: 'seasonal',
       priority: 'high'
-    });
+    }));
+  }
+
+  if (currentMonth >= 5 && currentMonth <= 7) { // Summer
+    suggestions.push(createSuggestion(householdId, {
+      id: 'outdoor-maintenance',
+      title: 'Outdoor Maintenance',
+      description: 'Ideal time for garden and exterior maintenance',
+      category: 'maintenance',
+      ai_difficulty_rating: 60,
+      ai_estimated_duration: 180,
+      ai_energy_level: 'high',
+      ai_confidence: 85,
+      reasoning: 'Summer weather is optimal for outdoor maintenance and gardening',
+      suggested_frequency: 'seasonal',
+      priority: 'medium'
+    }));
   }
 
   if (currentMonth >= 8 && currentMonth <= 10) { // Fall
-    suggestions.push({
-      id: 'fall-maintenance',
-      title: 'Fall Home Maintenance',
-      description: 'Prepare your home for winter with essential maintenance',
+    suggestions.push(createSuggestion(householdId, {
+      id: 'fall-prep',
+      title: 'Fall Preparation',
+      description: 'Prepare your home for cooler weather',
       category: 'maintenance',
-      ai_difficulty_rating: 60,
-      ai_estimated_duration: 120,
+      ai_difficulty_rating: 65,
+      ai_estimated_duration: 150,
       ai_energy_level: 'medium',
       ai_confidence: 90,
-      reasoning: 'Fall is the perfect time to prepare your home for winter',
+      reasoning: 'Fall preparation helps maintain comfort and energy efficiency',
       suggested_frequency: 'seasonal',
       priority: 'high'
-    });
+    }));
   }
 
   // Generate completion pattern-based suggestions
   if (completions.length > 0) {
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const recentCompletions = completions
-      .filter(c => new Date(c.completed_at) > new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000))
+      .filter(c => {
+        if (!c.completed_at) {
+          return false;
+        }
+        const completedAt = new Date(c.completed_at);
+        return !Number.isNaN(completedAt.getTime()) && completedAt > sevenDaysAgo;
+      })
       .length;
 
     if (recentCompletions < 3) {
-      suggestions.push({
+      suggestions.push(createSuggestion(householdId, {
         id: 'motivation-boost',
         title: 'Quick Wins',
         description: 'Add some simple, satisfying tasks to boost motivation',
@@ -294,7 +331,7 @@ function generateAIChoreSuggestions(
         reasoning: 'Recent completion rate suggests adding simple tasks could boost motivation',
         suggested_frequency: 'daily',
         priority: 'low'
-      });
+      }));
     }
   }
 
@@ -304,7 +341,7 @@ function generateAIChoreSuggestions(
     const unassignedChores = chores.length - assignedChores;
 
     if (unassignedChores > assignedChores * 0.3) {
-      suggestions.push({
+      suggestions.push(createSuggestion(householdId, {
         id: 'assignment-optimization',
         title: 'Smart Assignment Review',
         description: 'Review and optimize chore assignments for better household harmony',
@@ -316,17 +353,9 @@ function generateAIChoreSuggestions(
         reasoning: 'Many chores are unassigned, suggesting an opportunity to optimize distribution',
         suggested_frequency: 'weekly',
         priority: 'medium'
-      });
+      }));
     }
   }
-
-  // Add AI confidence and metadata
-  suggestions.forEach(suggestion => {
-    suggestion.ai_suggested = true;
-    suggestion.household_id = householdId;
-    suggestion.created_at = now.toISOString();
-    suggestion.updated_at = now.toISOString();
-  });
 
   // Sort by AI confidence and priority
   return suggestions.sort((a, b) => {

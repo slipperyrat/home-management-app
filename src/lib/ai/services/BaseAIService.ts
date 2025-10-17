@@ -2,6 +2,11 @@
 // Provides common functionality for all AI services with easy fallback
 
 import OpenAI from 'openai';
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionSystemMessageParam,
+  ChatCompletionUserMessageParam,
+} from 'openai/resources/chat/completions';
 import { AIConfig, getAIConfig } from '../config/aiConfig';
 import { performanceMonitor } from '@/lib/monitoring/PerformanceMonitor';
 import { logger } from '@/lib/logging/logger';
@@ -82,7 +87,8 @@ export abstract class BaseAIService {
         
         return response;
       } catch (error) {
-        logger.warn('OpenAI provider failed', error as Error, { feature: this.featureName });
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        logger.warn('OpenAI provider failed', { feature: this.featureName, error: err.message });
         
         // Try fallback if enabled
         if (this.config.fallbackToMock) {
@@ -108,10 +114,11 @@ export abstract class BaseAIService {
             
             return response;
           } catch (mockError) {
-            logger.error('Mock fallback failed', mockError as Error, { feature: this.featureName });
+            const mockErr = mockError instanceof Error ? mockError : new Error('Unknown error');
+            logger.error('Mock fallback failed', mockErr, { feature: this.featureName });
             return {
               success: false,
-              error: `Both AI and mock failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              error: `Both AI and mock failed: ${err.message}`,
               provider: 'openai',
               processingTime: Date.now() - startTime
             };
@@ -119,7 +126,7 @@ export abstract class BaseAIService {
         } else {
           return {
             success: false,
-            error: `OpenAI failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            error: `OpenAI failed: ${err.message}`,
             provider: 'openai',
             processingTime: Date.now() - startTime
           };
@@ -139,9 +146,11 @@ export abstract class BaseAIService {
           processingTime: Date.now() - startTime
         };
       } catch (error) {
+        const err = error instanceof Error ? error : new Error('Unknown error');
+        logger.error('Mock provider failed', err, { feature: this.featureName });
         return {
           success: false,
-          error: `Mock failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          error: `Mock failed: ${err.message}`,
           provider: 'mock',
           processingTime: Date.now() - startTime
         };
@@ -160,7 +169,7 @@ export abstract class BaseAIService {
     fn: () => Promise<T>,
     retries: number
   ): Promise<T> {
-    let lastError: Error;
+    let lastError: Error | undefined;
     
     for (let i = 0; i <= retries; i++) {
       try {
@@ -181,20 +190,21 @@ export abstract class BaseAIService {
       }
     }
     
-    throw lastError!;
+    throw lastError ?? new Error('Unknown error');
   }
 
-  protected createOpenAIPrompt(systemPrompt: string, userPrompt: string) {
-    return [
-      {
-        role: 'system',
-        content: systemPrompt
-      },
-      {
-        role: 'user',
-        content: userPrompt
-      }
-    ];
+  protected createOpenAIPrompt(systemPrompt: string, userPrompt: string): ChatCompletionMessageParam[] {
+    const systemMessage: ChatCompletionSystemMessageParam = {
+      role: 'system',
+      content: systemPrompt,
+    };
+
+    const userMessage: ChatCompletionUserMessageParam = {
+      role: 'user',
+      content: userPrompt,
+    };
+
+    return [systemMessage, userMessage] satisfies ChatCompletionMessageParam[];
   }
 
   protected parseAIResponse<T>(response: string, fallback: T): T {
@@ -203,7 +213,11 @@ export abstract class BaseAIService {
       const cleanContent = response.replace(/```json\n?|\n?```/g, '').trim();
       return JSON.parse(cleanContent);
     } catch (error) {
-      logger.warn('Failed to parse AI response', error as Error, { feature: this.featureName });
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('Failed to parse AI response', {
+        feature: this.featureName,
+        error: err.message,
+      });
       return fallback;
     }
   }

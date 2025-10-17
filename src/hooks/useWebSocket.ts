@@ -6,48 +6,18 @@ import { io, Socket } from 'socket.io-client';
 import { useUser } from '@clerk/nextjs';
 import { useUserData } from './useUserData';
 import { logger } from '@/lib/logging/logger';
+import type { RealTimeAIRequest } from '@/types/websocket';
 
-type WebSocketPayload = WebSocketMessage['data'];
-
-interface BaseWebSocketMessage<TType extends WebSocketMessage['type'], TData> {
-  type: TType;
+interface WebSocketEnvelope<TData = unknown> {
+  type: string;
   data: TData;
   timestamp: string;
-  requestId: string;
-  userId: string;
-  householdId: string;
+  requestId?: string;
+  userId?: string;
+  householdId?: string;
 }
-
-type AIProcessingStartMessage = BaseWebSocketMessage<'ai_processing_start', Record<string, never>>;
-type AIProcessingProgressMessage = BaseWebSocketMessage<'ai_processing_progress', AIProcessingProgress>;
-type AIProcessingCompleteMessage = BaseWebSocketMessage<
-  'ai_processing_complete',
-  AIProcessingResult & { processingTime: number; provider: string; fallbackUsed: boolean }
->;
-type AIProcessingErrorMessage = BaseWebSocketMessage<'ai_processing_error', { error: string }>;
-type AISuggestionMessage = BaseWebSocketMessage<'ai_suggestion', Record<string, unknown>>;
-type AIInsightMessage = BaseWebSocketMessage<'ai_insight', Record<string, unknown>>;
-type AILearningUpdateMessage = BaseWebSocketMessage<'ai_learning_update', Record<string, unknown>>;
-
-export type WebSocketMessage =
-  | AIProcessingStartMessage
-  | AIProcessingProgressMessage
-  | AIProcessingCompleteMessage
-  | AIProcessingErrorMessage
-  | AISuggestionMessage
-  | AIInsightMessage
-  | AILearningUpdateMessage;
 
 type AIRequestContext = Record<string, unknown>;
-
-export interface WebSocketMessage {
-  type: 'ai_processing_start' | 'ai_processing_progress' | 'ai_processing_complete' | 'ai_processing_error' | 'ai_suggestion' | 'ai_insight' | 'ai_learning_update';
-  data: WebSocketPayload;
-  timestamp: string;
-  requestId: string;
-  userId: string;
-  householdId: string;
-}
 
 export interface AIProcessingProgress {
   step: string;
@@ -63,6 +33,7 @@ export interface AIProcessingResult {
   processingTime: number;
   provider: string;
   fallbackUsed: boolean;
+  requestId?: string;
 }
 
 export interface UseWebSocketReturn {
@@ -70,7 +41,7 @@ export interface UseWebSocketReturn {
   isConnected: boolean;
   isConnecting: boolean;
   error: string | null;
-  lastMessage: WebSocketMessage | null;
+  lastMessage: WebSocketEnvelope | null;
   processingRequests: Map<string, AIProcessingProgress>;
   completedRequests: Map<string, AIProcessingResult>;
   
@@ -90,12 +61,21 @@ export function useWebSocket(): UseWebSocketReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
+  const [lastMessage, setLastMessage] = useState<WebSocketEnvelope | null>(null);
   const [processingRequests, setProcessingRequests] = useState<Map<string, AIProcessingProgress>>(new Map());
   const [completedRequests, setCompletedRequests] = useState<Map<string, AIProcessingResult>>(new Map());
   
   const socketRef = useRef<Socket | null>(null);
   const requestCounterRef = useRef(0);
+
+  const joinHousehold = useCallback((householdId: string) => {
+    if (socketRef.current?.connected && user?.id) {
+      socketRef.current.emit('join_household', {
+        userId: user.id,
+        householdId,
+      });
+    }
+  }, [user?.id]);
 
   const connect = useCallback(() => {
     if (socketRef.current?.connected || isConnecting) {
@@ -116,7 +96,7 @@ export function useWebSocket(): UseWebSocketReturn {
       });
 
       newSocket.on('connect', () => {
-        logger.info('WebSocket connected', { userId: user?.id });
+        logger.info('WebSocket connected', user?.id ? { userId: user.id } : {});
         setIsConnected(true);
         setIsConnecting(false);
         setError(null);
@@ -134,72 +114,97 @@ export function useWebSocket(): UseWebSocketReturn {
       });
 
       newSocket.on('connect_error', (err) => {
-        logger.error('WebSocket connection error', err, { userId: user?.id });
+        logger.error('WebSocket connection error', err, user?.id ? { userId: user.id } : {});
         setError(err.message);
         setIsConnecting(false);
       });
 
-      newSocket.on('ai_update', (message: WebSocketMessage) => {
+      newSocket.on('ai_update', (message: WebSocketEnvelope) => {
         logger.debug('Received AI update', { message });
-        setLastMessage(message);
+        setLastMessage(message as any);
         
         // Handle different message types
         switch (message.type) {
-          case 'ai_processing_start':
-            setProcessingRequests(prev => new Map(prev.set(message.requestId, {
+          case 'ai_processing_start': {
+            const requestId = message.requestId;
+            if (!requestId) return;
+            setProcessingRequests(prev => new Map(prev.set(requestId, {
               step: 'starting',
               progress: 0,
               message: 'Starting AI processing...'
             })));
             break;
+          }
             
-          case 'ai_processing_progress':
-            setProcessingRequests(prev => new Map(prev.set(message.requestId, {
-              step: message.data.step,
-              progress: message.data.progress,
-              message: message.data.message,
-              estimatedTimeRemaining: message.data.estimatedTimeRemaining
+          case 'ai_processing_progress': {
+            const requestId = message.requestId;
+            if (!requestId) return;
+            const data = message.data as AIProcessingProgress;
+            setProcessingRequests(prev => new Map(prev.set(requestId, {
+              step: data?.step ?? 'processing',
+              progress: data?.progress ?? 0,
+              message: data?.message ?? 'Processing...',
+              ...(data?.estimatedTimeRemaining !== undefined
+                ? { estimatedTimeRemaining: data.estimatedTimeRemaining }
+                : {}),
             })));
             break;
+          }
             
-          case 'ai_processing_complete':
+          case 'ai_processing_complete': {
+            const requestId = message.requestId;
+            if (!requestId) return;
+            const data = message.data as AIProcessingResult;
             setProcessingRequests(prev => {
               const newMap = new Map(prev);
-              newMap.delete(message.requestId);
+              newMap.delete(requestId);
               return newMap;
             });
-            setCompletedRequests(prev => new Map(prev.set(message.requestId, {
+            setCompletedRequests(prev => new Map(prev.set(requestId, {
               success: true,
-              data: message.data.results,
-              processingTime: message.data.processingTime,
-              provider: message.data.provider,
-              fallbackUsed: message.data.fallbackUsed
+              data: data?.data,
+              processingTime: data?.processingTime ?? 0,
+              provider: data?.provider ?? 'unknown',
+              fallbackUsed: data?.fallbackUsed ?? false,
+              requestId,
             })));
             break;
+          }
             
-          case 'ai_processing_error':
+          case 'ai_processing_error': {
+            const requestId = message.requestId;
+            if (!requestId) return;
+            const data = message.data as { error?: string };
             setProcessingRequests(prev => {
               const newMap = new Map(prev);
-              newMap.delete(message.requestId);
+              newMap.delete(requestId);
               return newMap;
             });
-            setCompletedRequests(prev => new Map(prev.set(message.requestId, {
+            setCompletedRequests(prev => new Map(prev.set(requestId, {
               success: false,
-              error: message.data.error,
+              error: data?.error ?? 'Unknown error',
               processingTime: 0,
               provider: 'error',
-              fallbackUsed: false
+              fallbackUsed: false,
+              requestId,
             })));
             break;
+          }
         }
       });
 
       newSocket.on('joined_household', (data: { householdId: string }) => {
-        logger.info('Joined household via WebSocket', { householdId: data.householdId, userId: user?.id });
+        logger.info(
+          'Joined household via WebSocket',
+          {
+            householdId: data.householdId,
+            ...(user?.id ? { userId: user.id } : {}),
+          }
+        );
       });
 
       newSocket.on('error', (err: Error) => {
-        logger.error('WebSocket client error', err, { userId: user?.id });
+        logger.error('WebSocket client error', err, user?.id ? { userId: user.id } : {});
         setError(err.message || 'WebSocket error occurred');
       });
 
@@ -208,7 +213,11 @@ export function useWebSocket(): UseWebSocketReturn {
 
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to connect WebSocket');
-      logger.error('Failed to establish WebSocket connection', error, { userId: user?.id });
+      logger.error(
+        'Failed to establish WebSocket connection',
+        error,
+        user?.id ? { userId: user.id } : {},
+      );
       setError(error.message);
       setIsConnecting(false);
     }
@@ -224,15 +233,6 @@ export function useWebSocket(): UseWebSocketReturn {
     }
   }, []);
 
-  const joinHousehold = useCallback((householdId: string) => {
-    if (socketRef.current?.connected && user?.id) {
-      socketRef.current.emit('join_household', {
-        userId: user.id,
-        householdId
-      });
-    }
-  }, [user?.id]);
-
   const requestAIProcessing = useCallback((type: string, context: AIRequestContext): string => {
     if (!socketRef.current?.connected || !user?.id || !userData?.household?.id) {
       throw new Error('WebSocket not connected or user not authenticated');
@@ -240,13 +240,16 @@ export function useWebSocket(): UseWebSocketReturn {
 
     const requestId = `ai_request_${Date.now()}_${++requestCounterRef.current}`;
     
-    socketRef.current.emit('ai_process_request', {
-      type,
-      context,
+    const request: RealTimeAIRequest = {
       requestId,
       userId: user.id,
-      householdId: userData.household.id
-    });
+      householdId: userData.household.id,
+      priority: 'medium',
+      type: type as RealTimeAIRequest['type'],
+      context: context as RealTimeAIRequest['context'],
+    };
+
+    socketRef.current.emit('ai_process_request', request as RealTimeAIRequest);
 
     return requestId;
   }, [user?.id, userData?.household?.id]);

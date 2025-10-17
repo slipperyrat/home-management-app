@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdminClient, getUserAndHousehold, createErrorResponse, ServerError } from '@/lib/server/supabaseAdmin';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database.types';
+import type { Database } from '@/types/supabase.generated';
 
 export async function GET(_request: NextRequest) {
   try {
@@ -265,6 +265,19 @@ function generateNutritionalGoals(household: HouseholdRecord) {
     balanced_meals: 'Aim for protein, carbs, and vegetables in each meal',
     variety: 'Include different food groups throughout the week',
     seasonal_focus: 'Prioritize seasonal ingredients for freshness and cost',
-    household_size_adjustment: `Adjust portions for ${household?.member_count || 'your'} household members`
+    household_size_adjustment: `Adjust portions for ${householdSizeDescription(household)} household members`
   };
+}
+
+function householdSizeDescription(household: HouseholdRecord) {
+  if (!household) {
+    return 'your';
+  }
+
+  const size = (household as HouseholdRecord & { member_count?: number }).member_count;
+  if (typeof size === 'number' && Number.isFinite(size) && size > 0) {
+    return size.toString();
+  }
+
+  return 'your';
 }

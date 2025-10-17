@@ -4,7 +4,8 @@ import { getAuth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { canAccessFeatureFromEntitlements } from '@/lib/server/canAccessFeature';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database.types';
+import type { Database, Json } from '@/types/supabase.generated';
+import { toEntitlements } from '@/lib/entitlements';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,7 +14,7 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase: SupabaseClient<Database> = createClient(supabaseUrl, supabaseKey);
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 const GetTemplatesSchema = z.object({
   household_id: z.string().uuid().optional(),
@@ -49,15 +50,17 @@ export async function GET(request: NextRequest) {
       }
 
       // Get entitlements to check Pro access
-      const { data: entitlements, error: entitlementsError } = await supabase
+      const { data: entitlementsRow, error: entitlementsError } = await supabase
         .from('entitlements')
         .select('*')
         .eq('household_id', household_id)
         .single();
 
-      if (entitlementsError || !entitlements) {
+      if (entitlementsError || !entitlementsRow) {
         return NextResponse.json({ error: 'Entitlements not found' }, { status: 404 });
       }
+
+      const entitlements = toEntitlements(entitlementsRow);
 
       // Check if user can access calendar templates (Pro feature)
       if (!canAccessFeatureFromEntitlements(entitlements, 'calendar_templates')) {
@@ -90,7 +93,10 @@ export async function GET(request: NextRequest) {
     const { data: templates, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
-      logger.error('Error fetching calendar templates', error, { userId, householdId: household_id });
+      logger.error('Error fetching calendar templates', error, {
+        userId,
+        ...(household_id ? { householdId: household_id } : {}),
+      });
       return NextResponse.json({ error: 'Failed to fetch templates' }, { status: 500 });
     }
 
@@ -113,7 +119,7 @@ const CreateTemplateSchema = z.object({
     end: z.string(),
     color: z.string().optional(),
     recurring: z.boolean().optional(),
-  })),
+  })).optional().default([]),
 });
 
 export async function POST(request: NextRequest) {
@@ -144,15 +150,17 @@ export async function POST(request: NextRequest) {
     // Role check removed - Pro access is verified through entitlements
 
     // Get entitlements to check Pro access
-    const { data: entitlements, error: entitlementsError } = await supabase
+    const { data: entitlementsRow, error: entitlementsError } = await supabase
       .from('entitlements')
       .select('*')
       .eq('household_id', household_id)
       .single();
 
-    if (entitlementsError || !entitlements) {
+    if (entitlementsError || !entitlementsRow) {
       return NextResponse.json({ error: 'Entitlements not found' }, { status: 404 });
     }
+
+    const entitlements = toEntitlements(entitlementsRow);
 
     // Check if user can access calendar templates (Pro feature)
     if (!canAccessFeatureFromEntitlements(entitlements, 'calendar_templates')) {
@@ -163,21 +171,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the template
+    const templateInsert: Database['public']['Tables']['calendar_templates']['Insert'] = {
+      household_id,
+      name,
+      description: description ?? null,
+      template_type,
+      rrule,
+      events: events as unknown as Json,
+      is_active: true,
+    };
+
     const { data: template, error: createError } = await supabase
       .from('calendar_templates')
-      .insert({
-        household_id,
-        name,
-        description,
-        template_type,
-        rrule,
-        events,
-      })
+      .insert(templateInsert)
       .select()
       .single();
 
     if (createError) {
-      logger.error('Error creating calendar template', createError, { userId, householdId: household_id });
+      logger.error('Error creating calendar template', createError, {
+        userId,
+        householdId: household_id,
+      });
       return NextResponse.json({ error: 'Failed to create template' }, { status: 500 });
     }
 

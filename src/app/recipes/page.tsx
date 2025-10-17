@@ -17,7 +17,7 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
   const query = typeof resolvedSearchParams?.q === "string" ? resolvedSearchParams.q : "";
   const tag = typeof resolvedSearchParams?.tag === "string" ? resolvedSearchParams.tag : undefined;
 
-  const recipesPromise = listRecipes({ query, tag });
+  const recipesPromise = listRecipes({ query, ...(tag ? { tag } : {}) });
 
   return (
     <div className="flex flex-col gap-6 px-4 py-6 lg:px-0">
@@ -38,7 +38,7 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
       </header>
 
       <section className="rounded-3xl border border-white/5 bg-[#101522] p-6 shadow-lg shadow-black/20">
-        <RecipeFiltersClient defaultQuery={query} defaultTag={tag} />
+        <RecipeFiltersClient defaultQuery={query} defaultTag={tag ?? ''} />
         <div className="mt-6">
           <Suspense fallback={<RecipeListSkeleton />}>
             <RecipesGridSection recipesPromise={recipesPromise} />

@@ -1,43 +1,55 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { NextRequest } from 'next/server';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { createRecipeSchema } from '@/lib/validation/schemas';
+import { createRecipeInputSchema } from '@/lib/validation/schemas';
+import type { Database, Json } from '@/types/supabase.generated';
+import { z } from 'zod';
+
+type ParsedIngredient = {
+  name: string;
+  amount: number | null;
+  unit: string | null;
+  notes: string | null;
+};
+
+type ParsedIngredientsJson = Json;
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { id: recipeId } = await params;
 
       if (!recipeId) {
         return createErrorResponse('Recipe ID is required', 400);
       }
 
-      // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
 
       const supabase = getDatabaseClient();
 
-      // First, verify the recipe belongs to the user's household
       const { data: existingRecipe, error: fetchError } = await supabase
         .from('recipes')
         .select('id, household_id, title')
         .eq('id', recipeId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle<Pick<Database['public']['Tables']['recipes']['Row'], 'id' | 'household_id' | 'title'>>();
 
       if (fetchError || !existingRecipe) {
         return createErrorResponse('Recipe not found or access denied', 404);
       }
 
-      // Delete the recipe
       const { error: deleteError } = await supabase
         .from('recipes')
         .delete()
@@ -45,31 +57,28 @@ export async function DELETE(
         .eq('household_id', household.id);
 
       if (deleteError) {
-        console.error('Error deleting recipe:', deleteError);
         return createErrorResponse('Failed to delete recipe', 500, deleteError.message);
       }
 
-      // Add audit log entry
       await createAuditLog({
         action: 'recipe.deleted',
         targetTable: 'recipes',
         targetId: recipeId,
         userId: user.id,
-        metadata: { 
+        metadata: {
           recipe_title: existingRecipe.title,
-          household_id: household.id
-        }
+          household_id: household.id,
+        },
       });
 
       return createSuccessResponse({}, 'Recipe deleted successfully');
-
     } catch (error) {
-      return handleApiError(error, { route: '/api/recipes/[id]', method: 'DELETE', userId: user.id });
+      return handleApiError(error, { route: '/api/recipes/[id]', method: 'DELETE', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }
 
@@ -77,171 +86,139 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
-      const { id: recipeId } = await params;
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
 
+      const { id: recipeId } = await params;
       if (!recipeId) {
         return createErrorResponse('Recipe ID is required', 400);
       }
 
-      // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
 
-      // Parse and validate request body using Zod schema
-      let validatedData;
+      let validatedData: z.infer<typeof createRecipeInputSchema>;
       try {
         const body = await req.json();
-        console.log('Request body:', body);
-        
-        const tempSchema = createRecipeSchema.omit({ household_id: true });
-        validatedData = tempSchema.parse(body);
-      } catch (validationError: any) {
-        console.log('Validation failed:', validationError.errors);
-        return createErrorResponse('Invalid input', 400, validationError.errors);
+        validatedData = createRecipeInputSchema.parse(body);
+      } catch (validationError: unknown) {
+        if (validationError instanceof z.ZodError) {
+          return createErrorResponse('Invalid input', 400, validationError.errors);
+        }
+        return createErrorResponse('Invalid input', 400);
       }
 
       const supabase = getDatabaseClient();
 
-      // First, verify the recipe belongs to the user's household
       const { data: existingRecipe, error: fetchError } = await supabase
         .from('recipes')
-        .select('id, household_id, title')
+        .select('*')
         .eq('id', recipeId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle<Database['public']['Tables']['recipes']['Row']>();
 
       if (fetchError || !existingRecipe) {
         return createErrorResponse('Recipe not found or access denied', 404);
       }
 
-      // Parse ingredients from text to structured format
-      const parsedIngredients = parseIngredients(validatedData.ingredients);
-      
-      // Parse instructions from text to array
-      const parsedInstructions = parseInstructions(validatedData.instructions);
+      const ingredients = parseIngredients(validatedData.ingredients);
+      const instructions = parseInstructions(validatedData.instructions);
 
-      // Update the recipe in the database with validated data
+      const updatePayload: Database['public']['Tables']['recipes']['Update'] = {
+        title: validatedData.title,
+        description: validatedData.description ?? existingRecipe.description ?? null,
+        ingredients: ingredients as ParsedIngredientsJson,
+        instructions,
+        prep_time: validatedData.prep_time,
+        cook_time: validatedData.cook_time,
+        servings: validatedData.servings,
+        tags: validatedData.tags ?? existingRecipe.tags ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
       const { data: recipe, error: updateError } = await supabase
         .from('recipes')
-        .update({
-          title: validatedData.title,
-          description: validatedData.description || '',
-          ingredients: parsedIngredients, // JSONB array
-          instructions: parsedInstructions, // TEXT array
-          prep_time: validatedData.prep_time,
-          cook_time: validatedData.cook_time,
-          servings: validatedData.servings,
-          tags: validatedData.tags || [],
-          updated_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('id', recipeId)
         .eq('household_id', household.id)
         .select('*')
-        .single();
+        .maybeSingle<Database['public']['Tables']['recipes']['Row']>();
 
-      if (updateError) {
-        console.error('Database update error:', updateError);
-        return createErrorResponse('Failed to update recipe in database', 500, updateError.message);
+      if (updateError || !recipe) {
+        return createErrorResponse('Failed to update recipe in database', 500, updateError?.message ?? 'Update failed');
       }
 
-      // Add audit log entry
       await createAuditLog({
         action: 'recipe.updated',
         targetTable: 'recipes',
         targetId: recipeId,
         userId: user.id,
-        metadata: { 
-          recipe_title: validatedData.title,
+        metadata: {
+          recipe_title: recipe.title,
           household_id: household.id,
-          ingredients_count: parsedIngredients.length
-        }
+          ingredients_count: ingredients.length,
+        },
       });
 
-      console.log('Recipe updated successfully:', recipe);
-
-      return createSuccessResponse({ 
-        recipe: {
-          id: recipe.id,
-          name: recipe.title, // Map back to 'name' for frontend compatibility
-          description: recipe.description,
-          prep_time: recipe.prep_time,
-          cook_time: recipe.cook_time,
-          servings: recipe.servings,
-          ingredients: recipe.ingredients,
-          instructions: recipe.instructions,
-          created_at: recipe.created_at,
-          household_id: recipe.household_id,
-          created_by: recipe.created_by,
-          updated_at: recipe.updated_at,
-          image_url: recipe.image_url,
-          tags: recipe.tags || [],
-          is_favorite: false, // Default value
-          difficulty: 'medium' // Default value
-        }
-      }, 'Recipe updated successfully');
-
+      return createSuccessResponse({ recipe }, 'Recipe updated successfully');
     } catch (error) {
-      return handleApiError(error, { route: '/api/recipes/[id]', method: 'PUT', userId: user.id });
+      return handleApiError(error, { route: '/api/recipes/[id]', method: 'PUT', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }
 
-// Helper function to parse ingredients text into structured format
-function parseIngredients(ingredientsText: string): any[] {
-  if (!ingredientsText) return [];
-  
-  // Split by newlines or commas and clean up
-  const lines = ingredientsText.split(/[\n,]+/).map(line => line.trim()).filter(Boolean);
-  
-  return lines.map((line, index) => {
-    // Try to parse quantity and unit from the line
-    const match = line.match(/^(\d+(?:\.\d+)?)?\s*([a-zA-Z]+)?\s*(.+)$/);
-    
+function parseIngredients(ingredientsText: string): ParsedIngredient[] {
+  if (!ingredientsText) {
+    return [];
+  }
+
+  const lines = ingredientsText
+    .split(/\r?\n|,/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.map((line) => {
+    const match = line.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?\s*(.*)$/);
+
     if (match) {
       const [, amount, unit, name] = match;
+      const parsedAmount = amount ? Number.parseFloat(amount) : null;
+
       return {
-        id: `temp-${index}`,
-        recipe_id: '', // Will be set by database
-        name: (name || line).trim(), // Fallback to full line if name is undefined
-        amount: amount ? parseFloat(amount) : 1,
-        unit: unit ? unit.trim() : '',
-        notes: ''
+        name: (name || '').trim(),
+        amount: Number.isFinite(parsedAmount ?? NaN) ? parsedAmount : null,
+        unit: unit?.trim() ?? null,
+        notes: null,
       };
     }
-    
-    // If no quantity/unit pattern, treat as just a name
+
     return {
-      id: `temp-${index}`,
-      recipe_id: '', // Will be set by database
       name: line,
-      amount: 1,
-      unit: '',
-      notes: ''
+      amount: null,
+      unit: null,
+      notes: null,
     };
   });
 }
 
-// Helper function to parse instructions text into array format
 function parseInstructions(instructionsText: string): string[] {
-  if (!instructionsText) return [];
-  
-  // Split by newlines and clean up
+  if (!instructionsText) {
+    return [];
+  }
+
   return instructionsText
-    .split('\n')
-    .map(line => line.trim())
+    .split(/\r?\n/)
+    .map((line) => line.trim())
     .filter(Boolean)
-    .map((line, _index) => {
-      // Remove step numbers if they exist (e.g., "1. ", "Step 1: ")
-      const cleaned = line.replace(/^(\d+\.?\s*|Step\s*\d+:\s*)/i, '').trim();
-      return cleaned || line; // If cleaning results in empty string, use original
-    });
+    .map((line) => line.replace(/^(\d+\.?\s*|Step\s*\d+:\s*)/i, '').trim() || line);
 }

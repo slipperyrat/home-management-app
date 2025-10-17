@@ -1,14 +1,20 @@
 // Push notification service using VAPID keys
 import { logger } from '@/lib/logging/logger';
 
+interface PushNotificationAction {
+  action: string;
+  title: string;
+  icon?: string;
+}
+
 interface PushNotificationData {
   title: string;
   body: string;
   icon?: string;
   badge?: string;
-  tag?: string;
+  tag?: string | null;
   data?: Record<string, unknown>;
-  actions?: NotificationAction[];
+  actions?: PushNotificationAction[];
 }
 
 class PushNotificationService {
@@ -122,16 +128,19 @@ class PushNotificationService {
       return;
     }
 
-    const options: NotificationOptions = {
+    const options: NotificationOptions & { actions?: Array<{ action: string; title: string; icon?: string }> } = {
       body: data.body,
       icon: data.icon || '/icons/icon-192x192.png',
       badge: data.badge || '/icons/icon-72x72.png',
-      tag: data.tag,
+      tag: data.tag ?? '',
       data: data.data,
-      actions: data.actions,
       requireInteraction: true,
       silent: false,
     };
+
+    if (Array.isArray(data.actions) && data.actions.length > 0) {
+      options.actions = data.actions.map(({ action, title, icon }) => ({ action, title, icon: icon ?? '' }));
+    }
 
     await this.registration.showNotification(data.title, options);
   }

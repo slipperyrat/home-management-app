@@ -3,7 +3,9 @@
 import React, { forwardRef, useId, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
-export interface FormInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+type BaseInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'>;
+
+export interface FormInputProps extends BaseInputProps {
   label?: string;
   error?: string;
   touched?: boolean;

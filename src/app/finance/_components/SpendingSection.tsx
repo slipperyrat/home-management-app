@@ -14,10 +14,9 @@ import type { SpendEntryDto } from "../_lib/types";
 
 interface SpendingSectionProps {
   entries: SpendEntryDto[];
-  householdId: string;
 }
 
-export function SpendingSection({ entries, householdId }: SpendingSectionProps) {
+export function SpendingSection({ entries }: SpendingSectionProps) {
   const router = useRouter();
   const [searchValue, setSearchValue] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string | "all">("all");
@@ -66,7 +65,7 @@ export function SpendingSection({ entries, householdId }: SpendingSectionProps) 
               Latest transactions across your household
             </CardDescription>
           </div>
-          <Button variant="secondary" className="rounded-2xl" onClick={() => router.push("/finance/spending/new")}>  
+          <Button variant="secondary" className="rounded-2xl" onClick={() => router.push("/finance/spending/new")}>
             <Plus className="mr-2 h-4 w-4" />
             Add Expense
           </Button>

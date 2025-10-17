@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { logger } from '@/lib/logging/logger';
@@ -8,30 +8,31 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
       const { id: listId } = await params;
 
       if (!listId) {
         return createErrorResponse('List ID is required', 400);
       }
 
-      // Get user and household data
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
 
       const supabase = getDatabaseClient();
 
-      // Get the shopping list
       const { data: list, error: listError } = await supabase
         .from('shopping_lists')
         .select('*')
         .eq('id', listId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle();
 
       if (listError || !list) {
         logger.warn('Shopping list not found or access denied', { listId, householdId: household.id });
@@ -41,7 +42,7 @@ export async function GET(
       return createSuccessResponse({ list }, 'Shopping list fetched successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/shopping-lists/[id]', method: 'GET', userId: user.id });
+      return handleApiError(error, { route: '/api/shopping-lists/[id]', method: 'GET', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
@@ -54,23 +55,25 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
       const { id: listId } = await params;
 
       if (!listId) {
         return createErrorResponse('List ID is required', 400);
       }
 
-      // Get user and household data
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
 
       const body = await req.json();
-      const { name, description } = body;
+      const { name, description } = body as Partial<{ name: string; description: string }>;
 
       if (!name || !name.trim()) {
         return createErrorResponse('List name is required', 400);
@@ -78,52 +81,49 @@ export async function PUT(
 
       const supabase = getDatabaseClient();
 
-      // First, verify the list belongs to the user's household
       const { data: existingList, error: fetchError } = await supabase
         .from('shopping_lists')
         .select('id, household_id, name')
         .eq('id', listId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle();
 
       if (fetchError || !existingList) {
         return createErrorResponse('Shopping list not found or access denied', 404);
       }
 
-      // Update the shopping list
       const { data: updatedList, error: updateError } = await supabase
         .from('shopping_lists')
         .update({
           name: name.trim(),
-          description: description?.trim() || '',
-          updated_at: new Date().toISOString()
+          description: description?.trim() ?? null,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', listId)
         .eq('household_id', household.id)
         .select('*')
-        .single();
+        .maybeSingle();
 
-      if (updateError) {
-        logger.error('Error updating shopping list', updateError, { listId, householdId: household.id });
-        return createErrorResponse('Failed to update shopping list', 500, updateError.message);
+      if (updateError || !updatedList) {
+        logger.error('Error updating shopping list', updateError ?? new Error('Update returned no rows'), { listId, householdId: household.id });
+        return createErrorResponse('Failed to update shopping list', 500, updateError?.message ?? 'Update failed');
       }
 
-      // Add audit log entry
       await createAuditLog({
         action: 'shopping_list.updated',
         targetTable: 'shopping_lists',
         targetId: listId,
         userId: user.id,
-        metadata: { 
+        metadata: {
           list_name: name.trim(),
-          household_id: household.id
-        }
+          household_id: household.id,
+        },
       });
 
       return createSuccessResponse({ list: updatedList }, 'Shopping list updated successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/shopping-lists/[id]', method: 'PUT', userId: user.id });
+      return handleApiError(error, { route: '/api/shopping-lists/[id]', method: 'PUT', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
@@ -136,36 +136,36 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
       const { id: listId } = await params;
 
       if (!listId) {
         return createErrorResponse('List ID is required', 400);
       }
 
-      // Get user and household data
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
 
       const supabase = getDatabaseClient();
 
-      // First, verify the list belongs to the user's household
       const { data: existingList, error: fetchError } = await supabase
         .from('shopping_lists')
         .select('id, household_id, name')
         .eq('id', listId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle();
 
       if (fetchError || !existingList) {
         return createErrorResponse('Shopping list not found or access denied', 404);
       }
 
-      // Delete the shopping list (this will cascade delete items)
       const { error: deleteError } = await supabase
         .from('shopping_lists')
         .delete()
@@ -177,22 +177,21 @@ export async function DELETE(
         return createErrorResponse('Failed to delete shopping list', 500, deleteError.message);
       }
 
-      // Add audit log entry
       await createAuditLog({
         action: 'shopping_list.deleted',
         targetTable: 'shopping_lists',
         targetId: listId,
         userId: user.id,
-        metadata: { 
+        metadata: {
           list_name: existingList.name,
-          household_id: household.id
-        }
+          household_id: household.id,
+        },
       });
 
       return createSuccessResponse({}, 'Shopping list deleted successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/shopping-lists/[id]', method: 'DELETE', userId: user.id });
+      return handleApiError(error, { route: '/api/shopping-lists/[id]', method: 'DELETE', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,

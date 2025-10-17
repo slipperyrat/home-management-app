@@ -6,7 +6,7 @@ import { withAdminAPISecurity } from "@/lib/security/apiProtection";
 import { securityMonitor } from "@/lib/security/monitoring";
 
 export async function GET(request: NextRequest) {
-  return withAdminAPISecurity(request, async (req, user) => {
+  return withAdminAPISecurity(request, async () => {
     try {
       // Get security metrics
       const metrics = securityMonitor.getSecurityMetrics();

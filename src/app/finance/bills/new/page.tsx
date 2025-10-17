@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { useUserData } from '@/hooks/useUserData';
-import { canAccessFeature } from '@/lib/entitlements';
+import { canAccessFeature, type Entitlements } from '@/lib/entitlements';
 import { fetchWithCSRF } from '@/lib/csrf-client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,7 +49,11 @@ export default function NewBillPage() {
 
     const householdPlan = userData.household.plan || 'free';
 
-    if (!canAccessFeature(householdPlan, 'bill_management')) {
+    const planEntitlements: Entitlements | null = typeof householdPlan === 'object'
+      ? (householdPlan as Entitlements)
+      : null;
+
+    if (!canAccessFeature(planEntitlements, 'bill_management')) {
       void router.push('/upgrade');
     }
   }, [isLoaded, isSignedIn, router, userData]);

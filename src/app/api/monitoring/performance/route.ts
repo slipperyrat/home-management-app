@@ -1,13 +1,17 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { performanceMonitor } from '@/lib/monitoring/PerformanceMonitor';
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
 
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -52,7 +56,7 @@ export async function GET(request: NextRequest) {
       return handleApiError(error, {
         route: '/api/monitoring/performance',
         method: 'GET',
-        userId: user.id,
+        userId: user?.id ?? '',
       });
     }
   }, {
@@ -63,9 +67,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
 
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -103,7 +111,7 @@ export async function POST(request: NextRequest) {
       return handleApiError(error, {
         route: '/api/monitoring/performance',
         method: 'POST',
-        userId: user.id,
+        userId: user?.id ?? '',
       });
     }
   }, {

@@ -265,11 +265,11 @@ export class BatchProcessor {
 
       if (this.config.enableRetry && request.retryCount < request.maxRetries) {
         request.retryCount += 1;
-        logger.warn('Retrying batch request', error as Error, {
+        logger.warn('Retrying batch request', {
           requestId: request.id,
           attempt: request.retryCount,
           maxRetries: request.maxRetries,
-        });
+        }, error as Error);
 
         setTimeout(() => {
           this.processingQueue.push(request);

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { createBillingPortalSession } from '@/lib/stripe';
 import { getSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
+      }
       const supabase = getSupabaseAdminClient();
 
       // Get user's household
@@ -22,11 +25,14 @@ export async function POST(request: NextRequest) {
         .eq('id', user.id)
         .single();
 
-      if (userError || !userData) {
+      if (userError || !userData || 'code' in userData) {
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
       }
 
       const household = userData.households;
+      if (!household) {
+        return NextResponse.json({ error: 'Household not found' }, { status: 404 });
+      }
 
       if (!household.stripe_customer_id) {
         return NextResponse.json({ error: 'No active subscription found' }, { status: 400 });

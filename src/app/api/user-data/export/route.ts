@@ -4,21 +4,15 @@ import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/li
 import { createErrorResponse, handleApiError } from '@/lib/api/errors';
 import { logger, createRequestLogger } from '@/lib/logging/logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/database.types';
+import type { Database } from '@/types/supabase.generated';
 
 type SupabaseClientType = SupabaseClient<Database>;
 
-type UsersRow = Database['public']['Tables']['users']['Row'];
-type ChoresRow = Database['public']['Tables']['chores']['Row'];
 type RewardRedemptionRow = Database['public']['Tables']['reward_redemptions']['Row'];
 type ShoppingListRow = Database['public']['Tables']['shopping_lists']['Row'];
 type MealPlanRow = Database['public']['Tables']['meal_plans']['Row'];
-type MealPlanIngredientRow = Database['public']['Tables']['meal_plan_ingredients']['Row'] & {
-  meal_plans?: MealPlanRow | null;
-};
 type RecipeRow = Database['public']['Tables']['recipes']['Row'];
 type BillRow = Database['public']['Tables']['bills']['Row'];
-type ShoppingItemRow = Database['public']['Tables']['shopping_items']['Row'];
 
 interface UserProfileExport {
   id: string;
@@ -57,13 +51,6 @@ interface HouseholdDataExport {
   bills?: BillRow[];
 }
 
-interface MissingIngredient {
-  ingredient_name: string;
-  meal_name: string;
-  meal_type: string;
-  quantity_needed: string;
-}
-
 type AuditTrailEntry = Record<string, unknown>;
 
 interface ExportPayload {
@@ -77,7 +64,7 @@ interface ExportPayload {
 }
 
 export async function GET(req: NextRequest) {
-  return withAPISecurity(req, async (request, user) => {
+  return withAPISecurity(req, async (_request, user) => {
     const requestId = logger.generateRequestId();
     const log = createRequestLogger(requestId);
     
@@ -85,7 +72,11 @@ export async function GET(req: NextRequest) {
       log.apiCall('GET', '/api/user-data/export');
       
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         log.apiError('GET', '/api/user-data/export', new Error('No household found'), { status: 404 });
@@ -142,7 +133,11 @@ export async function GET(req: NextRequest) {
       });
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/user-data/export', method: 'GET', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/user-data/export',
+        method: 'GET',
+        userId: user?.id ?? '',
+      });
     }
   }, {
     requireAuth: true,
@@ -166,12 +161,13 @@ async function exportUserData(
     .single();
   
   if (userProfile) {
+    const fullName = [userProfile.first_name, userProfile.last_name].filter(Boolean).join(' ').trim() || null;
     userData.profile = {
       id: userProfile.id,
       email: userProfile.email,
-      name: userProfile.name,
+      name: fullName,
       xp: userProfile.xp,
-      created_at: userProfile.created_at
+      created_at: userProfile.created_at,
     };
   }
 
@@ -189,7 +185,7 @@ async function exportUserData(
       status: chore.status,
       assigned_to: chore.assigned_to,
       created_at: chore.created_at,
-      completed_at: chore.completed_at
+      completed_at: 'completed_at' in chore ? (chore as { completed_at?: string | null }).completed_at ?? null : null,
     }));
   }
 

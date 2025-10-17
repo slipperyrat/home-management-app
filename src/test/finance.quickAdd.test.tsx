@@ -191,7 +191,7 @@ describe("Finance quick-add components", () => {
       },
     ];
 
-    renderWithQuery(<SpendingSection entries={entries} householdId="house-1" />);
+    renderWithQuery(<SpendingSection entries={entries} />);
 
     fireEvent.change(screen.getByPlaceholderText(/search transactions/i), { target: { value: "coffee" } });
     expect(screen.getByText(/coffee/i)).toBeInTheDocument();
@@ -293,7 +293,7 @@ describe("Finance insights", () => {
   });
 
   it("opens quick actions drawer", () => {
-    render(<FinanceQuickActionsDrawer householdId="house-1" />);
+    render(<FinanceQuickActionsDrawer />);
     fireEvent.click(screen.getByRole("button", { name: /quick actions/i }));
     expect(screen.getByText(/add bill/i)).toBeInTheDocument();
   });

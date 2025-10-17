@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { canAccessFeature } from '@/lib/server/canAccessFeature';
+import { canAccessFeature, type UserPlan } from '@/lib/server/canAccessFeature';
 import { createBillCalendarEvent } from '@/lib/finance/calendarIntegration';
+import type { Database } from '@/types/supabase.generated';
 import { z } from 'zod';
 import { logger } from '@/lib/logging/logger';
 
@@ -25,19 +26,25 @@ const createBillSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
-      
+
       if (!household) {
         return createErrorResponse('Household not found', 404);
       }
 
+      const userPlan: UserPlan = (household.plan as UserPlan | null) ?? 'free';
+
       // Check feature access
-      if (!canAccessFeature(household.plan || 'free', 'bill_management')) {
+      if (!canAccessFeature(userPlan, 'bill_management')) {
         return createErrorResponse('Bill management requires Pro plan or higher', 403, {
           requiredPlan: 'pro',
-          currentPlan: household.plan || 'free'
+          currentPlan: userPlan,
         });
       }
 
@@ -79,35 +86,39 @@ export async function GET(request: NextRequest) {
         targetTable: 'bills',
         targetId: household.id,
         userId: user.id,
-        metadata: { count: bills?.length || 0, filters: { status, category } }
+        metadata: { count: bills?.length || 0, filters: { status, category } },
       });
 
       return createSuccessResponse({ bills: bills || [] });
-
     } catch (error) {
-      return handleApiError(error, 'Failed to fetch bills');
+      return handleApiError(error, { route: '/api/finance/bills', method: 'GET', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: false,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
-      
+
       if (!household) {
         return createErrorResponse('Household not found', 404);
       }
 
-      // Check feature access
-      if (!canAccessFeature(household.plan || 'free', 'bill_management')) {
+      const userPlan: UserPlan = (household.plan as UserPlan | null) ?? 'free';
+
+      if (!canAccessFeature(userPlan, 'bill_management')) {
         return createErrorResponse('Bill management requires Pro plan or higher', 403, {
           requiredPlan: 'pro',
-          currentPlan: household.plan || 'free'
+          currentPlan: userPlan,
         });
       }
 
@@ -116,67 +127,80 @@ export async function POST(request: NextRequest) {
 
       const db = getDatabaseClient();
 
-      // Create bill
+      const { issued_date, ...rest } = validatedData;
+      const insertPayload: Database['public']['Tables']['bills']['Insert'] = {
+        household_id: household.id,
+        name: rest.name,
+        title: rest.title,
+        description: rest.description ?? null,
+        amount: rest.amount,
+        currency: rest.currency,
+        due_date: rest.due_date,
+        status: 'pending',
+        category: rest.category ?? null,
+        source: rest.source,
+        source_data: rest.source_data ?? null,
+        assigned_to: rest.assigned_to ?? null,
+        created_by: user.id,
+        issued_date: issued_date ?? new Date().toISOString().slice(0, 10),
+        priority: rest.priority,
+        external_id: rest.external_id ?? null,
+      };
+
       const { data: bill, error } = await db
         .from('bills')
-        .insert({
-          household_id: household.id,
-          name: validatedData.name,
-          title: validatedData.title,
-          description: validatedData.description,
-          amount: validatedData.amount,
-          currency: validatedData.currency,
-          due_date: validatedData.due_date,
-          status: 'pending',
-          category: validatedData.category,
-          source: validatedData.source,
-          source_data: validatedData.source_data,
-          assigned_to: validatedData.assigned_to,
-          created_by: user.id,
-          issued_date: validatedData.issued_date || new Date().toISOString().split('T')[0],
-          priority: validatedData.priority,
-          external_id: validatedData.external_id,
-        })
-        .select()
-        .single();
+        .insert(insertPayload)
+        .select('*')
+        .maybeSingle<Database['public']['Tables']['bills']['Row']>();
 
-      if (error) {
-        logger.error('Error creating bill', error, { householdId: household.id, userId: user.id });
+      if (error || !bill) {
+        const logError = error instanceof Error ? error : new Error('Postgrest error');
+        logger.error('Error creating bill', logError, { householdId: household.id, userId: user.id });
         return createErrorResponse('Failed to create bill', 500);
       }
 
-      // Create calendar event for bill due date
       try {
-        await createBillCalendarEvent(bill, household.id, user.id);
+        await createBillCalendarEvent(
+          {
+            id: bill.id,
+            title: bill.title,
+            description: bill.description,
+            amount: bill.amount,
+            currency: bill.currency,
+            due_date: bill.due_date,
+            priority: (bill.priority ?? 'medium') as 'low' | 'medium' | 'high' | 'urgent',
+            category: bill.category ?? null,
+          },
+          household.id,
+          user.id,
+        );
         logger.info('Created calendar event for bill', { billId: bill.id, title: bill.title });
       } catch (calendarError) {
-        logger.error('Failed to create calendar event for bill', calendarError instanceof Error ? calendarError : new Error(String(calendarError)), {
+        const logError = calendarError instanceof Error ? calendarError : new Error(String(calendarError));
+        logger.error('Failed to create calendar event for bill', logError, {
           billId: bill.id,
           householdId: household.id,
         });
-        // Don't fail the bill creation if calendar event creation fails
       }
 
-      // Log audit event
       await createAuditLog({
         action: 'bills.create',
         targetTable: 'bills',
         targetId: bill.id,
         userId: user.id,
-        metadata: { title: bill.title, amount: bill.amount, due_date: bill.due_date }
+        metadata: { title: bill.title, amount: bill.amount, due_date: bill.due_date },
       });
 
-      return createSuccessResponse({ bill }, 201);
-
+      return createSuccessResponse({ bill }, 'Bill created', 201);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return createErrorResponse('Invalid input data', 400, { errors: error.errors });
       }
-      return handleApiError(error, 'Failed to create bill');
+      return handleApiError(error, { route: '/api/finance/bills', method: 'POST', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }

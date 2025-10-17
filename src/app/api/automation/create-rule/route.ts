@@ -1,13 +1,22 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, verifyHouseholdAccess, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createAutomationRuleSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logging/logger';
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Automation rule creation attempted without authenticated user', {
+          url: req.url,
+          securityEvent: true,
+          severity: 'medium',
+        });
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Creating automation rule', { userId: user.id });
 
       // Parse and validate request body using Zod schema
@@ -85,7 +94,11 @@ export async function POST(request: NextRequest) {
       }, 'Automation rule created successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/automation/create-rule', method: 'POST', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/automation/create-rule',
+        method: 'POST',
+        ...(user ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,

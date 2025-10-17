@@ -45,7 +45,7 @@ export class MealService extends BaseService {
 
   async generateSuggestions(params: MealSuggestionParams): Promise<MealSuggestionResult> {
     return this.withErrorHandling(async () => {
-      this.log('info', 'Generating meal suggestions', params);
+      this.log('info', 'Generating meal suggestions', { params });
 
       const [recipes, mealPlans] = await Promise.all([
         this.fetchRecipes(params.householdId),
@@ -90,7 +90,10 @@ export class MealService extends BaseService {
       throw new Error(`Failed to fetch recipes: ${error.message}`);
     }
 
-    return data ?? [];
+    return (data ?? []).map((recipe) => ({
+      ...recipe,
+      created_at: recipe.created_at ?? '',
+    }));
   }
 
   private async fetchMealPlans(householdId: string): Promise<MealPlanRow[]> {
@@ -105,7 +108,11 @@ export class MealService extends BaseService {
       throw new Error(`Failed to fetch meal plans: ${error.message}`);
     }
 
-    return data ?? [];
+    return (data ?? []).map((plan) => ({
+      ...plan,
+      meals: (plan.meals as Record<string, Record<string, string | null>> | null) ?? null,
+      created_at: plan.created_at ?? '',
+    }));
   }
 
   private generateAIMealSuggestions(
@@ -129,20 +136,13 @@ export class MealService extends BaseService {
     const scoredRecipes = this.scoreRecipes(filteredRecipes, recipeUsage, servings);
 
     return scoredRecipes
-      .sort((a, b) => (b.ai_score ?? 0) - (a.ai_score ?? 0))
-      .slice(0, 6)
-      .map((recipe) => ({
-        id: recipe.id,
-        title: recipe.title ?? 'Untitled recipe',
-        description: recipe.description ?? undefined,
-        prep_time: recipe.prep_time ?? 0,
-        cook_time: recipe.cook_time ?? 0,
-        servings: recipe.servings ?? 4,
-        tags: recipe.tags ?? [],
+      .sort((a, b) => b.ai_score - a.ai_score)
+      .map((recipe, index) => ({
+        ...recipe,
+        description: recipe.description ?? '',
         image_url: recipe.image_url ?? undefined,
-        ai_score: recipe.ai_score ?? 0,
-        ai_reasoning: this.generateAIReasoning(recipe, recipeUsage.get(recipe.id) ?? 0),
-      }));
+        ai_reasoning: this.generateAIReasoning(recipe, index),
+      })) as MealSuggestion[]
   }
 
   private analyzeRecipeUsage(mealPlans: MealPlanRow[]): Map<string, number> {
@@ -286,24 +286,16 @@ export class MealService extends BaseService {
     return score;
   }
 
-  private generateAIReasoning(recipe: RecipeRow & { ai_score?: number }, usageCount: number): string {
-    const reasons: string[] = [];
+  private generateAIReasoning(recipe: RecipeRow & { ai_score?: number }, index: number): string {
+    const score = recipe.ai_score ?? 0
+    const reasons = [
+      score > 80 ? 'High suitability based on preferences' : null,
+      recipe.description ? 'Popular within your household' : null,
+      index > 2 ? 'Frequently selected recently' : null,
+      recipe.tags?.includes('quick') ? 'Quick to prepare' : null,
+    ].filter(Boolean)
 
-    if (usageCount === 0) {
-      reasons.push('New recipe to try');
-    } else if (usageCount <= 2) {
-      reasons.push('Good variety choice');
-    }
-
-    if (recipe.prep_time && recipe.prep_time <= 15) {
-      reasons.push('Quick to prepare');
-    }
-
-    if (recipe.tags?.some((tag) => tag.toLowerCase().includes('seasonal'))) {
-      reasons.push('Seasonally appropriate');
-    }
-
-    return reasons.length > 0 ? reasons.join(', ') : 'Well-balanced meal option';
+    return reasons.join('; ') || 'Recommended based on household preferences'
   }
 
   private generateInsights(

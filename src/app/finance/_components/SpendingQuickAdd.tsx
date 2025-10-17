@@ -17,6 +17,12 @@ type CreateSpendPayload = {
   transaction_date: string;
 };
 
+function getTodayISODate(): string {
+  const iso = new Date().toISOString();
+  const [date = iso] = iso.split("T");
+  return date;
+}
+
 async function createSpendEntry(payload: CreateSpendPayload) {
   const response = await fetch("/api/finance/spend-entries", {
     method: "POST",
@@ -38,9 +44,9 @@ async function createSpendEntry(payload: CreateSpendPayload) {
 export function SpendingQuickAdd() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split("T")[0]);
+  const [description, setDescription] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [transactionDate, setTransactionDate] = useState<string>(() => getTodayISODate());
   const [pending, startTransition] = useTransition();
 
   const mutation = useMutation({
@@ -66,10 +72,13 @@ export function SpendingQuickAdd() {
       return;
     }
 
+    const fallbackDate = getTodayISODate();
+    const submittedTransactionDate = transactionDate || fallbackDate;
+
     mutation.mutate({
       description: description.trim(),
       amount: Number.parseFloat(amount),
-      transaction_date: transactionDate,
+      transaction_date: submittedTransactionDate,
     });
   };
 

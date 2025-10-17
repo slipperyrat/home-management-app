@@ -34,7 +34,10 @@ export async function testMealPlanningAI() {
     });
 
     if (result.data && result.data.length > 0) {
-      const sample = result.data[0];
+      const [sample] = result.data;
+      if (!sample) {
+        return result;
+      }
       logger.info("Sample meal suggestion", {
         name: sample.name,
         description: sample.description,
@@ -44,8 +47,8 @@ export async function testMealPlanningAI() {
         difficulty: sample.difficulty,
         cuisine: sample.cuisine,
         dietaryTags: sample.dietaryTags,
-        ingredientCount: sample.ingredients.length,
-        instructionCount: sample.instructions.length,
+        ingredientCount: sample.ingredients?.length ?? 0,
+        instructionCount: sample.instructions?.length ?? 0,
         confidence: sample.confidence,
         reasoning: sample.reasoning,
       });

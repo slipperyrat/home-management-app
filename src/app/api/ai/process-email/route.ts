@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { AIEmailProcessor, EmailData } from '@/lib/ai/emailProcessor';
 import { getAIConfig } from '@/lib/ai/config/aiConfig';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database.types';
+import type { Database, Json } from '@/types/supabase.generated';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -17,9 +17,12 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, _user) => {
+  return withAPISecurity(request, async (req: NextRequest, _user: RequestUser | null) => {
+    let currentUserId: string | null = null;
+
     try {
     const { userId } = await auth();
+    currentUserId = userId ?? null;
     
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -48,26 +51,38 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    const emailAttachments = emailData.attachments
+      ? emailData.attachments.map(attachment => ({
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+          size: attachment.size
+        }))
+      : null;
+
+    const queuePayload: Database['public']['Tables']['ai_email_queue']['Insert'] = {
+      household_id: householdId,
+      email_subject: emailData.subject,
+      email_body: emailData.body,
+      email_from: emailData.from ?? 'unknown',
+      email_date: emailData.date ?? new Date().toISOString(),
+      email_attachments: emailAttachments,
+      processing_status: 'processing',
+      priority: 1
+    };
+
     // Add email to processing queue
     const { data: queueEntry, error: queueError } = await supabase
       .from('ai_email_queue')
-      .insert({
-        household_id: householdId,
-        email_subject: emailData.subject,
-        email_body: emailData.body,
-        email_from: emailData.from || 'unknown',
-        email_date: emailData.date || new Date().toISOString(),
-        email_attachments: emailData.attachments || [],
-        processing_status: 'processing',
-        priority: 1
-      })
+      .insert(queuePayload)
       .select('id')
       .single();
 
     if (queueError) {
-      logger.error('Failed to add email to queue', queueError, { userId, householdId });
+      logger.error('Failed to add email to queue', queueError, { userId: userId ?? 'unknown', householdId });
       return NextResponse.json({ error: 'Failed to queue email' }, { status: 500 });
     }
+
+    logger.info('Queued email for AI processing', { queueId: queueEntry.id, householdId });
 
     // Process email with AI
     const processor = new AIEmailProcessor();
@@ -92,16 +107,19 @@ export async function POST(request: NextRequest) {
         .update({
           processing_status: 'completed',
           ai_analysis_result: {
-            parsedItems: result.parsedItems,
-            suggestions: result.suggestions,
-            processingTime: result.processingTime
+            parsedItems: result.parsedItems as unknown as Json,
+            suggestions: result.suggestions as unknown as Json,
+            processingTime: result.processingTime,
           },
           processed_at: new Date().toISOString()
         })
         .eq('id', queueEntry.id);
 
       // Trigger automation based on parsed items
-      await triggerAutomationFromParsedItems(result.parsedItems, householdId);
+      const automatableItems = result.parsedItems.filter(item => item.itemType !== 'other');
+      if (automatableItems.length > 0) {
+        await triggerAutomationFromParsedItems(automatableItems as ParsedEmailItem[], householdId);
+      }
 
       return NextResponse.json({
         success: true,
@@ -120,7 +138,7 @@ export async function POST(request: NextRequest) {
         .from('ai_email_queue')
         .update({
           processing_status: 'failed',
-          error_message: result.error,
+          error_message: result.error ?? null,
           processed_at: new Date().toISOString()
         })
         .eq('id', queueEntry.id);
@@ -133,7 +151,7 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
       logger.error('Error processing email', error instanceof Error ? error : new Error(String(error)), {
-        userId,
+        userId: currentUserId ?? 'unknown'
       });
       return NextResponse.json({ 
         error: 'Internal server error' 
@@ -216,9 +234,10 @@ async function triggerAutomationFromParsedItems(parsedItems: ParsedEmailItem[], 
           .insert({
             household_id: householdId,
             event_type: eventType,
-            event_data: eventData,
+            payload: eventData as unknown as Json,
             source: 'ai_email_parser',
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            type: eventType ?? 'automation'
           });
 
         // Trigger automation dispatcher
@@ -228,80 +247,14 @@ async function triggerAutomationFromParsedItems(parsedItems: ParsedEmailItem[], 
           body: JSON.stringify({
             household_id: householdId,
             event_type: eventType,
-            event_data: eventData
+            payload: eventData
           })
         });
       }
     }
   } catch (error) {
-    logger.error('Failed to trigger automation from parsed items', error instanceof Error ? error : new Error(String(error)), {
-      householdId,
-      parsedItemCount: parsedItems.length,
+    logger.error('Error triggering automation from parsed items', error instanceof Error ? error : new Error(String(error)), {
+      householdId
     });
-  }
-}
-
-/**
- * GET endpoint to check processing status
- */
-export async function GET(request: NextRequest) {
-  try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const queueId = searchParams.get('queueId');
-
-    if (!queueId) {
-      return NextResponse.json({ error: 'Queue ID required' }, { status: 400 });
-    }
-
-    // Get processing status
-    const { data: queueEntry, error } = await supabase
-      .from('ai_email_queue')
-      .select('*')
-      .eq('id', queueId)
-      .single();
-
-    if (error || !queueEntry) {
-      return NextResponse.json({ error: 'Queue entry not found' }, { status: 404 });
-    }
-
-    // Get parsed items if processing is complete
-    let parsedItems: Database['public']['Tables']['ai_parsed_items']['Row'][] = [];
-    let suggestions: Database['public']['Tables']['ai_suggestions']['Row'][] = [];
-
-    if (queueEntry.processing_status === 'completed') {
-      const { data: items } = await supabase
-        .from('ai_parsed_items')
-        .select('*')
-        .eq('email_queue_id', queueId);
-
-      const { data: suggs } = await supabase
-        .from('ai_suggestions')
-        .select('*')
-        .eq('parsed_item_id', (items || []).map((item) => item.id));
-
-      parsedItems = items || [];
-      suggestions = suggs || [];
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        queueEntry,
-        parsedItems,
-        suggestions
-      }
-    });
-
-  } catch (error) {
-    logger.error('Error checking email processing status', error instanceof Error ? error : new Error(String(error)));
-    return NextResponse.json({ 
-      error: 'Internal server error' 
-    }, { status: 500 });
   }
 }

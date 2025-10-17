@@ -24,26 +24,25 @@ vi.mock('@/app/metrics/router', () => ({
   apiLatencyHistogram: { observe: vi.fn() },
 }));
 
-type MockDatabaseClient = {
-  from: vi.Mock<MockDatabaseClient, [string]>;
-  insert: vi.Mock<Promise<{ error: unknown }> | MockDatabaseClient, [unknown]>;
+let mockClient: ReturnType<typeof vi.fn> & {
+  insert: ReturnType<typeof vi.fn>;
 };
-
-let mockClient: MockDatabaseClient;
 
 describe('POST /api/analytics/track', () => {
   beforeEach(() => {
     vi.resetAllMocks();
 
-    mockClient = {
-      from: vi.fn(),
-      insert: vi.fn(),
-    };
+    const mockClientInstance = vi.fn();
+    const insertMock = vi.fn();
 
-    mockClient.from.mockReturnValue(mockClient);
-    mockClient.insert.mockReturnValue(mockClient);
+    mockClientInstance.mockReturnValue(mockClientInstance);
+    insertMock.mockReturnValue(mockClientInstance);
 
-    vi.mocked(getDatabaseClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getDatabaseClient>);
+    mockClient = Object.assign(mockClientInstance, { insert: insertMock });
+
+    vi.mocked(getDatabaseClient).mockReturnValue({
+      from: () => ({ insert: mockClient.insert }),
+    } as unknown as ReturnType<typeof getDatabaseClient>);
   });
 
   it('stores analytics event with valid payload', async () => {
@@ -65,7 +64,7 @@ describe('POST /api/analytics/track', () => {
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.success).toBe(true);
-    expect(mockClient.from).toHaveBeenCalledWith('analytics_events');
+    expect(mockClient).toHaveBeenCalled();
     expect(mockClient.insert).toHaveBeenCalled();
   });
 

@@ -33,12 +33,21 @@ export function AddItemDialog({ listId, open, onOpenChange, onCompleted }: AddIt
 
     startTransition(async () => {
       try {
-        await addItem({
+        const payload: { listId: string; name: string; quantity?: string; category?: string } = {
           listId,
           name: name.trim(),
-          quantity: quantity.trim() || undefined,
-          category,
-        });
+        };
+
+        const normalizedQuantity = quantity.trim();
+        if (normalizedQuantity) {
+          payload.quantity = normalizedQuantity;
+        }
+
+        if (category) {
+          payload.category = category;
+        }
+
+        await addItem(payload);
         toast.success("Item added");
         resetForm();
         onOpenChange(false);
@@ -103,7 +112,7 @@ export function AddItemDialog({ listId, open, onOpenChange, onCompleted }: AddIt
 
             <div className="space-y-2">
               <Label className="text-xs text-slate-400">Category</Label>
-              <Select value={category} onValueChange={setCategory}>
+              <Select value={category ?? ""} onValueChange={(value) => setCategory(value || undefined)}>
                 <SelectTrigger className="bg-[#0b101d]">
                   <SelectValue placeholder="Choose a category" />
                 </SelectTrigger>

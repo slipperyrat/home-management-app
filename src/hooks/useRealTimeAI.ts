@@ -1,27 +1,16 @@
 // Real-time AI Processing Hook
 // This can be easily removed if the real-time processing doesn't work
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { useUserData } from './useUserData';
-import { useWebSocket, type AIProcessingProgress } from './useWebSocket';
+import { useWebSocket, type AIProcessingProgress, type AIProcessingResult } from './useWebSocket';
 import { logger } from '@/lib/logging/logger';
+import type { RealTimeAIRequest as SocketRealTimeAIRequest } from '@/types/websocket';
 
-export interface RealTimeAIRequest {
-  type: 'shopping_suggestions' | 'meal_planning' | 'chore_assignment' | 'email_processing';
-  context: Record<string, unknown>;
-  priority?: 'low' | 'medium' | 'high' | 'urgent';
-}
+export type RealTimeAIRequest = SocketRealTimeAIRequest;
 
-export interface RealTimeAIResponse {
-  requestId: string;
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  processingTime: number;
-  provider: string;
-  fallbackUsed: boolean;
-}
+export type RealTimeAIResponse = AIProcessingResult & { requestId: string };
 
 export interface RealTimeAIStatus {
   isWebSocketConnected: boolean;
@@ -45,6 +34,8 @@ export interface UseRealTimeAIReturn {
   status: RealTimeAIStatus | null;
   processingRequests: Map<string, AIProcessingProgress>;
   completedRequests: Map<string, RealTimeAIResponse>;
+  userId: string;
+  householdId: string;
   
   // Methods
   processRequest: (request: RealTimeAIRequest) => Promise<RealTimeAIResponse>;
@@ -66,12 +57,23 @@ export function useRealTimeAI(): UseRealTimeAIReturn {
     isConnecting,
     error: wsError,
     processingRequests,
-    completedRequests,
+    completedRequests: rawCompletedRequests,
     connect: wsConnect,
     disconnect: wsDisconnect,
     clearCompletedRequest: wsClearCompletedRequest,
-    clearAllCompletedRequests: wsClearAllCompletedRequests
+    clearAllCompletedRequests: wsClearAllCompletedRequests,
   } = useWebSocket();
+
+  const completedRequests = useMemo(() => {
+    const mapped = new Map<string, RealTimeAIResponse>();
+    rawCompletedRequests.forEach((value, key) => {
+      mapped.set(key, {
+        ...value,
+        requestId: value.requestId ?? key,
+      });
+    });
+    return mapped;
+  }, [rawCompletedRequests]);
 
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<RealTimeAIStatus | null>(null);
@@ -206,6 +208,8 @@ export function useRealTimeAI(): UseRealTimeAIReturn {
     status,
     processingRequests,
     completedRequests,
+    userId: user?.id ?? 'anonymous',
+    householdId: userData?.household?.id ?? 'unknown',
     processRequest,
     getStatus,
     clearQueue,

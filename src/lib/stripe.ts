@@ -5,7 +5,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-06-20',
+  apiVersion: '2025-08-27.basil',
 });
 
 // Stripe product IDs for your plans
@@ -46,8 +46,7 @@ export async function createCheckoutSession({
   cancelUrl: string;
   metadata?: Record<string, string>;
 }) {
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
+  const sessionParams: Stripe.Checkout.SessionCreateParams = {
     payment_method_types: ['card'],
     line_items: [
       {
@@ -62,7 +61,13 @@ export async function createCheckoutSession({
     subscription_data: {
       metadata,
     },
-  });
+  };
+
+  if (customerId) {
+    sessionParams.customer = customerId;
+  }
+
+  const session = await stripe.checkout.sessions.create(sessionParams);
 
   return session;
 }
@@ -79,11 +84,16 @@ export async function createCustomer({
   name?: string;
   metadata?: Record<string, string>;
 }) {
-  const customer = await stripe.customers.create({
+  const params: Stripe.CustomerCreateParams = {
     email,
-    name,
     metadata,
-  });
+  };
+
+  if (name) {
+    params.name = name;
+  }
+
+  const customer = await stripe.customers.create(params);
 
   return customer;
 }

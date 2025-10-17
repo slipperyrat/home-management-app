@@ -103,7 +103,7 @@ function MoreDesktop() {
   );
 }
 
-function MobileMore({ activePath }: { activePath: string }) {
+function MobileMore({ activePath }: { activePath?: string | null }) {
   return (
     <Drawer>
       <DrawerTrigger asChild>
@@ -146,7 +146,7 @@ function MobileMore({ activePath }: { activePath: string }) {
   );
 }
 
-export default function ResponsiveNav({ children, activePath }: { children: ReactNode; activePath: string }) {
+export default function ResponsiveNav({ children, activePath = '' }: { children: ReactNode; activePath?: string | null }) {
   return (
     <div className="min-h-screen bg-[#0b0f19] text-slate-100">
       <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col lg:flex-row">
@@ -164,7 +164,7 @@ export default function ResponsiveNav({ children, activePath }: { children: Reac
                 href={item.href}
                 label={item.name}
                 icon={item.icon}
-                isActive={activePath.startsWith(item.href)}
+                isActive={activePath?.startsWith(item.href) ?? false}
               />
             ))}
           </nav>
@@ -209,7 +209,7 @@ export default function ResponsiveNav({ children, activePath }: { children: Reac
               href={item.href}
               label={item.name}
               icon={item.icon}
-              isActive={activePath.startsWith(item.href)}
+              isActive={activePath?.startsWith(item.href) ?? false}
             />
           ))}
           <MobileMore activePath={activePath} />

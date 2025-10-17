@@ -11,7 +11,7 @@ export type MonthGridDay = {
   isCurrentMonth: boolean;
   isSelected: boolean;
   isToday: boolean;
-  summary?: DaySummary;
+  summary: DaySummary | null;
   href: string;
 };
 

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDatabaseClient } from '@/lib/api/database';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { generateEventOccurrences } from '@/lib/calendar/rruleUtils';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database.types';
+import type { Database } from '@/types/supabase.generated';
 
 /**
  * Public ICS (iCalendar) feed for a household
@@ -28,7 +28,7 @@ export async function GET(
       return NextResponse.json({ error: 'Token required' }, { status: 401 });
     }
 
-    const supabase = getDatabaseClient();
+    const supabase: SupabaseClient<Database> = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     
     // Verify household exists and token is valid
     const { data: household, error: householdError } = await supabase
@@ -51,7 +51,7 @@ export async function GET(
       .from('events')
       .select(`
         *,
-        calendar:calendars(name, color, is_public),
+        calendar:calendars(name, color),
         attendees:event_attendees(
           id,
           user_id,
@@ -83,8 +83,24 @@ export async function GET(
       });
     }
 
-    // Generate ICS content
-    const icsContent = generateICS(events ?? [], household);
+    const mappedHousehold: HouseholdInfo = {
+      id: household.id,
+      name: household.name,
+    };
+
+    const mappedEvents: PublicEvent[] = (events ?? []).map((event) => ({
+      ...event,
+      calendar: event.calendar
+        ? {
+            name: event.calendar.name ?? null,
+            color: event.calendar.color ?? null,
+          }
+        : null,
+      attendees: (event.attendees ?? []).map(({ id, user_id, email, status }) => ({ id, user_id, email, status })),
+    }));
+
+    const occurrences = buildOccurrences(mappedEvents);
+  const icsContent = generateICSFromOccurrences(occurrences as Array<PublicOccurrence & { originalEvent: PublicEvent }>, mappedHousehold);
 
     return new NextResponse(icsContent, {
       status: 200,
@@ -107,17 +123,107 @@ export async function GET(
 /**
  * Generate ICS content from events
  */
-type PublicEvent = Database['public']['Tables']['events']['Row'] & {
-  calendar?: { name?: string | null; color?: string | null; is_public?: boolean | null } | null;
-  attendees?: Array<Database['public']['Tables']['event_attendees']['Row']> | null;
+type EventRow = Database['public']['Tables']['events']['Row'];
+type CalendarRow = Database['public']['Tables']['calendars']['Row'];
+type EventAttendeeRow = Database['public']['Tables']['event_attendees']['Row'];
+type PublicEvent = EventRow & {
+  calendar?: Pick<CalendarRow, 'name' | 'color'> | null;
+  attendees?: Array<Pick<EventAttendeeRow, 'id' | 'user_id' | 'email' | 'status'>> | null;
 };
 
 type Household = Database['public']['Tables']['households']['Row'];
+type HouseholdInfo = Pick<Household, 'id' | 'name'>;
 
-function generateICS(events: PublicEvent[], household: Household): string {
+type PublicOccurrence = {
+  id: string;
+  title: string;
+  description: string | null;
+  startAt: Date;
+  endAt: Date;
+  timezone: string | null;
+  isAllDay: boolean;
+  location: string | null;
+  attendees: Array<Pick<EventAttendeeRow, 'email' | 'status' | 'user_id'>>;
+  calendar: Pick<CalendarRow, 'name' | 'color'> | null;
+  updated_at: string;
+  created_at: string;
+};
+
+function ensureTimestamp(value: string | null | undefined): string {
+  return value ?? new Date().toISOString();
+}
+
+function buildOccurrences(events: PublicEvent[]): Array<PublicOccurrence & { originalEvent: PublicEvent }> {
+  return events.flatMap((event) => {
+    const startAt = new Date(event.start_at);
+    const endAt = new Date(event.end_at);
+    const attendees = event.attendees?.map(({ email, status, user_id }) => ({ email, status, user_id })) ?? [];
+    const calendar = event.calendar ?? null;
+    const updatedAt = ensureTimestamp(event.updated_at);
+    const createdAt = ensureTimestamp(event.created_at);
+
+    const base: PublicOccurrence & { originalEvent: PublicEvent } = {
+      id: event.id,
+      title: event.title,
+      description: event.description ?? null,
+      startAt,
+      endAt,
+      timezone: event.timezone ?? null,
+      isAllDay: event.is_all_day ?? false,
+      location: event.location ?? null,
+      attendees,
+      calendar,
+      updated_at: updatedAt,
+      created_at: createdAt,
+      originalEvent: event,
+    };
+
+    if (!event.rrule) {
+      return [base];
+    }
+
+    const recurrenceOccurrences = generateEventOccurrences(
+      {
+        id: event.id,
+        title: event.title,
+        description: event.description ?? '',
+        startAt,
+        endAt,
+        timezone: event.timezone ?? 'UTC',
+        isAllDay: event.is_all_day ?? false,
+        rrule: event.rrule ?? undefined,
+        exdates: (event.exdates ?? []).map((date) => new Date(date)),
+        rdates: (event.rdates ?? []).map((date) => new Date(date)),
+        location: event.location ?? '',
+      },
+      startAt,
+      endAt,
+    );
+
+    return recurrenceOccurrences.map((occurrence, index) => ({
+      id: `${event.id}-${index}`,
+      title: occurrence.title,
+      description: occurrence.description ?? null,
+      startAt: occurrence.startAt,
+      endAt: occurrence.endAt,
+      timezone: occurrence.timezone ?? null,
+      isAllDay: occurrence.isAllDay ?? false,
+      location: occurrence.location ?? null,
+      attendees,
+      calendar,
+      updated_at: updatedAt,
+      created_at: createdAt,
+      originalEvent: event,
+    }));
+  });
+}
+
+function generateICSFromOccurrences(
+  occurrences: Array<PublicOccurrence & { originalEvent: PublicEvent }>,
+  household: HouseholdInfo,
+): string {
   const calendarName = `${household.name ?? 'Household'} Calendar`;
-  
-  const ics = [
+  const ics: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Home Management App//Public Calendar//EN',
@@ -125,106 +231,32 @@ function generateICS(events: PublicEvent[], household: Household): string {
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${calendarName}`,
     `X-WR-CALDESC:Public events for ${household.name}`,
-    `X-WR-TIMEZONE:Australia/Melbourne`,
+    'X-WR-TIMEZONE:Australia/Melbourne',
     `X-WR-CALID:${household.id}`,
   ];
 
-  // Process each event
-  for (const event of events) {
-    if (event.rrule) {
-      // Generate occurrences for recurring events
-      const occurrences = generateEventOccurrences(
-        {
-          id: event.id,
-          title: event.title,
-          description: event.description,
-          startAt: new Date(event.start_at),
-          endAt: new Date(event.end_at),
-          timezone: event.timezone,
-          isAllDay: event.is_all_day,
-          rrule: event.rrule,
-          exdates: event.exdates?.map((d: string) => new Date(d)) || [],
-          rdates: event.rdates?.map((d: string) => new Date(d)) || [],
-          location: event.location
-        },
-        new Date(event.start_at),
-        new Date(event.end_at)
-      );
-
-      // Add each occurrence as a separate VEVENT
-      ics.push(
-        ...occurrences.flatMap((occurrence) =>
-          generateVEVENT(
-            {
-              id: event.id,
-              title: event.title,
-              description: event.description,
-              startAt: occurrence.startAt,
-              endAt: occurrence.endAt,
-              timezone: occurrence.timezone ?? event.timezone,
-              isAllDay: occurrence.isAllDay ?? event.is_all_day,
-              attendees: event.attendees ?? [],
-              calendar: event.calendar ?? null,
-              updated_at: occurrence.updated_at ?? event.updated_at,
-              created_at: occurrence.created_at ?? event.created_at,
-            },
-            event,
-          ),
-        ),
-      );
-    } else {
-      // Single occurrence event
-      ics.push(...generateVEVENT({
-        id: event.id,
-        title: event.title,
-        description: event.description,
-        startAt: new Date(event.start_at),
-        endAt: new Date(event.end_at),
-        timezone: event.timezone,
-        isAllDay: event.is_all_day,
-        attendees: event.attendees ?? [],
-        calendar: event.calendar ?? null,
-        updated_at: event.updated_at,
-        created_at: event.created_at,
-      }, event));
-    }
+  for (const occurrence of occurrences) {
+    const { originalEvent, ...event } = occurrence;
+    ics.push(...generateVEVENT(event, originalEvent, event.calendar));
   }
 
   ics.push('END:VCALENDAR');
-  
   return ics.join('\r\n');
 }
 
-/**
- * Generate VEVENT block for an event
- */
-type PublicOccurrence = {
-  id?: string;
-  title: string;
-  description?: string | null;
-  startAt: Date;
-  endAt: Date;
-  timezone?: string | null;
-  isAllDay?: boolean | null;
-  attendees?: Array<Database['public']['Tables']['event_attendees']['Row']>;
-  calendar?: { name?: string | null; color?: string | null; is_public?: boolean | null } | null;
-  updated_at?: string | null;
-  created_at: string;
-};
+function generateVEVENT(
+  event: PublicOccurrence,
+  originalEvent: PublicEvent,
+  calendar: Pick<CalendarRow, 'name' | 'color'> | null,
+): string[] {
+  const vevent: string[] = ['BEGIN:VEVENT'];
 
-function generateVEVENT(event: PublicOccurrence, originalEvent: PublicEvent): string[] {
-  const vevent = ['BEGIN:VEVENT'];
-  
-  // UID (unique identifier)
-  vevent.push(`UID:${event.id || event.originalEventId}@home-management-app.com`);
-  
-  // Timestamps
+  vevent.push(`UID:${event.id ?? `${originalEvent.id}-${event.startAt.getTime()}`}@home-management-app.com`);
   vevent.push(`DTSTAMP:${formatICSDate(new Date())}`);
-  
-  // Start and end times
+
   const startDate = new Date(event.startAt);
   const endDate = new Date(event.endAt);
-  
+
   if (event.isAllDay) {
     vevent.push(`DTSTART;VALUE=DATE:${formatICSDate(startDate, true)}`);
     vevent.push(`DTEND;VALUE=DATE:${formatICSDate(endDate, true)}`);
@@ -232,79 +264,56 @@ function generateVEVENT(event: PublicOccurrence, originalEvent: PublicEvent): st
     vevent.push(`DTSTART:${formatICSDate(startDate)}`);
     vevent.push(`DTEND:${formatICSDate(endDate)}`);
   }
-  
-  // Summary (title)
+
   vevent.push(`SUMMARY:${escapeICS(event.title)}`);
-  
-  // Description
+
   if (event.description) {
     vevent.push(`DESCRIPTION:${escapeICS(event.description)}`);
   }
-  
-  // Location
-  if (event.location) {
-    vevent.push(`LOCATION:${escapeICS(event.location)}`);
+
+  const location = event.location ?? originalEvent.location ?? null;
+  if (location) {
+    vevent.push(`LOCATION:${escapeICS(location)}`);
   }
-  
-  // Status
+
   vevent.push('STATUS:CONFIRMED');
-  
-  // Transparency
   vevent.push('TRANSP:OPAQUE');
-  
-  // RRULE (if this is a recurring event)
+
   if (originalEvent.rrule) {
     vevent.push(`RRULE:${originalEvent.rrule}`);
   }
-  
-  // Attendees (only include public attendees)
+
   if (event.attendees && event.attendees.length > 0) {
-    for (const { email, status } of event.attendees) {
-      if (!email || status === 'private') {
-        continue;
-      }
-
-      const name = email.split('@')[0];
-      const partstat = status === 'accepted' ? 'ACCEPTED' :
-        status === 'declined' ? 'DECLINED' :
-          status === 'tentative' ? 'TENTATIVE' : 'NEEDS-ACTION';
-
-      vevent.push(`ATTENDEE;CN="${escapeICS(name)}";PARTSTAT=${partstat};RSVP=TRUE:mailto:${email}`);
-    }
+    event.attendees.forEach(({ email, status, user_id }) => {
+      const attendeeEmail = email ?? `${user_id ?? 'guest'}@home-management-app.com`;
+      const name = email?.split('@')[0] ?? user_id ?? 'Guest';
+      const partstat = status === 'accepted' ? 'ACCEPTED' : status === 'declined' ? 'DECLINED' : status === 'tentative' ? 'TENTATIVE' : 'NEEDS-ACTION';
+      vevent.push(`ATTENDEE;CN="${escapeICS(name)}";PARTSTAT=${partstat};RSVP=TRUE:mailto:${attendeeEmail}`);
+    });
   }
-  
-  // Categories
-  if (originalEvent.calendar?.name) {
-    vevent.push(`CATEGORIES:${escapeICS(originalEvent.calendar.name)}`);
+
+  if (calendar?.name) {
+    vevent.push(`CATEGORIES:${escapeICS(calendar.name)}`);
   }
-  
-  // URL (link back to the app)
+
   vevent.push(`URL:${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/calendar`);
-  
-  // Last modified
-  vevent.push(`LAST-MODIFIED:${formatICSDate(new Date(event.updated_at || event.created_at))}`);
-  
-  // Created
+  vevent.push(`LAST-MODIFIED:${formatICSDate(new Date(event.updated_at))}`);
   vevent.push(`CREATED:${formatICSDate(new Date(event.created_at))}`);
-  
   vevent.push('END:VEVENT');
-  
+
   return vevent;
 }
 
-/**
- * Format date for ICS (UTC format)
- */
 function formatICSDate(date: Date, dateOnly = false): string {
+  const iso = date.toISOString();
   if (dateOnly) {
-    return date.toISOString().split('T')[0].replace(/-/g, '');
+    const datePart = iso.split('T')[0] ?? '';
+    return datePart.replace(/-/g, '');
   }
-  return `${date.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`;
+  const timePart = iso.replace(/[-:]/g, '').split('.')[0] ?? '';
+  return `${timePart}Z`;
 }
 
-/**
- * Escape special characters for ICS
- */
 function escapeICS(text: string): string {
   return text
     .replace(/\\/g, '\\\\')

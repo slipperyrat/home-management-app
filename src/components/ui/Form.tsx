@@ -134,7 +134,7 @@ export function FormField({ name, label, required, children }: FormFieldProps) {
       {children({
         value,
         onChange: handleChange,
-        error,
+        error: error ?? '',
         hasError,
         touched: isTouched,
         setTouched: handleSetTouched,

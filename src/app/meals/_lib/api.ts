@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 
 import { logger } from "@/lib/logging/logger";
-import type { RecipeSummary } from "./types";
+import type { RecipeSummary, DayKey } from "./types";
 
 export type MealType = "breakfast" | "lunch" | "dinner";
 
@@ -34,7 +34,7 @@ function flattenMealPlan(plan: MealPlanRecord, weekStart: string): WeekPlanEntry
     if (!slots) continue;
 
     const dayOffset = weekdayIndex(dayKey);
-    const date = DateTime.fromISO(weekStart).plus({ days: dayOffset }).toISODate();
+    const date = DateTime.fromISO(weekStart).plus({ days: dayOffset }).toISODate() ?? weekStart;
 
     for (const [slot, value] of Object.entries(slots)) {
       if (!value) continue;
@@ -99,39 +99,33 @@ export async function getWeekPlans({
   return flattenMealPlan(record, weekStart);
 }
 
-type CreateMealPlanInput = {
-  weekStartISO: string;
-  dayKey: string;
-  mealType: MealType;
-  recipeId?: string | null;
-  title?: string | null;
-  notes?: string | null;
-  addToCalendar?: boolean;
-};
-
 export type CreateMealPlanInput = {
   weekStartISO: string;
-  dayKey: string;
-  mealType: MealType;
-  recipeId?: string | null;
-  title?: string | null;
-  notes?: string | null;
-  addToCalendar?: boolean;
+  householdId?: string;
 };
 
-export async function createMealPlan(input: CreateMealPlanInput): Promise<{ id: string; eventId?: string }>
-{
+export async function createMealPlan(
+  input: CreateMealPlanInput & {
+    dayKey: DayKey;
+    mealType: MealType;
+    recipeId?: string;
+    title?: string;
+    notes?: string;
+    alsoAddToList?: boolean;
+    autoConfirm?: boolean;
+  },
+): Promise<{ id: string; eventId?: string }> {
   const response = await fetchFromApp("/api/meal-planner/assign", {
     method: "POST",
     body: JSON.stringify({
       week: input.weekStartISO,
       day: input.dayKey,
       slot: input.mealType,
-      recipe_id: input.recipeId ?? undefined,
-      title: input.title ?? undefined,
-      notes: input.notes ?? undefined,
-      alsoAddToList: input.addToCalendar ?? false,
-      autoConfirm: input.addToCalendar ?? false,
+      recipe_id: input.recipeId ?? null,
+      title: input.title ?? null,
+      notes: input.notes ?? null,
+      alsoAddToList: input.alsoAddToList ?? false,
+      autoConfirm: input.autoConfirm ?? true,
     }),
   });
 
@@ -139,9 +133,9 @@ export async function createMealPlan(input: CreateMealPlanInput): Promise<{ id: 
     const errorText = await response.text();
     logger.error("createMealPlan failed", new Error(errorText), {
       status: response.status,
-      weekStartISO,
-      dayKey,
-      mealType,
+      weekStartISO: input.weekStartISO,
+      dayKey: input.dayKey,
+      mealType: input.mealType,
     });
     throw new Error(`Failed to create meal plan entry: ${response.status}`);
   }
@@ -200,8 +194,7 @@ export async function listRecipes({
   );
 }
 
-export async function importRecipeFromUrl(url: string): Promise<{ id: string; title: string; imageUrl?: string | null }>
-{
+export async function importRecipeFromUrl(url: string): Promise<{ id: string; title: string; imageUrl?: string | null }>{
   const response = await fetchFromApp("/api/recipes/import", {
     method: "POST",
     body: JSON.stringify({ url }),
@@ -224,8 +217,7 @@ export async function generateShoppingListForWeek({
   weekStartISO,
 }: {
   weekStartISO: string;
-}): Promise<{ listId: string; message?: string }>
-{
+}): Promise<{ listId: string; message?: string }>{
   const response = await fetchFromApp("/api/meal-planner/add-week-ingredients", {
     method: "POST",
     body: JSON.stringify({ week_start_date: weekStartISO }),

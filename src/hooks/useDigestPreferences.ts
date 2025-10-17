@@ -36,22 +36,22 @@ export interface DigestPreferences {
 }
 
 export interface UpdateDigestPreferencesData {
-  daily_digest_enabled?: boolean;
-  daily_digest_time?: string;
-  weekly_digest_enabled?: boolean;
-  weekly_digest_day?: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
-  weekly_digest_time?: string;
-  include_chores?: boolean;
-  include_meals?: boolean;
-  include_shopping?: boolean;
-  include_events?: boolean;
-  include_achievements?: boolean;
-  include_insights?: boolean;
-  email_enabled?: boolean;
+  daily_digest_enabled: boolean;
+  daily_digest_time: string;
+  weekly_digest_enabled: boolean;
+  weekly_digest_day: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+  weekly_digest_time: string;
+  include_chores: boolean;
+  include_meals: boolean;
+  include_shopping: boolean;
+  include_events: boolean;
+  include_achievements: boolean;
+  include_insights: boolean;
+  email_enabled: boolean;
   email_address?: string;
-  push_enabled?: boolean;
-  priority_filter?: 'all' | 'high' | 'medium_high';
-  completion_status?: 'all' | 'pending' | 'overdue';
+  push_enabled: boolean;
+  priority_filter: 'all' | 'high' | 'medium_high';
+  completion_status: 'all' | 'pending' | 'overdue';
 }
 
 // Default preferences
@@ -167,15 +167,17 @@ export function useSendTestDigest() {
 }
 
 // Utility functions
-export function formatDigestTime(time: string): string {
+export function formatDigestTime(time: string | undefined): string {
   try {
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
+    if (!time) return '';
+    const [hoursRaw, minutesRaw] = time.split(':');
+    const hour = Number.parseInt(hoursRaw ?? '0', 10);
+    const minutes = minutesRaw ?? '00';
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
   } catch {
-    return time;
+    return time ?? '';
   }
 }
 
@@ -185,8 +187,10 @@ export function getNextDigestTime(preferences: DigestPreferences): { type: 'dail
   
   // Calculate next daily digest time
   const dailyTime = new Date();
-  const [dailyHour, dailyMinute] = preferences.daily_digest_time.split(':').map(Number);
-  dailyTime.setHours(dailyHour, dailyMinute, 0, 0);
+  const [dailyHourRaw, dailyMinuteRaw] = (preferences.daily_digest_time ?? '').split(':').map(Number);
+  const dailyHour = Number.isFinite(dailyHourRaw) ? dailyHourRaw : 0;
+  const dailyMinute = Number.isFinite(dailyMinuteRaw) ? dailyMinuteRaw : 0;
+  dailyTime.setHours(dailyHour ?? 0, dailyMinute ?? 0, 0, 0);
   
   // If daily time has passed today, move to tomorrow
   if (dailyTime <= now) {
@@ -195,14 +199,17 @@ export function getNextDigestTime(preferences: DigestPreferences): { type: 'dail
   
   // Calculate next weekly digest time
   const weeklyTime = new Date();
-  const [weeklyHour, weeklyMinute] = preferences.weekly_digest_time.split(':').map(Number);
+  const [weeklyHourRaw, weeklyMinuteRaw] = (preferences.weekly_digest_time ?? '').split(':').map(Number);
+  const weeklyHour = Number.isFinite(weeklyHourRaw) ? weeklyHourRaw : 0;
+  const weeklyMinute = Number.isFinite(weeklyMinuteRaw) ? weeklyMinuteRaw : 0;
   const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const weeklyDayIndex = dayNames.indexOf(preferences.weekly_digest_day);
+  const weeklyDayIndex = dayNames.indexOf(preferences.weekly_digest_day ?? '');
   
-  weeklyTime.setHours(weeklyHour, weeklyMinute, 0, 0);
+  weeklyTime.setHours(weeklyHour ?? 0, weeklyMinute ?? 0, 0, 0);
   
   // Find next occurrence of the weekly digest day
-  const daysUntilWeekly = (weeklyDayIndex - today + 7) % 7;
+  const validWeeklyDayIndex = weeklyDayIndex >= 0 ? weeklyDayIndex : today;
+  const daysUntilWeekly = (validWeeklyDayIndex - today + 7) % 7;
   if (daysUntilWeekly === 0 && weeklyTime <= now) {
     // If it's today but time has passed, move to next week
     weeklyTime.setDate(weeklyTime.getDate() + 7);

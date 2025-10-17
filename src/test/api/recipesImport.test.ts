@@ -31,14 +31,14 @@ vi.mock('@/lib/server/canAccessFeature', () => {
 
 type DatabaseModuleWithMocks = typeof database & {
   __mocks: {
-    getUserAndHouseholdData: vi.Mock;
-    getDatabaseClient: vi.Mock;
+    getUserAndHouseholdData: ReturnType<typeof vi.fn> & { mockResolvedValue: typeof vi.fn };
+    getDatabaseClient: ReturnType<typeof vi.fn> & { mockReturnValue: typeof vi.fn };
   };
 };
 
 type FeatureModuleWithMocks = typeof featureModule & {
   __mocks: {
-    canAccessFeatureFromEntitlements: vi.Mock;
+    canAccessFeatureFromEntitlements: ReturnType<typeof vi.fn> & { mockReturnValue: typeof vi.fn };
   };
 };
 
@@ -58,7 +58,7 @@ describe('POST /api/recipes/import', () => {
   const userId = 'user-123';
   const householdId = 'household-456';
 
-  let fetchMock: vi.Mock;
+let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     getUserAndHouseholdDataMock.mockResolvedValue({

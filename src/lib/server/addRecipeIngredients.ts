@@ -1,6 +1,10 @@
 import { sb } from './supabaseAdmin';
 import { logger } from '@/lib/logging/logger';
-import type { Database, RecipeRow } from '@/types/database';
+import type { Database } from '@/types/supabase.generated';
+import type { RecipeRow } from '@/types/database';
+
+type ShoppingItemRow = Database['public']['Tables']['shopping_items']['Row'];
+type ShoppingItemInsert = Database['public']['Tables']['shopping_items']['Insert'];
 
 // Helper to normalize ingredient names for comparison
 function normalizeName(name: string): string {
@@ -84,17 +88,6 @@ function getIngredientName(ingredient: unknown): string {
  * @param recipeId - The recipe ID to get ingredients from
  * @returns Object with success status and counts
  */
-type ShoppingItem = Database['public']['Tables']['shopping_items']['Row'] & {
-  quantity?: number | string | null;
-  completed?: boolean | null;
-};
-
-type InsertShoppingItem = Omit<ShoppingItem, 'id' | 'created_at' | 'shopping_list_id'> & {
-  list_id: string;
-  quantity: number | string;
-  completed: boolean;
-};
-
 type RecipeWithIngredients = RecipeRow & { ingredients: unknown };
 
 export async function addRecipeIngredientsToGroceries(
@@ -120,7 +113,7 @@ export async function addRecipeIngredientsToGroceries(
 
     const { data: list, error: listError } = await supabase
       .from('shopping_lists')
-      .select('*')
+      .select('id')
       .eq('household_id', householdId)
       .eq('title', 'Groceries')
       .maybeSingle();
@@ -156,9 +149,11 @@ export async function addRecipeIngredientsToGroceries(
       return { ok: true, added: 0, updated: 0, listId };
     }
 
+    type ExistingItem = Pick<ShoppingItemRow, 'id' | 'name' | 'quantity' | 'auto_added' | 'pending_confirmation'>;
+
     const { data: existingItems, error: existingError } = await supabase
       .from('shopping_items')
-      .select('*')
+      .select('id, name, quantity, auto_added, pending_confirmation')
       .eq('list_id', listId)
       .eq('is_complete', false);
 
@@ -166,9 +161,9 @@ export async function addRecipeIngredientsToGroceries(
       return { ok: false, added: 0, updated: 0, error: existingError.message };
     }
 
-    const existingItemsMap = new Map<string, ShoppingItem>();
+    const existingItemsMap = new Map<string, ExistingItem>();
     existingItems?.forEach(item => {
-      existingItemsMap.set(normalizeName(item.name), item as ShoppingItem);
+      existingItemsMap.set(normalizeName(item.name), item as ExistingItem);
     });
 
     let addedCount = 0;
@@ -182,16 +177,19 @@ export async function addRecipeIngredientsToGroceries(
       const existingItem = existingItemsMap.get(normalizedIngName);
 
       if (existingItem) {
-        let quantityValue: number | string;
+        let quantityValue: string | null;
 
-        if (parsedIngredient.amount !== null && typeof existingItem.quantity === 'number') {
-          quantityValue = existingItem.quantity + parsedIngredient.amount;
-        } else if (parsedIngredient.amount !== null && typeof existingItem.quantity === 'string') {
-          quantityValue = `${existingItem.quantity} + ${parsedIngredient.amount}${parsedIngredient.unit ? ` ${parsedIngredient.unit}` : ''}`.trim();
+        if (parsedIngredient.amount !== null) {
+          const base = `${parsedIngredient.amount}${parsedIngredient.unit ? ` ${parsedIngredient.unit}` : ''}`.trim();
+          if (existingItem.quantity) {
+            quantityValue = `${existingItem.quantity.trim()} + ${base}`;
+          } else {
+            quantityValue = base;
+          }
         } else {
-          const currentQuantity = existingItem.quantity?.toString().trim() ?? '';
+          const currentQuantity = existingItem.quantity?.trim() ?? '';
           const newQuantityText = parsedIngredient.originalText.trim();
-          quantityValue = [currentQuantity, newQuantityText].filter(Boolean).join(' + ');
+          quantityValue = [currentQuantity, newQuantityText].filter(Boolean).join(' + ') || null;
         }
 
         const { error: updateErr } = await supabase
@@ -210,37 +208,47 @@ export async function addRecipeIngredientsToGroceries(
           });
         }
       } else {
-        let quantityValue: number | string = parsedIngredient.originalText;
+        const quantityText = parsedIngredient.amount !== null
+          ? `${parsedIngredient.amount}${parsedIngredient.unit ? ` ${parsedIngredient.unit}` : ''}`.trim()
+          : parsedIngredient.originalText.trim();
 
-        if (parsedIngredient.amount !== null) {
-          quantityValue = parsedIngredient.amount;
-        }
-
-        const newItem: InsertShoppingItem = {
+        const newItem: ShoppingItemInsert = {
           list_id: listId,
           name: name.trim(),
-          quantity: quantityValue,
-          completed: false,
+          quantity: quantityText || null,
+          is_complete: false,
+          auto_added: true,
+          pending_confirmation: true,
+          source_recipe_id: recipeId,
+          category: null,
+          auto_added_at: new Date().toISOString(),
+          created_by: userId,
         };
 
         const { error: insertErr } = await supabase
           .from('shopping_items')
-          .insert([newItem]);
+          .insert(newItem);
 
         if (insertErr) {
           logger.error('Error inserting shopping item from recipe', insertErr, { name, listId });
 
           if (insertErr.message.includes('quantity')) {
-            const fallbackItem: InsertShoppingItem = {
+            const fallbackItem: ShoppingItemInsert = {
               list_id: listId,
               name: name.trim(),
-              quantity: 1,
-              completed: false,
+              quantity: parsedIngredient.amount !== null ? String(parsedIngredient.amount) : '1',
+              is_complete: false,
+              auto_added: true,
+              pending_confirmation: true,
+              source_recipe_id: recipeId,
+              category: null,
+              auto_added_at: new Date().toISOString(),
+              created_by: userId,
             };
 
             const { error: retryErr } = await supabase
               .from('shopping_items')
-              .insert([fallbackItem]);
+              .insert(fallbackItem);
 
             if (!retryErr) {
               addedCount += 1;
@@ -251,7 +259,7 @@ export async function addRecipeIngredientsToGroceries(
           }
         } else {
           addedCount += 1;
-          logger.info('Added new shopping item from recipe', { name, quantity: quantityValue, listId });
+          logger.info('Added new shopping item from recipe', { name, quantity: quantityText, listId });
         }
       }
     }

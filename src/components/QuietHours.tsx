@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUserData } from '@/hooks/useUserData';
 import { canAccessFeature } from '@/lib/entitlements';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,15 +9,12 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  Bell, 
-  BellOff, 
-  Clock, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  BellOff,
+  AlertCircle,
   Settings,
   Moon,
-  Sun
+  Sun,
 } from 'lucide-react';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -58,7 +54,6 @@ const DAYS_OF_WEEK = [
 ];
 
 export default function QuietHours({ householdId, entitlements }: QuietHoursProps) {
-  const { userData } = useUserData();
   const [settings, setSettings] = useState<QuietHoursSettings>({
     enabled: false,
     start_time: '22:00',
@@ -135,11 +130,11 @@ export default function QuietHours({ householdId, entitlements }: QuietHoursProp
 
         data = await response.json();
         
-        if (response.ok && data.success) {
+        if (response?.ok && data?.success) {
           toast.success('Quiet hours settings saved successfully!');
           setStatus(data.status);
           return; // Success, exit the retry loop
-        } else if (response.status === 401 && retryCount < maxRetries) {
+        } else if (response?.status === 401 && retryCount < maxRetries) {
           // Authentication failed, wait a bit and retry
           console.log(`Authentication failed, retrying... (${retryCount + 1}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
@@ -151,11 +146,11 @@ export default function QuietHours({ householdId, entitlements }: QuietHoursProp
       }
       
       // Handle final result
-      if (response.status === 401) {
+      if (response?.status === 401) {
         toast.error('Authentication failed. Please refresh the page and try again.');
         console.error('Authentication error after retries:', data);
       } else {
-        toast.error(data.error || 'Failed to save quiet hours settings');
+        toast.error(data?.error || 'Failed to save quiet hours settings');
         console.error('Save error:', data);
       }
     } catch (err) {
@@ -177,8 +172,9 @@ export default function QuietHours({ householdId, entitlements }: QuietHoursProp
 
   const formatTime = (time: string) => {
     try {
-      const [hours, minutes] = time.split(':');
-      const hour = parseInt(hours);
+      const [hoursRaw, minutesRaw] = (time ?? '').split(':');
+      const hour = Number.parseInt(hoursRaw ?? '0', 10);
+      const minutes = minutesRaw ?? '00';
       const ampm = hour >= 12 ? 'PM' : 'AM';
       const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
       return `${displayHour}:${minutes} ${ampm}`;
@@ -364,10 +360,11 @@ export default function QuietHours({ householdId, entitlements }: QuietHoursProp
                     Quiet hours will be active from <strong>{formatTime(settings.start_time)}</strong> to{' '}
                     <strong>{formatTime(settings.end_time)}</strong> on{' '}
                     <strong>
-                      {settings.days_of_week.length === 7 
-                        ? 'all days' 
-                        : settings.days_of_week.map(d => DAYS_OF_WEEK[d].short).join(', ')
-                      }
+                      {settings.days_of_week.length === 7
+                        ? 'all days'
+                        : settings.days_of_week
+                            .map((d) => DAYS_OF_WEEK.find((day) => day.value === d)?.short ?? String(d))
+                            .join(', ')}
                     </strong>
                   </p>
                 </div>

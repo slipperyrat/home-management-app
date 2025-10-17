@@ -1,6 +1,5 @@
-import { apiRequestCounter, apiLatencyHistogram } from '@/app/metrics/router';
+// Placeholder client metrics module; actual monitoring router not yet implemented
 
-export function recordApiMetrics(route: string, method: string, status: number, durationMs: number) {
-  apiRequestCounter.inc({ route, method, status: String(status) });
-  apiLatencyHistogram.observe({ route, method }, durationMs);
+export function recordApiMetrics(_route: string, _method: string, _status: number, _durationMs: number) {
+  // No-op for now; implement with real monitoring backend when available
 }

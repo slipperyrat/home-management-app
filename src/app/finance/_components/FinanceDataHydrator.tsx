@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { HydrationBoundary, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { HydrationBoundary, QueryClient, QueryClientProvider, dehydrate } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/react-query/config";
 
@@ -27,11 +27,11 @@ export function FinanceDataHydrator({ summary, bills, envelopes, spending, child
     return queryClient;
   }, [bills, envelopes, spending, summary]);
 
+  const dehydratedState = useMemo(() => dehydrate(client), [client]);
+
   return (
     <QueryClientProvider client={client}>
-      <HydrationBoundary>
-        {children}
-      </HydrationBoundary>
+      <HydrationBoundary state={dehydratedState}>{children}</HydrationBoundary>
     </QueryClientProvider>
   );
 }

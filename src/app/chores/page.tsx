@@ -10,7 +10,7 @@ import { ChoreListSkeleton } from "./_components/ChoreListSkeleton";
 import { FiltersSkeleton } from "./_components/FiltersSkeleton";
 
 type ChoresPageProps = {
-  searchParams: Promise<ChoreFilters>;
+  searchParams?: ChoreFilters;
 };
 
 export default async function ChoresPage({ searchParams }: ChoresPageProps) {
@@ -25,14 +25,12 @@ export default async function ChoresPage({ searchParams }: ChoresPageProps) {
     );
   }
 
-  const resolvedFilters = await searchParams;
-
-  const filters = {
-    view: resolvedFilters.view ?? "all",
-    status: resolvedFilters.status,
-    assignee: resolvedFilters.assignee,
-    tag: resolvedFilters.tag,
-  } satisfies ChoreFilters;
+  const filters: ChoreFilters = {
+    view: searchParams?.view ?? "all",
+    ...(searchParams?.status ? { status: searchParams.status } : {}),
+    ...(searchParams?.assignee ? { assignee: searchParams.assignee } : {}),
+    ...(searchParams?.tag ? { tag: searchParams.tag } : {}),
+  };
 
   const choresPromise = listChores(filters);
   const membersPromise = listMembers();
@@ -44,7 +42,6 @@ export default async function ChoresPage({ searchParams }: ChoresPageProps) {
         <FiltersSidebar filters={filters} membersPromise={membersPromise} tagsPromise={tagsPromise} />
       </Suspense>
       <Suspense fallback={<ChoreListSkeleton />}>
-        {/* @ts-expect-error Async Server Component */}
         <ChoreList choresPromise={choresPromise} membersPromise={membersPromise} filters={filters} />
       </Suspense>
     </div>

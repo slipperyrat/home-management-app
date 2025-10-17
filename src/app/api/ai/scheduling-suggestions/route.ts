@@ -73,6 +73,12 @@ type SchedulingSuggestion = {
   reasoning: string;
 };
 
+function formatDate(date: Date): string {
+  const iso = date.toISOString();
+  const index = iso.indexOf('T');
+  return index === -1 ? iso : iso.slice(0, index);
+}
+
 function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSuggestion[] {
   const suggestions: SchedulingSuggestion[] = [];
   const now = new Date();
@@ -80,7 +86,11 @@ function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSu
   // Analyze existing events for patterns
   const eventTypes = events.map((event) => event.event_type || 'general');
   const timeSlots = events.map((event) => {
-    const hour = new Date(event.start_time).getHours();
+    const start = event.start_time ? new Date(event.start_time) : null;
+    const hour = start?.getHours();
+    if (hour === undefined || Number.isNaN(hour)) {
+      return 'morning';
+    }
     return hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
   });
 
@@ -110,7 +120,7 @@ function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSu
       title: 'Morning Routine Optimization',
       description: 'Based on your morning scheduling preference, consider creating a structured morning routine',
       suggested_time: '09:00',
-      suggested_date: nextWeek.toISOString().split('T')[0],
+      suggested_date: formatDate(nextWeek),
       event_type: 'routine',
       priority: 'medium',
       ai_confidence: 85,
@@ -125,7 +135,7 @@ function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSu
       title: 'Weekly Planning Session',
       description: 'Schedule a weekly planning session to organize your upcoming week',
       suggested_time: '18:00',
-      suggested_date: nextWeek.toISOString().split('T')[0],
+      suggested_date: formatDate(nextWeek),
       event_type: 'planning',
       priority: 'high',
       ai_confidence: 90,
@@ -142,7 +152,7 @@ function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSu
         title: 'Schedule Buffer Time',
         description: 'Add buffer time between events to prevent scheduling conflicts',
         suggested_time: '15:00',
-        suggested_date: nextWeek.toISOString().split('T')[0],
+        suggested_date: formatDate(nextWeek),
         event_type: 'buffer',
         priority: 'medium',
         ai_confidence: 80,
@@ -158,7 +168,7 @@ function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSu
       title: 'Personal Time Block',
       description: 'Schedule dedicated personal time for self-care and relaxation',
       suggested_time: '20:00',
-      suggested_date: nextWeek.toISOString().split('T')[0],
+      suggested_date: formatDate(nextWeek),
       event_type: 'personal',
       priority: 'medium',
       ai_confidence: 75,
@@ -173,7 +183,7 @@ function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSu
       title: 'Monthly Schedule Review',
       description: 'Review your monthly schedule and identify optimization opportunities',
       suggested_time: '19:00',
-      suggested_date: nextMonth.toISOString().split('T')[0],
+      suggested_date: formatDate(nextMonth),
       event_type: 'review',
       priority: 'medium',
       ai_confidence: 85,
@@ -188,7 +198,7 @@ function generateAISchedulingSuggestions(events: HouseholdEvent[]): SchedulingSu
       title: 'Schedule Your First Event',
       description: 'Start building your schedule by adding your first calendar event',
       suggested_time: '10:00',
-      suggested_date: now.toISOString().split('T')[0],
+      suggested_date: formatDate(now),
       event_type: 'general',
       priority: 'low',
       ai_confidence: 95,
@@ -203,15 +213,26 @@ type EventConflict = [HouseholdEvent, HouseholdEvent];
 
 function findPotentialConflicts(events: HouseholdEvent[]): EventConflict[] {
   const conflicts: EventConflict[] = [];
-  const sortedEvents = [...events].sort((a, b) =>
-    new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
-  );
+  const toDateSafe = (iso: string | null) => (iso ? new Date(iso) : null);
+
+  const sortedEvents = [...events].sort((a, b) => {
+    const startA = toDateSafe(a.start_time)?.getTime() ?? 0;
+    const startB = toDateSafe(b.start_time)?.getTime() ?? 0;
+    return startA - startB;
+  });
 
   for (let i = 0; i < sortedEvents.length - 1; i++) {
     const current = sortedEvents[i];
     const next = sortedEvents[i + 1];
-    
-    if (current && next && new Date(current.end_time) > new Date(next.start_time)) {
+
+    if (!current || !next) {
+      continue;
+    }
+
+    const currentEnd = toDateSafe(current.end_time);
+    const nextStart = toDateSafe(next.start_time);
+
+    if (currentEnd && nextStart && currentEnd > nextStart) {
       conflicts.push([current, next]);
     }
   }

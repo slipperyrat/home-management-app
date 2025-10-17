@@ -1,168 +1,192 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { sb, ServerError, createErrorResponse } from '@/lib/server/supabaseAdmin';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
+import type { Database } from '@/types/supabase.generated';
 
 const SeedDataSchema = z.object({
   sampleRecipes: z.boolean().default(true),
   samplePlans: z.boolean().default(true),
 });
 
-// Sample data generators
-const generateSampleRecipes = () => [
+type RecipeInsert = Database['public']['Tables']['recipes']['Insert'];
+type ChoreInsert = Database['public']['Tables']['chores']['Insert'];
+
+type SampleRecipe = {
+  title: string;
+  description: string;
+  ingredients: Array<{ name: string; amount: number; unit: string }>;
+  instructions: string[];
+  prepTime: number;
+  cookTime: number;
+  servings: number;
+};
+
+const generateSampleRecipes = (): SampleRecipe[] => [
   {
-    name: 'Quick Breakfast Bowl',
+    title: 'Quick Breakfast Bowl',
+    description: 'A simple and nutritious breakfast bowl with oats and fruit.',
     ingredients: [
       { name: 'Oats', amount: 1, unit: 'cup' },
       { name: 'Banana', amount: 1, unit: 'piece' },
       { name: 'Honey', amount: 2, unit: 'tbsp' },
-      { name: 'Almonds', amount: 0.25, unit: 'cup' }
+      { name: 'Almonds', amount: 0.25, unit: 'cup' },
     ],
     instructions: [
-      'Cook oats with water according to package directions',
-      'Slice banana and add to bowl',
-      'Drizzle with honey and sprinkle almonds',
-      'Serve hot or cold'
+      'Cook oats with water according to package directions.',
+      'Slice banana and add to bowl.',
+      'Drizzle with honey and sprinkle almonds.',
+      'Serve hot or cold.',
     ],
     prepTime: 5,
     cookTime: 10,
     servings: 1,
-    difficulty: 'easy'
   },
   {
-    name: 'Simple Pasta Dinner',
+    title: 'Simple Pasta Dinner',
+    description: 'Classic garlic and parmesan pasta that is ready in minutes.',
     ingredients: [
       { name: 'Pasta', amount: 8, unit: 'oz' },
       { name: 'Olive Oil', amount: 2, unit: 'tbsp' },
       { name: 'Garlic', amount: 3, unit: 'cloves' },
-      { name: 'Parmesan', amount: 0.5, unit: 'cup' }
+      { name: 'Parmesan', amount: 0.5, unit: 'cup' },
     ],
     instructions: [
-      'Boil pasta according to package directions',
-      'Heat oil in pan and sauté minced garlic',
-      'Toss cooked pasta with garlic oil',
-      'Top with grated parmesan and serve'
+      'Boil pasta according to package directions.',
+      'Heat oil in pan and sauté minced garlic.',
+      'Toss cooked pasta with garlic oil.',
+      'Top with grated parmesan and serve.',
     ],
     prepTime: 10,
     cookTime: 15,
     servings: 4,
-    difficulty: 'easy'
-  }
+  },
 ];
 
-const generateSamplePlans = () => [
+const generateSamplePlans = (): Array<Partial<ChoreInsert>> => [
   {
     title: 'Weekly Grocery Shopping',
-    description: 'Plan meals and create shopping list for the week',
+    description: 'Plan meals and create shopping list for the week.',
     points: 25,
     frequency: 'weekly',
-    category: 'planning'
+    category: 'planning',
+    status: 'pending',
   },
   {
     title: 'House Cleaning',
-    description: 'Deep clean kitchen and bathrooms',
+    description: 'Deep clean kitchen and bathrooms.',
     points: 50,
     frequency: 'weekly',
-    category: 'cleaning'
+    category: 'cleaning',
+    status: 'pending',
   },
   {
     title: 'Laundry Day',
-    description: 'Wash, dry, and fold all household laundry',
+    description: 'Wash, dry, and fold all household laundry.',
     points: 30,
     frequency: 'weekly',
-    category: 'household'
-  }
+    category: 'household',
+    status: 'pending',
+  },
 ];
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
-
-    const body = await req.json();
-    const validatedData = SeedDataSchema.parse(body);
-    const { sampleRecipes, samplePlans } = validatedData;
-
-    // Get user's household
-    const { data: userData, error: userError } = await sb()
-      .from('users')
-      .select('household_id')
-      .eq('id', user.id)
-      .single();
-
-    if (userError || !userData?.household_id) {
-      throw new ServerError('User not found or not in household', 400);
-    }
-
-    const householdId = userData.household_id;
-    let recipesAdded = 0;
-    let plansAdded = 0;
-
-    // Generate and seed sample recipes if requested
-    if (sampleRecipes) {
-      const sampleRecipesData = generateSampleRecipes();
-      const recipesWithHousehold = sampleRecipesData.map(recipe => ({
-        ...recipe,
-        household_id: householdId,
-        created_by: userId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
-
-      const { error: recipesError } = await sb()
-        .from('recipes')
-        .insert(recipesWithHousehold);
-
-      if (recipesError) {
-        console.error('Error seeding recipes:', recipesError);
-        // Don't fail the entire request, just log the error
-      } else {
-        recipesAdded = sampleRecipesData.length;
+      if (!user?.id) {
+        throw new ServerError('Unauthorized', 401);
       }
-    }
 
-    // Generate and seed sample planner items if requested
-    if (samplePlans) {
-      const samplePlansData = generateSamplePlans();
-      const plansWithHousehold = samplePlansData.map(plan => ({
-        ...plan,
-        household_id: householdId,
-        created_by: userId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }));
+      const body = await req.json();
+      const validatedData = SeedDataSchema.parse(body);
+      const { sampleRecipes, samplePlans } = validatedData;
 
-      const { error: plansError } = await sb()
-        .from('chores')
-        .insert(plansWithHousehold);
+      const { data: userData, error: userError } = await sb()
+        .from('users')
+        .select('household_id')
+        .eq('id', user.id)
+        .maybeSingle();
 
-      if (plansError) {
-        console.error('Error seeding planner items:', plansError);
-        // Don't fail the entire request, just log the error
-      } else {
-        plansAdded = samplePlansData.length;
+      if (userError || !userData?.household_id) {
+        throw new ServerError('User not found or not in household', 400);
       }
-    }
 
-    console.log(`✅ Seeded data for household: ${householdId} - Recipes: ${recipesAdded}, Plans: ${plansAdded}`);
+      const householdId = userData.household_id;
+      let recipesAdded = 0;
+      let plansAdded = 0;
 
-    return NextResponse.json({
-      success: true,
-      message: 'Data seeded successfully',
-      recipesAdded,
-      plansAdded
-    });
+      if (sampleRecipes) {
+        const now = new Date().toISOString();
+        const recipesToInsert: RecipeInsert[] = generateSampleRecipes().map((recipe) => ({
+          title: recipe.title,
+          description: recipe.description,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          prep_time: recipe.prepTime,
+          cook_time: recipe.cookTime,
+          servings: recipe.servings,
+          household_id: householdId,
+          created_by: user.id,
+          created_at: now,
+          updated_at: now,
+          tags: ['sample'],
+          image_url: null,
+          difficulty: 'easy',
+        }));
 
-  } catch (error) {
-    if (error instanceof ServerError) {
-      return createErrorResponse(error);
-    }
-    console.error('Unexpected error:', error);
-    return createErrorResponse(new ServerError('Internal server error', 500));
+        const { error: recipesError } = await sb()
+          .from('recipes')
+          .insert(recipesToInsert);
+
+        if (!recipesError) {
+          recipesAdded = recipesToInsert.length;
+        } else {
+          console.error('Error seeding recipes:', recipesError);
+        }
+      }
+
+      if (samplePlans) {
+        const now = new Date().toISOString();
+        const plansToInsert: ChoreInsert[] = generateSamplePlans().map((plan) => ({
+          title: plan.title ?? 'Untitled task',
+          description: plan.description ?? null,
+          points: plan.points ?? 0,
+          frequency: plan.frequency ?? null,
+          category: plan.category ?? null,
+          status: plan.status ?? 'pending',
+          household_id: householdId,
+          created_by: user.id,
+          created_at: now,
+          updated_at: now,
+        }));
+
+        const { error: plansError } = await sb()
+          .from('chores')
+          .insert(plansToInsert);
+
+        if (!plansError) {
+          plansAdded = plansToInsert.length;
+        } else {
+          console.error('Error seeding planner items:', plansError);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Data seeded successfully',
+        recipesAdded,
+        plansAdded,
+      });
+    } catch (error) {
+      if (error instanceof ServerError) {
+        return createErrorResponse(error);
+      }
+      console.error('Unexpected error:', error);
+      return createErrorResponse(new ServerError('Internal server error', 500));
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }

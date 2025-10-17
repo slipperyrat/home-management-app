@@ -22,6 +22,12 @@ type CreateEnvelopePayload = {
   period_end: string;
 };
 
+function getTodayISODate(): string {
+  const iso = new Date().toISOString();
+  const [date = iso] = iso.split("T");
+  return date;
+}
+
 async function createEnvelope(payload: CreateEnvelopePayload) {
   const response = await fetch("/api/finance/budget-envelopes", {
     method: "POST",
@@ -43,10 +49,10 @@ async function createEnvelope(payload: CreateEnvelopePayload) {
 export function EnvelopeQuickAdd({ householdId }: EnvelopeQuickAddProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [periodStart, setPeriodStart] = useState(new Date().toISOString().split("T")[0]);
-  const [periodEnd, setPeriodEnd] = useState(new Date().toISOString().split("T")[0]);
+  const [name, setName] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [periodStart, setPeriodStart] = useState<string>(() => getTodayISODate());
+  const [periodEnd, setPeriodEnd] = useState<string>(() => getTodayISODate());
   const [pending, startTransition] = useTransition();
 
   const mutation = useMutation({
@@ -73,11 +79,15 @@ export function EnvelopeQuickAdd({ householdId }: EnvelopeQuickAddProps) {
       return;
     }
 
+    const fallbackDate = getTodayISODate();
+    const submittedPeriodStart = periodStart || fallbackDate;
+    const submittedPeriodEnd = periodEnd || fallbackDate;
+
     mutation.mutate({
       name: name.trim(),
       allocated_amount: Number.parseFloat(amount),
-      period_start: periodStart,
-      period_end: periodEnd,
+      period_start: submittedPeriodStart,
+      period_end: submittedPeriodEnd,
     });
   };
 

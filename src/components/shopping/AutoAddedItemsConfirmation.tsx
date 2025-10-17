@@ -16,7 +16,7 @@ interface AutoAddedItemsConfirmationProps {
 export function AutoAddedItemsConfirmation({ className }: AutoAddedItemsConfirmationProps) {
   const { isSignedIn, isLoaded } = useAuth();
   const { data: pendingItems = [], isLoading, error } = usePendingConfirmations();
-  const { mutate: confirmItems, isPending: isConfirming, error: confirmError } = useConfirmAutoAddedItems();
+  const { mutate: confirmItems, isPending: isConfirming } = useConfirmAutoAddedItems();
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
   // Don't render if user is not authenticated or auth is still loading
@@ -118,11 +118,9 @@ export function AutoAddedItemsConfirmation({ className }: AutoAddedItemsConfirma
         <div className="flex items-center justify-between p-3 bg-blue-100 rounded-lg">
           <div className="flex items-center space-x-2">
             <Checkbox
-              checked={allSelected}
-              onCheckedChange={handleSelectAll}
-              ref={(el) => {
-                if (el) el.indeterminate = someSelected;
-              }}
+              checked={someSelected ? true : allSelected}
+              onChange={(event) => handleSelectAll(event.target.checked)}
+              aria-checked={someSelected ? 'mixed' : allSelected}
             />
             <span className="text-sm font-medium text-blue-900">
               Select All ({selectedItems.size}/{pendingItems.length})
@@ -145,7 +143,7 @@ export function AutoAddedItemsConfirmation({ className }: AutoAddedItemsConfirma
 
         {/* Individual Items */}
         <div className="space-y-2">
-          {pendingItems.map((item: PendingItem) => (
+          {pendingItems.map((item) => (
             <div
               key={item.id}
               className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-200"

@@ -3,12 +3,16 @@ import { NextRequest } from 'next/server';
 
 const mockAuthState = vi.hoisted(() => ({ userId: 'user-123' as string | null }));
 
-vi.mock('@clerk/nextjs/server', () => ({
-  clerkMiddleware: (handler: (getAuth: () => Promise<typeof mockAuthState>, req: NextRequest) => Promise<Response>) =>
-    (req: NextRequest) => handler(async () => mockAuthState, req),
-}));
+vi.mock('@clerk/nextjs/server', async () => {
+  const actual = await vi.importActual<typeof import('@clerk/nextjs/server')>('@clerk/nextjs/server');
+  return {
+    ...actual,
+    clerkMiddleware: (handler: (auth: () => Promise<typeof mockAuthState>, req: NextRequest) => Promise<Response>) =>
+      (req: NextRequest) => handler(async () => mockAuthState, req),
+  };
+});
 
-import middleware from '@/middleware';
+const { default: middleware } = await import('@/middleware');
 
 vi.mock('@/lib/api/database', () => ({
   getUserHouseholdId: vi.fn(),
@@ -28,7 +32,10 @@ describe('middleware onboarding checks', () => {
     vi.mocked(getUserOnboardingStatus).mockResolvedValue(false);
 
     const request = new NextRequest('https://example.com/dashboard');
-    const response = await middleware(request as NextRequest);
+    const response = await middleware(request as NextRequest, {} as any);
+    if (!response) {
+      throw new Error('Middleware returned no response');
+    }
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toContain('/onboarding');
   });
@@ -38,8 +45,9 @@ describe('middleware onboarding checks', () => {
     vi.mocked(getUserOnboardingStatus).mockResolvedValue(true);
 
     const request = new NextRequest('https://example.com/dashboard');
-    const response = await middleware(request as NextRequest);
-    expect(response.headers.get('location')).toBeNull();
+    const response = await middleware(request as NextRequest, {} as any);
+    expect(response).not.toBeNull();
+    expect(response!.headers.get('location')).toBeNull();
   });
 
   it('does not redirect static asset requests', async () => {
@@ -56,8 +64,9 @@ describe('middleware onboarding checks', () => {
 
     for (const path of assetPaths) {
       const request = new NextRequest(path);
-      const response = await middleware(request as NextRequest);
-      expect(response.headers.get('location')).toBeNull();
+      const response = await middleware(request as NextRequest, {} as any);
+      expect(response).not.toBeNull();
+      expect(response!.headers.get('location')).toBeNull();
     }
   });
 
@@ -67,7 +76,8 @@ describe('middleware onboarding checks', () => {
     vi.mocked(getUserOnboardingStatus).mockResolvedValue(false);
 
     const request = new NextRequest('https://example.com/onboarding');
-    const response = await middleware(request as NextRequest);
-    expect(response.headers.get('location')).toBeNull();
+    const response = await middleware(request as NextRequest, {} as any);
+    expect(response).not.toBeNull();
+    expect(response!.headers.get('location')).toBeNull();
   });
 });

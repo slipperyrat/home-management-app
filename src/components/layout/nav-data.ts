@@ -1,5 +1,4 @@
 import {
-  Activity,
   AlarmClock,
   Bell,
   CalendarClock,
@@ -19,7 +18,6 @@ import {
   UtensilsCrossed,
   Wallet,
   Waves,
-  Workflow,
   type LucideIcon,
 } from "lucide-react";
 

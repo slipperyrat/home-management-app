@@ -1,31 +1,12 @@
 // WebSocket Server for Real-time AI Processing
 // This can be easily removed if the WebSocket implementation doesn't work
 
-import { Server as SocketIOServer, Socket } from 'socket.io';
-import { Server as HTTPServer } from 'http';
+import { Server as SocketIOServer, type Socket } from 'socket.io';
 import { isAIEnabled } from '@/lib/ai/config/aiConfig';
-import {
-  RealTimeAIProcessor,
-  type RealTimeAIRequest,
-} from '@/lib/ai/services/RealTimeAIProcessor';
+import { RealTimeAIProcessor } from '@/lib/ai/services/RealTimeAIProcessor';
 import { logger } from '@/lib/logging/logger';
 import { getUserAndHouseholdData } from '@/lib/api/database';
-
-export interface WebSocketMessage<TData = unknown> {
-  type:
-    | 'ai_processing_start'
-    | 'ai_processing_progress'
-    | 'ai_processing_complete'
-    | 'ai_processing_error'
-    | 'ai_suggestion'
-    | 'ai_insight'
-    | 'ai_learning_update';
-  data: TData;
-  timestamp: string;
-  requestId: string;
-  userId: string;
-  householdId: string;
-}
+import type { RealTimeAIRequest } from '@/types/websocket';
 
 export interface AIProcessingProgress {
   step: string;
@@ -58,7 +39,7 @@ export class WebSocketManager {
     logger.info('WebSocket Manager initialized');
   }
 
-  public initialize(server: HTTPServer) {
+  public initialize(server: ConstructorParameters<typeof SocketIOServer>[0]) {
     if (this.io) {
       logger.warn('WebSocket server already initialized');
       return;
@@ -70,7 +51,6 @@ export class WebSocketManager {
         methods: ["GET", "POST"],
         credentials: true
       },
-      path: '/api/websocket'
     });
 
     // Initialize real-time AI processor
@@ -83,7 +63,7 @@ export class WebSocketManager {
   private setupEventHandlers() {
     if (!this.io) return;
 
-    this.io.on('connection', (socket) => {
+    this.io.on('connection', (socket: Socket) => {
       logger.info('WebSocket client connected', { socketId: socket.id });
 
       // Handle user authentication and room joining
@@ -278,7 +258,8 @@ export class WebSocketManager {
           ]
         };
       
-      case 'meal_planning':
+      case 'meal_planning': {
+        const servings = typeof context.servings === 'number' ? context.servings : 4;
         return {
           suggestions: [
             {
@@ -287,20 +268,21 @@ export class WebSocketManager {
               prepTime: 10,
               cookTime: 15,
               totalTime: 25,
-              servings: context.servings || 4,
+              servings,
               difficulty: 'easy',
               cuisine: 'Italian',
-              confidence: 80
-            }
-          ]
+              confidence: 80,
+            },
+          ],
         };
+      }
       
       default:
         return { message: 'Mock results generated' };
     }
   }
 
-  private emitToUser(userId: string, message: WebSocketMessage) {
+  public emitToUser(userId: string, message: { type: string; data: unknown; timestamp: string; requestId: string; userId: string; householdId: string }) {
     if (!this.io) return;
 
     const userSockets = this.connectedUsers.get(userId);
@@ -311,10 +293,8 @@ export class WebSocketManager {
     }
   }
 
-  private emitToHousehold(householdId: string, message: WebSocketMessage) {
-    if (!this.io) return;
-
-    this.io.to(`household_${householdId}`).emit('ai_update', message);
+  public publishToUser(userId: string, message: { type: string; data: unknown; timestamp: string; requestId: string; userId: string; householdId: string }) {
+    this.emitToUser(userId, message);
   }
 
   private cleanupUserConnection(socketId: string) {

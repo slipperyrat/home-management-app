@@ -1,6 +1,4 @@
 import { DateTime } from "luxon";
-import { Suspense, useState } from "react";
-
 import type {
   BillDto,
   BudgetEnvelopeDto,
@@ -90,23 +88,10 @@ export async function FinanceShell({
 
   const summary = buildSummary(featureFlags, bills, envelopes, spending);
 
-  const markBillStatus = async (billId: string, nextStatus: BillDto["status"]) => {
-    await fetch(`/api/finance/bills/${billId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: nextStatus }),
-    });
-  };
-
-  const markAllPaid = async () => {
-    const pendingBills = bills.filter((bill) => bill.status === "pending");
-    await Promise.all(pendingBills.map((bill) => markBillStatus(bill.id, "paid")));
-  };
-
   return (
     <FinanceDataHydrator summary={summary} bills={bills} envelopes={envelopes} spending={spending}>
       <div className="space-y-8">
-        <FinanceQuickActionsDrawer householdId={householdId} />
+        <FinanceQuickActionsDrawer />
 
         <FinanceInsightsHeader summary={summary} />
 
@@ -115,16 +100,11 @@ export async function FinanceShell({
         <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
             {featureFlags.bills ? (
-              <BillsSection
-                bills={bills}
-                summary={summary.bills}
-                householdId={householdId}
-                onStatusChange={markBillStatus}
-              />
+              <BillsSection bills={bills} summary={summary.bills} householdId={householdId} />
             ) : null}
 
             {featureFlags.spending ? (
-              <SpendingSection entries={spending} householdId={householdId} />
+              <SpendingSection entries={spending} />
             ) : null}
           </div>
 

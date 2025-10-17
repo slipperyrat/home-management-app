@@ -143,7 +143,7 @@ class OfflineStorageManager {
       const transaction = this.db!.transaction(['offlineData'], 'readonly');
       const store = transaction.objectStore('offlineData');
       const index = store.index('synced');
-      const request = index.getAll(false);
+      const request = index.getAll();
 
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -167,8 +167,6 @@ class OfflineStorageManager {
 // Background sync manager
 class BackgroundSyncManager {
   private static instance: BackgroundSyncManager;
-  private syncQueue: OfflineData[] = [];
-
   static getInstance(): BackgroundSyncManager {
     if (!BackgroundSyncManager.instance) {
       BackgroundSyncManager.instance = new BackgroundSyncManager();
@@ -177,9 +175,15 @@ class BackgroundSyncManager {
   }
 
   async registerSync(): Promise<void> {
-    if ('serviceWorker' in navigator && 'sync' in window.ServiceWorkerRegistration.prototype) {
-      const registration = await navigator.serviceWorker.ready;
-      await registration.sync.register('background-sync');
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+
+    const syncManager = (registration as ServiceWorkerRegistration & { sync?: { register: (tag: string) => Promise<void> } }).sync;
+    if (syncManager) {
+      await syncManager.register('background-sync');
     }
   }
 

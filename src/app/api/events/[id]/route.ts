@@ -28,7 +28,7 @@ const updateEventSchema = z.object({
 });
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -53,6 +53,12 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    if (!userData.household_id) {
+      return NextResponse.json({ error: 'Household not found' }, { status: 404 });
+    }
+
+    const householdId = userData.household_id;
+
     // Get event with all related data
     const { data: event, error } = await supabase
       .from('events')
@@ -72,7 +78,7 @@ export async function GET(
         )
       `)
       .eq('id', id)
-      .eq('household_id', userData.household_id)
+      .eq('household_id', householdId)
       .single();
 
     if (error) {
@@ -120,12 +126,18 @@ export async function PATCH(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    if (!userData.household_id) {
+      return NextResponse.json({ error: 'Household not found' }, { status: 404 });
+    }
+
+    const householdId = userData.household_id;
+
     // Check if event exists and user has permission
     const { data: existingEvent, error: checkError } = await supabase
       .from('events')
       .select('id, created_by')
       .eq('id', id)
-      .eq('household_id', userData.household_id)
+      .eq('household_id', householdId)
       .single();
 
     if (checkError || !existingEvent) {
@@ -136,7 +148,7 @@ export async function PATCH(
     const { data: userRole } = await supabase
       .from('household_members')
       .select('role')
-      .eq('household_id', userData.household_id)
+      .eq('household_id', householdId)
       .eq('user_id', userId)
       .single();
 
@@ -247,7 +259,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -272,12 +284,18 @@ export async function DELETE(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    if (!userData.household_id) {
+      return NextResponse.json({ error: 'Household not found' }, { status: 404 });
+    }
+
+    const householdId = userData.household_id;
+
     // Check if event exists and user has permission
     const { data: existingEvent, error: checkError } = await supabase
       .from('events')
       .select('id, created_by')
       .eq('id', id)
-      .eq('household_id', userData.household_id)
+      .eq('household_id', householdId)
       .single();
 
     if (checkError || !existingEvent) {
@@ -288,7 +306,7 @@ export async function DELETE(
     const { data: userRole } = await supabase
       .from('household_members')
       .select('role')
-      .eq('household_id', userData.household_id)
+      .eq('household_id', householdId)
       .eq('user_id', userId)
       .single();
 

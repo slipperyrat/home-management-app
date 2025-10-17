@@ -1,9 +1,16 @@
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
+
 import { withAPISecurity } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
-import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { createSpendEntriesFromReceipt, suggestBudgetEnvelopeForReceipt } from '@/lib/finance/receiptIntegration';
-import { z } from 'zod';
+import { createErrorResponse, handleApiError, createSuccessResponse } from '@/lib/api/errors';
+import {
+  createSpendEntriesFromReceipt,
+  suggestBudgetEnvelopeForReceipt,
+  deleteSpendEntriesFromReceipt,
+} from '@/lib/finance/receiptIntegration';
+import type { ReceiptItem as ReceiptItemRow } from '@/types/database';
+import type { UserPlan } from '@/lib/server/canAccessFeature';
 import { logger } from '@/lib/logging/logger';
 
 // Validation schemas
@@ -19,8 +26,12 @@ const deleteSpendingFromReceiptSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req, user) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
@@ -32,76 +43,74 @@ export async function POST(request: NextRequest) {
 
       const db = getDatabaseClient();
 
-      // Get receipt items
-      const { data: receiptItems, error: itemsError } = await db
+      const itemsResult = await db
         .from('receipt_items')
-        .select(`
-          *,
-          attachment:attachments (
-            id,
-            file_name,
-            receipt_store,
-            receipt_date
-          )
-        `)
+        .select(
+          `
+            *,
+            attachment:attachments (
+              id,
+              file_name,
+              receipt_store,
+              receipt_date
+            )
+          `,
+        )
         .in('id', validatedData.receipt_item_ids)
         .eq('household_id', household.id);
 
-      if (itemsError || !receiptItems || receiptItems.length === 0) {
+      if (itemsResult.error || !itemsResult.data || itemsResult.data.length === 0) {
         return createErrorResponse('Receipt items not found', 404);
       }
 
-      // Check if items are already added to spending
-      const alreadyAdded = receiptItems.filter(item => item.added_to_spending);
-      if (alreadyAdded.length > 0) {
-        return createErrorResponse('Some receipt items are already added to spending', 400, {
-          already_added: alreadyAdded.map(item => item.id)
-        });
-      }
+      const receiptItems = (itemsResult.data ?? []) as ReceiptItemRow[];
 
       // Suggest budget envelope if not provided
-      let envelopeId = validatedData.envelope_id;
-      if (!envelopeId) {
-        envelopeId = await suggestBudgetEnvelopeForReceipt(receiptItems, household.id) || undefined;
+      const suggestedEnvelope = await suggestBudgetEnvelopeForReceipt(receiptItems, household.id);
+      const envelopeId = validatedData.envelope_id ?? suggestedEnvelope ?? undefined;
+
+      const spendEntryOptions: Parameters<typeof createSpendEntriesFromReceipt>[3] = {
+        payment_method: validatedData.payment_method,
+        create_single_entry: validatedData.create_single_entry,
+      };
+
+      if (envelopeId) {
+        spendEntryOptions.envelope_id = envelopeId;
       }
 
       // Create spend entries from receipt items
       const spendEntries = await createSpendEntriesFromReceipt(
         receiptItems,
-        household.plan || 'free',
+        (household.plan as UserPlan | null) ?? 'free',
         user.id,
-        {
-          envelope_id: envelopeId,
-          payment_method: validatedData.payment_method,
-          create_single_entry: validatedData.create_single_entry
-        }
+        spendEntryOptions,
       );
 
-      // Log audit event
-      await createAuditLog({
-        actor_id: user.id,
-        household_id: household.id,
-        action: 'spending.create_from_receipt',
-        target_table: 'spend_entries',
-        meta: { 
-          receipt_item_count: receiptItems.length,
-          spend_entry_count: spendEntries.length,
-          envelope_id: envelopeId,
-          create_single_entry: validatedData.create_single_entry
-        }
-      });
+      if (spendEntries.length > 0) {
+        await createAuditLog({
+          action: 'spending.create_from_receipt',
+          targetTable: 'spend_entries',
+          targetId: spendEntries[0]?.id ?? household.id,
+          userId: user.id,
+          metadata: {
+            receipt_item_count: receiptItems.length,
+            spend_entry_count: spendEntries.length,
+            create_single_entry: validatedData.create_single_entry,
+          },
+        });
+      }
 
-      return createSuccessResponse({ 
+      return createSuccessResponse({
         spend_entries: spendEntries,
-        suggested_envelope: envelopeId,
-        message: `Created ${spendEntries.length} spend entries from ${receiptItems.length} receipt items`
-      }, 201);
+        suggested_envelope: envelopeId ?? null,
+        message: `Created ${spendEntries.length} spend entries from ${receiptItems.length} receipt items`,
+      }, 'Spend entries created from receipt', 201);
 
     } catch (error) {
       if (error instanceof z.ZodError) {
         return createErrorResponse('Invalid input data', 400, { errors: error.errors });
       }
-      return handleApiError(error, 'Failed to create spend entries from receipt');
+      return handleApiError(error, { route: '/api/finance/receipt-to-spending', method: 'POST', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
@@ -111,8 +120,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req, user) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
@@ -127,7 +140,7 @@ export async function DELETE(request: NextRequest) {
       // Verify receipt items belong to household
       const { data: receiptItems, error: itemsError } = await db
         .from('receipt_items')
-        .select('id, added_to_spending')
+        .select('id')
         .in('id', validatedData.receipt_item_ids)
         .eq('household_id', household.id);
 
@@ -135,39 +148,27 @@ export async function DELETE(request: NextRequest) {
         return createErrorResponse('Receipt items not found', 404);
       }
 
-      // Check if items have spend entries
-      const itemsWithSpending = receiptItems.filter(item => item.added_to_spending);
-      if (itemsWithSpending.length === 0) {
-        return createErrorResponse('No spend entries found for these receipt items', 400);
-      }
-
-      // Import the delete function
-      const { deleteSpendEntriesFromReceipt } = await import('@/lib/finance/receiptIntegration');
-      
-      // Delete spend entries
       await deleteSpendEntriesFromReceipt(validatedData.receipt_item_ids, household.id);
 
-      // Log audit event
       await createAuditLog({
-        actor_id: user.id,
-        household_id: household.id,
         action: 'spending.delete_from_receipt',
-        target_table: 'spend_entries',
-        meta: { 
-          receipt_item_count: validatedData.receipt_item_ids.length
-        }
+        targetTable: 'spend_entries',
+        targetId: household.id,
+        userId: user.id,
+        metadata: {
+          receipt_item_count: validatedData.receipt_item_ids.length,
+        },
       });
 
-      return createSuccessResponse({ 
+      return createSuccessResponse({
         message: 'Spend entries deleted successfully',
-        deleted_items: validatedData.receipt_item_ids.length
-      });
-
+        deleted_items: validatedData.receipt_item_ids.length,
+      }, 'Spend entries deleted');
     } catch (error) {
       if (error instanceof z.ZodError) {
         return createErrorResponse('Invalid input data', 400, { errors: error.errors });
       }
-      return handleApiError(error, 'Failed to delete spend entries from receipt');
+      return handleApiError(error, { route: '/api/finance/receipt-to-spending', method: 'DELETE', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
@@ -177,8 +178,12 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
       const { household } = await getUserAndHouseholdData(user.id);
       
       if (!household) {
@@ -193,11 +198,13 @@ export async function GET(request: NextRequest) {
 
       let query = db
         .from('spend_entries')
-        .select(`
-          *,
-          budget_envelopes(name, color),
-          receipt_items(id, item_name, item_price)
-        `)
+        .select(
+          `
+            *,
+            budget_envelopes(name, color),
+            receipt_items(id, item_name, item_price)
+          `,
+        )
         .eq('household_id', household.id)
         .eq('source', 'receipt_ocr');
 
@@ -217,17 +224,16 @@ export async function GET(request: NextRequest) {
         return createErrorResponse('Failed to fetch spend entries', 500);
       }
 
-      return createSuccessResponse({ 
-        spend_entries: spendEntries || [],
-        count: spendEntries?.length || 0
-      });
-
+      return createSuccessResponse({
+        spend_entries: spendEntries ?? [],
+        count: spendEntries?.length ?? 0,
+      }, 'Spend entries fetched');
     } catch (error) {
-      return handleApiError(error, 'Failed to fetch spend entries from receipts');
+      return handleApiError(error, { route: '/api/finance/receipt-to-spending', method: 'GET', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: false,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 }

@@ -5,35 +5,36 @@ export interface AICorrectionPattern {
   id: string;
   household_id: string;
   correction_id: string;
-  pattern_type: 'email_format' | 'data_extraction' | 'classification' | 'confidence_threshold' | 'user_preference';
-  issue_category: 'missing_data' | 'incorrect_data' | 'wrong_classification' | 'low_confidence' | 'user_override';
-  correction_type: 'correct' | 'ignore' | 'mark_done';
+  pattern_type: string;
+  issue_category: string;
+  correction_type: string;
   original_ai_output: Record<string, unknown> | null;
   corrected_output: Record<string, unknown> | null;
-  correction_reason: string;
-  confidence_impact: number;
-  pattern_strength: number;
-  is_learned: boolean;
-  created_at: string;
-  learned_at?: string;
-  updated_at: string;
+  correction_reason: string | null;
+  confidence_impact: number | null;
+  pattern_strength: number | null;
+  is_learned: boolean | null;
+  created_at: string | null;
+  learned_at?: string | null;
+  updated_at: string | null;
 }
 
 export interface AIHouseholdProfile {
   id: string;
   household_id: string;
-  total_corrections: number;
-  successful_learnings: number;
-  accuracy_improvement: number;
-  preferred_email_formats?: Record<string, unknown> | null;
-  common_bill_providers?: Record<string, unknown> | null;
-  typical_shopping_patterns?: Record<string, unknown> | null;
-  event_preferences?: Record<string, unknown> | null;
-  current_ai_model_version: string;
-  last_learning_update: string;
-  learning_status: 'active' | 'paused' | 'completed';
-  created_at: string;
-  updated_at: string;
+  total_corrections: number | null;
+  successful_learnings: number | null;
+  accuracy_improvement: number | null;
+  preferred_email_formats: Record<string, unknown> | null;
+  common_bill_providers: Record<string, unknown> | null;
+  typical_shopping_patterns: Record<string, unknown> | null;
+  event_preferences: Record<string, unknown> | null;
+  current_ai_model_version: string | null;
+  last_learning_update: string | null;
+  learning_status: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  confidence_threshold?: number | null;
 }
 
 export interface AILearningRuleConditions {
@@ -51,15 +52,15 @@ export interface AILearningRule {
   id: string;
   household_id: string | null;
   rule_name: string;
-  rule_description?: string;
-  rule_type: 'email_parsing' | 'data_extraction' | 'classification' | 'confidence_adjustment';
+  rule_description?: string | null;
+  rule_type: string;
   trigger_conditions: AILearningRuleConditions;
   learning_actions: AILearningRuleActions;
-  priority: number;
-  is_active: boolean;
-  success_rate: number;
-  created_at: string;
-  updated_at: string;
+  priority: number | null;
+  is_active: boolean | null;
+  success_rate: number | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface AISuggestionImprovement {
@@ -102,6 +103,12 @@ export interface PatternLearningRequest {
   user_correction: Record<string, unknown>;
   correction_type: 'correct' | 'ignore' | 'mark_done';
   user_notes: string;
+}
+
+export interface CorrectionData {
+  suggestionId: string;
+  correctionType: 'correct' | 'ignore' | 'mark_done';
+  userNotes?: string;
 }
 
 export interface LearningRuleTrigger {

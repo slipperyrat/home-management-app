@@ -110,7 +110,8 @@ export async function POST(req: Request) {
       });
     }
   } catch (error) {
-    logger.error('Error in meal planner copy API', error instanceof Error ? error : new Error(String(error)), { householdId: null });
+    const logError = error instanceof Error ? error : new Error(String(error));
+    logger.error('Error in meal planner copy API', logError);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 });
   }
 }

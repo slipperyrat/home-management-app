@@ -38,7 +38,7 @@ export function validateCSRFToken(token: string, userId: string): boolean {
     if (tokenUserId !== userId) return false;
     
     // Check if the token is not too old (24 hours)
-    const tokenTime = parseInt(timestamp);
+    const tokenTime = parseInt(timestamp ?? '0', 10);
     const now = Date.now();
     const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     

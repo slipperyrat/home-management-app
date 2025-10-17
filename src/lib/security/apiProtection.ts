@@ -1,18 +1,27 @@
-type RequestUser = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
-type AuthenticatedHandler = (request: NextRequest, user: RequestUser | null) => Promise<NextResponse>;
+export type RequestUser = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
 // Standardized API Protection Wrapper
 // Provides consistent security checks for all API routes
 
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { RateLimiter, getRateLimitConfig } from './rateLimiter';
-import { validateRequestCSRF } from './csrf';
+import { validateRequestCSRF, extractCSRFToken } from './csrf';
 import { logger } from '@/lib/logging/logger';
 import {
   logRateLimitExceeded,
   logCSRFFailure,
   logUnauthorizedAccess,
 } from './monitoring';
+
+interface SecurityContext {
+  csrfToken?: string | null;
+}
+
+type SecurityHandler = (
+  request: NextRequest,
+  user: RequestUser | null,
+  context: SecurityContext
+) => Promise<NextResponse>;
 
 /**
  * Security configuration for API protection
@@ -27,11 +36,11 @@ export interface APISecurityConfig {
 /**
  * Default security configuration
  */
-const DEFAULT_CONFIG: APISecurityConfig = {
+const DEFAULT_CONFIG: Required<APISecurityConfig> = {
   requireAuth: true,
   requireCSRF: true,
   rateLimitConfig: 'api',
-  allowedMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+  allowedMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 };
 
 /**
@@ -41,11 +50,9 @@ const DEFAULT_CONFIG: APISecurityConfig = {
  * @param config - Optional security configuration
  * @returns Response from the handler or security error response
  */
-type AuthenticatedHandler = (request: NextRequest, user: NonNullable<Awaited<ReturnType<typeof currentUser>>>) => Promise<NextResponse>;
-
 export async function withAPISecurity(
   request: NextRequest,
-  handler: AuthenticatedHandler,
+  handler: SecurityHandler,
   config: APISecurityConfig = {}
 ): Promise<NextResponse> {
   const securityConfig = { ...DEFAULT_CONFIG, ...config };
@@ -118,24 +125,26 @@ export async function withAPISecurity(
       }
     }
 
-    // 4. CSRF protection check
+    let csrfToken: string | null = null;
     if (user && securityConfig.requireCSRF) {
       const csrfValidation = validateRequestCSRF(request, user.id);
       if (!csrfValidation.valid) {
         const ip = request.headers.get('x-forwarded-for') || 'unknown';
         const userAgent = request.headers.get('user-agent') || 'unknown';
-        
+
         logCSRFFailure(user.id, request.nextUrl.pathname, ip, userAgent);
-        
+
         return NextResponse.json(
           { error: csrfValidation.error }, 
           { status: 403 }
         );
       }
+
+      csrfToken = extractCSRFToken(request);
     }
 
     // 5. Execute the handler
-    return await handler(request, user);
+    return await handler(request, user, { csrfToken });
     
   } catch (error) {
     await logger.error('API security error', error as Error, {
@@ -160,7 +169,7 @@ export async function withAPISecurity(
  */
 export async function withReadOnlyAPISecurity(
   request: NextRequest,
-  handler: AuthenticatedHandler
+  handler: SecurityHandler
 ): Promise<NextResponse> {
   return withAPISecurity(request, handler, {
     requireAuth: true,
@@ -196,7 +205,7 @@ export async function withPublicAPISecurity(
  */
 export async function withAdminAPISecurity(
   request: NextRequest,
-  handler: AuthenticatedHandler
+  handler: SecurityHandler
 ): Promise<NextResponse> {
   return withAPISecurity(request, handler, {
     requireAuth: true,

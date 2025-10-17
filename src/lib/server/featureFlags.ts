@@ -1,11 +1,5 @@
-import { createSupabaseAdminClient } from "./supabaseAdmin";
-import { logger } from "@/lib/logging/logger";
-
-type RawFeatureFlagsRow = {
-  flag: string;
-  enabled: boolean;
-  rollout_percentage: number | null;
-};
+import { createSupabaseAdminClient } from './supabaseAdmin';
+import { logger } from '@/lib/logging/logger';
 
 export type FeatureFlagsResponse = {
   flags: Record<string, boolean>;
@@ -20,35 +14,31 @@ const FALLBACK_FLAGS: FeatureFlagsResponse = {
 export async function fetchFeatureFlags(): Promise<FeatureFlagsResponse | null> {
   try {
     const supabase = createSupabaseAdminClient();
-    const { data, error } = await supabase.from("feature_flags").select("flag, enabled, rollout_percentage");
+    const { data, error } = await supabase
+      .from('household_plan_features')
+      .select('feature_flags_enabled')
+      .limit(1)
+      .maybeSingle();
 
     if (error) {
-      logger.error("fetchFeatureFlags supabase error", error);
+      logger.error('fetchFeatureFlags supabase error', error);
       return FALLBACK_FLAGS;
     }
 
-    if (!data || data.length === 0) {
+    if (!data) {
       return FALLBACK_FLAGS;
     }
 
-    return transformFlags(data);
+    return {
+      flags: {
+        feature_flags_enabled: Boolean((data as { feature_flags_enabled?: boolean }).feature_flags_enabled),
+      },
+      rollout: {},
+    };
   } catch (error) {
-    logger.error("fetchFeatureFlags unexpected error", error as Error);
+    const err = error instanceof Error ? error : new Error('Unknown feature flag error');
+    logger.error('fetchFeatureFlags unexpected error', err);
     return FALLBACK_FLAGS;
   }
-}
-
-function transformFlags(rows: RawFeatureFlagsRow[]): FeatureFlagsResponse {
-  const flags: Record<string, boolean> = {};
-  const rollout: Record<string, number> = {};
-
-  rows.forEach((row) => {
-    flags[row.flag] = row.enabled;
-    if (typeof row.rollout_percentage === "number") {
-      rollout[row.flag] = row.rollout_percentage;
-    }
-  });
-
-  return { flags, rollout };
 }
 

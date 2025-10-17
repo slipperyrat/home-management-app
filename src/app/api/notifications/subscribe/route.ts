@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
       const { error: updateError } = await sb()
         .from('push_subscriptions')
         .update({
-          keys,
+          auth_key: keys.auth,
+          p256dh_key: keys.p256dh,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existing.id);
@@ -54,7 +55,8 @@ export async function POST(request: NextRequest) {
         .insert({
           user_id: userId,
           endpoint,
-          keys,
+          auth_key: keys.auth,
+          p256dh_key: keys.p256dh,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });

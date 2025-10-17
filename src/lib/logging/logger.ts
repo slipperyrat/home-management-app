@@ -13,7 +13,7 @@ export interface LogContext {
   method?: string;
   userAgent?: string;
   ip?: string;
-  severity?: 'low' | 'medium' | 'high';
+  severity?: 'low' | 'medium' | 'high' | 'critical';
   securityEvent?: boolean;
   [key: string]: unknown;
 }
@@ -40,24 +40,32 @@ class Logger {
   }
 
   private formatLog(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: unknown): LogEntry {
+    const baseContext: LogContext = {
+      ...context,
+      environment: process.env.NODE_ENV,
+      version: process.env.npm_package_version || 'unknown',
+    }
+
+    const sanitizedContext = Object.fromEntries(
+      Object.entries(baseContext).filter(([, value]) => value !== undefined),
+    ) as LogContext
+
+    const errorPayload = error
+      ? {
+          name: error.name,
+          message: error.message,
+          ...(this.isDevelopment && error.stack ? { stack: error.stack } : {}),
+        }
+      : undefined
+
     return {
       timestamp: new Date().toISOString(),
       level,
       message,
-      context: {
-        ...context,
-        environment: process.env.NODE_ENV,
-        version: process.env.npm_package_version || 'unknown',
-      },
-      error: error
-        ? {
-            name: error.name,
-            message: error.message,
-            stack: this.isDevelopment ? error.stack : undefined,
-          }
-        : undefined,
-      data,
-    };
+      context: sanitizedContext,
+      ...(errorPayload ? { error: errorPayload } : {}),
+      ...(data !== undefined ? { data } : {}),
+    }
   }
 
   private output(level: LogLevel, message: string, context: LogContext = {}, error?: Error, data?: unknown): void {
@@ -66,7 +74,10 @@ class Logger {
     if (this.isProduction) {
       this.forwardToSentry(level, message, context, error, data);
       // Also emit JSON for log aggregators
-      process.stdout.write(`${JSON.stringify(entry)}\n`);
+      const stdout = (globalThis as any)?.process?.stdout;
+      if (stdout?.write) {
+        stdout.write(`${JSON.stringify(entry)}\n`);
+      }
       return;
     }
 
@@ -93,11 +104,11 @@ class Logger {
     } else if (entry.level === 'warn') {
       console.warn(line);
     } else {
-      process.stdout.write(`${line}\n`);
+      (globalThis as any)?.process?.stdout?.write?.(`${line}\n`);
     }
 
     if (entry.data && entry.level !== 'error') {
-      process.stdout.write(`📊 Data: ${JSON.stringify(entry.data)}\n`);
+      (globalThis as any)?.process?.stdout?.write?.(`📊 Data: ${JSON.stringify(entry.data)}\n`);
     }
   }
 
@@ -200,17 +211,26 @@ export const logger = new Logger();
 export const { debug, info, warn, error, apiCall, apiSuccess, apiError, userAction, householdAction, performance, dbQuery, dbError, securityEvent, aiEvent, aiError } = logger;
 
 export function createRequestLogger(requestId: string, userId?: string, householdId?: string) {
+  const baseContext: LogContext = {
+    requestId,
+    ...(userId ? { userId } : {}),
+    ...(householdId ? { householdId } : {}),
+  };
+
   return {
     requestId,
     userId,
     householdId,
-    debug: (message: string, data?: unknown) => logger.debug(message, { requestId, userId, householdId }, data),
-    info: (message: string, data?: unknown) => logger.info(message, { requestId, userId, householdId }, data),
-    warn: (message: string, data?: unknown) => logger.warn(message, { requestId, userId, householdId }, data),
-    error: (message: string, err?: Error, data?: unknown) => logger.error(message, err, { requestId, userId, householdId }, data),
-    apiCall: (method: string, route: string, data?: unknown) => logger.apiCall(method, route, { requestId, userId, householdId, data }),
-    apiSuccess: (method: string, route: string, data?: unknown) => logger.apiSuccess(method, route, { requestId, userId, householdId, data }),
-    apiError: (method: string, route: string, err: Error, data?: unknown) => logger.apiError(method, route, err, { requestId, userId, householdId, data }),
+    debug: (message: string, data?: unknown) => logger.debug(message, baseContext, data),
+    info: (message: string, data?: unknown) => logger.info(message, baseContext, data),
+    warn: (message: string, data?: unknown) => logger.warn(message, baseContext, data),
+    error: (message: string, err?: Error, data?: unknown) => logger.error(message, err, baseContext, data),
+    apiCall: (method: string, route: string, data?: unknown) =>
+      logger.apiCall(method, route, { ...baseContext, ...(data !== undefined ? { data } : {}) }),
+    apiSuccess: (method: string, route: string, data?: unknown) =>
+      logger.apiSuccess(method, route, { ...baseContext, ...(data !== undefined ? { data } : {}) }),
+    apiError: (method: string, route: string, err: Error, data?: unknown) =>
+      logger.apiError(method, route, err, { ...baseContext, ...(data !== undefined ? { data } : {}) }),
   };
 }
 

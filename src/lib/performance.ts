@@ -130,7 +130,9 @@ class PerformanceMonitor {
       });
       lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] });
     } catch (error) {
-      logger.warn('Failed to observe LCP', error as Error);
+      logger.warn('Failed to observe LCP', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     try {
@@ -149,7 +151,9 @@ class PerformanceMonitor {
       });
       fidObserver.observe({ entryTypes: ['first-input'] });
     } catch (error) {
-      logger.warn('Failed to observe FID', error as Error);
+      logger.warn('Failed to observe FID', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     try {
@@ -167,7 +171,9 @@ class PerformanceMonitor {
       });
       clsObserver.observe({ entryTypes: ['layout-shift'] });
     } catch (error) {
-      logger.warn('Failed to observe CLS', error as Error);
+      logger.warn('Failed to observe CLS', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     try {
@@ -181,7 +187,9 @@ class PerformanceMonitor {
       });
       fcpObserver.observe({ entryTypes: ['first-contentful-paint'] });
     } catch (error) {
-      logger.warn('Failed to observe FCP', error as Error);
+      logger.warn('Failed to observe FCP', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }

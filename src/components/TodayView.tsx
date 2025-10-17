@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUser } from '@clerk/nextjs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +20,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
-import { format, addDays, subDays, isToday, isSameDay } from 'date-fns';
+import { format, addDays, subDays, isToday } from 'date-fns';
 import Link from 'next/link';
 
 interface TodayViewData {
@@ -95,7 +94,6 @@ interface TodayViewData {
 }
 
 export default function TodayView() {
-  const { user } = useUser();
   const [data, setData] = useState<TodayViewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

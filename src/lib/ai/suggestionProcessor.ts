@@ -1,10 +1,10 @@
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
-import type { Database, ShoppingListRow } from '@/types/database';
+import type { Database, Json } from '@/types/supabase.generated';
 import { logger } from '@/lib/logging/logger';
 
-type SuggestionType = 'bill_action' | 'calendar_event' | 'shopping_list_update' | 'chore_creation';
+export type SuggestionType = 'bill_action' | 'calendar_event' | 'shopping_list_update' | 'chore_creation';
 
-interface AISuggestion {
+export interface AISuggestion {
   id: string;
   suggestion_type: SuggestionType;
   suggestion_data: Record<string, unknown>;
@@ -98,27 +98,31 @@ export class AISuggestionProcessor {
     const { id, suggestion_data } = suggestion;
     
     try {
-      // Extract bill data from suggestion
-      const billData: Database['public']['Tables']['bills']['Row'] & { source: string; source_data: Record<string, unknown> } = {
+      const sourceData = JSON.parse(
+        JSON.stringify({
+          ai_suggestion_id: id,
+          original_suggestion: suggestion,
+        }),
+      ) as Json;
+
+      const billInsert: Database['public']['Tables']['bills']['Insert'] = {
         household_id: householdId,
         title: (suggestion_data.description as string) || 'Bill from AI suggestion',
         amount: Number(suggestion_data.bill_amount) || 0,
-        currency: 'AUD',
-        due_date: (suggestion_data.bill_due_date as string) || new Date().toISOString().split('T')[0],
-        status: 'pending',
+        currency: (suggestion_data.bill_currency as string) || 'AUD',
+        due_date: (suggestion_data.bill_due_date as string) ?? new Date().toISOString().split('T')[0],
+        priority: 'medium',
         category: (suggestion_data.bill_category as string) || 'general',
         description: (suggestion_data.description as string) ?? null,
         source: 'ai_email',
-        source_data: {
-          ai_suggestion_id: id,
-          original_suggestion: suggestion
-        },
-        created_by: userId
+        source_data: sourceData,
+        created_by: userId,
+        name: (suggestion_data.bill_payee as string) || 'AI Suggested Bill',
       };
 
       const { data: bill, error } = await this.supabase
         .from('bills')
-        .insert(billData)
+        .insert(billInsert)
         .select()
         .single();
 
@@ -147,18 +151,38 @@ export class AISuggestionProcessor {
     
     try {
       // Extract event data from suggestion
-      const eventData = {
+      const eventPayload = JSON.parse(
+        JSON.stringify({
+          title: suggestion_data.event_title ?? 'Appointment from AI suggestion',
+          date: suggestion_data.event_date ?? null,
+          location: suggestion_data.event_location ?? null,
+          description: suggestion_data.description ?? null,
+          ai_suggestion_id: id,
+          original_suggestion: suggestion,
+        }),
+      ) as Json;
+
+      const eventData: Database['public']['Tables']['household_events']['Insert'] = {
         household_id: householdId,
         type: 'appointment.scheduled',
         source: 'ai_email',
-        payload: {
-          title: suggestion_data.event_title || 'Appointment from AI suggestion',
-          date: suggestion_data.event_date,
-          location: suggestion_data.event_location,
-          description: suggestion_data.description,
-          ai_suggestion_id: id,
-          original_suggestion: suggestion
-        }
+        payload: eventPayload,
+        title: (suggestion_data.event_title as string) || 'Appointment from AI suggestion',
+        start_time: (suggestion_data.event_date as string)
+          ? `${suggestion_data.event_date}T09:00:00Z`
+          : new Date().toISOString(),
+        end_time: (suggestion_data.event_date as string)
+          ? `${suggestion_data.event_date}T10:00:00Z`
+          : new Date().toISOString(),
+        occurred_at: (suggestion_data.event_date as string)
+          ? `${suggestion_data.event_date}T09:00:00Z`
+          : new Date().toISOString(),
+        priority: 'medium',
+        ai_suggested: true,
+        ai_confidence: 80,
+        conflict_resolved: false,
+        reminder_sent: false,
+        created_by: userId,
       };
 
       const { data: event, error } = await this.supabase
@@ -202,9 +226,11 @@ export class AISuggestionProcessor {
             .from('shopping_items')
             .insert({
               list_id: shoppingList.id,
-              name: item.name || 'Item',
-              quantity: item.quantity || '1',
-              completed: false
+              name: item?.name ? String(item.name) : 'Item',
+              quantity: item?.quantity ? String(item.quantity) : '1',
+              auto_added: true,
+              pending_confirmation: true,
+              created_by: userId,
             });
         }
       } else if (suggestion_data.description) {
@@ -213,9 +239,11 @@ export class AISuggestionProcessor {
           .from('shopping_items')
           .insert({
             list_id: shoppingList.id,
-            name: suggestion_data.description,
+            name: String(suggestion_data.description),
             quantity: '1',
-            completed: false
+            auto_added: true,
+            pending_confirmation: true,
+            created_by: userId,
           });
       }
 
@@ -242,18 +270,38 @@ export class AISuggestionProcessor {
     
     try {
       // Extract chore data from suggestion
-      const choreData = {
-        household_id: householdId,
-        type: 'chore.created',
-        source: 'ai_email',
-        payload: {
+      const chorePayload = JSON.parse(
+        JSON.stringify({
           title: (suggestion_data.description as string) || 'Chore from AI suggestion',
           assigned_to: (suggestion_data.assigned_to as string) || userId,
           priority: (suggestion_data.priority as string) || 'medium',
-          due_date: suggestion_data.due_date,
+          due_date: suggestion_data.due_date ?? null,
           ai_suggestion_id: id,
-          original_suggestion: suggestion
-        }
+          original_suggestion: suggestion,
+        }),
+      ) as Json;
+
+      const choreData: Database['public']['Tables']['household_events']['Insert'] = {
+        household_id: householdId,
+        type: 'chore.created',
+        source: 'ai_email',
+        payload: chorePayload,
+        title: (suggestion_data.description as string) || 'Chore from AI suggestion',
+        start_time: (suggestion_data.due_date as string)
+          ? `${suggestion_data.due_date}T09:00:00Z`
+          : new Date().toISOString(),
+        end_time: (suggestion_data.due_date as string)
+          ? `${suggestion_data.due_date}T10:00:00Z`
+          : new Date().toISOString(),
+        occurred_at: (suggestion_data.due_date as string)
+          ? `${suggestion_data.due_date}T09:00:00Z`
+          : new Date().toISOString(),
+        priority: (suggestion_data.priority as 'low' | 'medium' | 'high' | 'urgent' | null) || 'medium',
+        ai_suggested: true,
+        ai_confidence: 70,
+        conflict_resolved: false,
+        reminder_sent: false,
+        created_by: userId,
       };
 
       const { data: chore, error } = await this.supabase
@@ -282,14 +330,14 @@ export class AISuggestionProcessor {
   /**
    * Get or create a default shopping list for the household
    */
-  private async getOrCreateDefaultShoppingList(householdId: string, userId: string): Promise<ShoppingListRow> {
+  private async getOrCreateDefaultShoppingList(householdId: string, userId: string): Promise<Database['public']['Tables']['shopping_lists']['Row']> {
     // Try to get existing default list
     const { data: existingList } = await this.supabase
       .from('shopping_lists')
       .select('*')
       .eq('household_id', householdId)
       .eq('title', 'AI Generated Items')
-      .single();
+      .maybeSingle();
 
     if (existingList) {
       return existingList;
@@ -301,7 +349,7 @@ export class AISuggestionProcessor {
       .insert({
         title: 'AI Generated Items',
         created_by: userId,
-        household_id: householdId
+        household_id: householdId,
       })
       .select()
       .single();
@@ -315,17 +363,27 @@ export class AISuggestionProcessor {
    */
   async logProcessingResults(results: ProcessedSuggestion[], householdId: string) {
     try {
-      const logData = {
+      const logPayload = JSON.parse(
+        JSON.stringify({
+          processing_type: 'ai_suggestion_auto_insert',
+          totals: {
+            total: results.length,
+            successful: results.filter(r => r.success).length,
+            failed: results.filter(r => !r.success).length,
+          },
+          errors: results.filter(r => !r.success).map(r => r.error ?? null),
+          detailed_results: results,
+        }),
+      ) as Json;
+
+      const logData: Database['public']['Tables']['ai_processing_logs']['Insert'] = {
         household_id: householdId,
-        processing_type: 'ai_suggestion_auto_insert',
-        results_summary: {
-          total: results.length,
-          successful: results.filter(r => r.success).length,
-          failed: results.filter(r => !r.success).length,
-          errors: results.filter(r => !r.success).map(r => r.error)
-        },
-        detailed_results: results,
-        processed_at: new Date().toISOString()
+        log_level: results.some(r => !r.success) ? 'warn' : 'info',
+        log_message: results.some(r => !r.success)
+          ? 'AI suggestions processed with errors'
+          : 'AI suggestions processed successfully',
+        log_data: logPayload,
+        processing_step: 'auto_insert',
       };
 
       await this.supabase

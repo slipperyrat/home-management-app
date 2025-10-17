@@ -1,13 +1,26 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { logger } from '@/lib/logging/logger';
+import type { Database } from '@/types/supabase.generated';
+
+type RewardRow = Database['public']['Tables']['rewards']['Row'];
+
+type UserStats = Pick<Database['public']['Tables']['users']['Row'], 'coins'>;
+
+type RewardRedemptionInsert = Database['public']['Tables']['reward_redemptions']['Insert'];
+
+type UsersUpdate = Database['public']['Tables']['users']['Update'];
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
-      const { rewardId, quantity = 1 } = await req.json();
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
+
+      const { rewardId, quantity = 1 } = await request.json();
 
       if (!rewardId) {
         return createErrorResponse('Reward ID is required', 400);
@@ -29,54 +42,59 @@ export async function POST(request: NextRequest) {
         .select('*')
         .eq('id', rewardId)
         .eq('household_id', household.id)
-        .single();
+        .maybeSingle<RewardRow>();
 
       if (rewardError || !reward) {
         return createErrorResponse('Reward not found or access denied', 404);
       }
 
-      const totalCost = reward.points_cost * quantity;
+      const totalCost = (reward.cost_coins ?? 0) * quantity;
 
-      const { data: userStats, error: statsError } = await supabase
-        .from('household_user_stats')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('household_id', household.id)
-        .single();
+      const { data: userStatsRow, error: statsError } = await supabase
+        .from('users')
+        .select('coins')
+        .eq('id', user.id)
+        .maybeSingle<UserStats>();
 
-      if (statsError || !userStats) {
+      if (statsError || !userStatsRow) {
         return createErrorResponse('User stats not found', 404);
       }
 
-      if (userStats.coins < totalCost) {
+      const currentCoins = userStatsRow.coins ?? 0;
+
+      if (currentCoins < totalCost) {
         logger.warn('Reward redemption blocked: insufficient coins', {
           userId: user.id,
           rewardId,
-          available: userStats.coins,
+          available: currentCoins,
           cost: totalCost,
         });
         return createErrorResponse('Insufficient reward coins', 400);
       }
 
+      const redemptionPayload: RewardRedemptionInsert = {
+        user_id: user.id,
+        reward_id: rewardId,
+        xp_spent: totalCost,
+        redeemed_at: new Date().toISOString(),
+      };
+
       const { error: redemptionError } = await supabase
         .from('reward_redemptions')
-        .insert({
-          user_id: user.id,
-          household_id: household.id,
-          reward_id: rewardId,
-          quantity,
-          total_points_cost: totalCost,
-        });
+        .insert(redemptionPayload);
 
       if (redemptionError) {
         return createErrorResponse('Failed to create reward redemption', 500, redemptionError.message);
       }
 
+      const updatedUser: UsersUpdate = {
+        coins: currentCoins - totalCost,
+      };
+
       const { error: updateStatsError } = await supabase
-        .from('household_user_stats')
-        .update({ coins: userStats.coins - totalCost })
-        .eq('user_id', user.id)
-        .eq('household_id', household.id);
+        .from('users')
+        .update(updatedUser)
+        .eq('id', user.id);
 
       if (updateStatsError) {
         return createErrorResponse('Failed to update user stats', 500, updateStatsError.message);
@@ -102,14 +120,14 @@ export async function POST(request: NextRequest) {
 
       return createSuccessResponse({
         message: 'Reward redeemed successfully',
-        remainingCoins: userStats.coins - totalCost,
+        remainingCoins: currentCoins - totalCost,
       });
     } catch (error) {
-      return handleApiError(error, { route: '/api/claim-reward', method: 'POST', userId: user.id });
+      return handleApiError(error, { route: '/api/claim-reward', method: 'POST', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'api'
+    rateLimitConfig: 'api',
   });
 } 

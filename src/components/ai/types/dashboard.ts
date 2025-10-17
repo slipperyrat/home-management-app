@@ -6,7 +6,7 @@ export type AIRequestType =
 
 export type AIRequestPriority = 'low' | 'medium' | 'high' | 'urgent';
 
-export interface RealTimeRequestPayload<TContext = Record<string, unknown>> {
+export interface RealTimeRequestPayload<TContext extends Record<string, unknown> = Record<string, unknown>> {
   type: AIRequestType;
   context: TContext;
   requestId?: string;
@@ -39,6 +39,7 @@ export interface ShoppingSuggestionsContext {
   dietaryRestrictions: string[];
   budget: number;
   specialOccasions: string[];
+  [key: string]: unknown;
 }
 
 export interface MealPlanningContext {
@@ -47,17 +48,20 @@ export interface MealPlanningContext {
   maxPrepTime: number;
   servings: number;
   cuisine: string;
+  [key: string]: unknown;
 }
 
 export interface ChoreAssignmentContext {
   householdId: string;
   availableUsers: string[];
   choreTypes: string[];
+  [key: string]: unknown;
 }
 
 export interface EmailProcessingContext {
   emailCount: number;
   processingType: string;
+  [key: string]: unknown;
 }
 
 export interface RealTimeAIMetrics {

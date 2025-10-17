@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
 import type { ChoreRow } from '@/types/database';
 import { logger } from '@/lib/logging/logger';
+import type { Json } from '@/types/supabase.generated';
 
 const supabase = createSupabaseAdminClient();
 
@@ -88,7 +89,11 @@ const fairnessBasedAssignment: AssignmentStrategy = {
     }));
 
     workloadScores.sort((a, b) => a.score - b.score);
-    const bestUser = workloadScores[0].user;
+    const bestEntry = workloadScores[0];
+    if (!bestEntry) {
+      throw new Error('No users available for workload balancing');
+    }
+    const bestUser = bestEntry.user;
 
     return {
       choreId: chore.id,
@@ -130,14 +135,18 @@ const preferenceBasedAssignment: AssignmentStrategy = {
     });
 
     userScores.sort((a, b) => b.score - a.score);
-    const bestUser = userScores[0].user;
+    const topEntry = userScores[0];
+    if (!topEntry) {
+      throw new Error('No users scored for preference-based assignment');
+    }
+    const bestUser = topEntry.user;
 
     return {
       choreId: chore.id,
       assignedTo: bestUser.userId,
       strategy: 'preference',
       confidence: 80,
-      reasoning: `${bestUser.firstName} has high preference for ${chore.category} tasks and suitable energy level`,
+      reasoning: `${bestUser.firstName} has high preference for ${(chore.category ?? 'general')} tasks and suitable energy level`,
       workloadImpact: bestUser.totalChores + 1,
     };
   },
@@ -177,15 +186,19 @@ const aiHybridAssignment: AssignmentStrategy = {
     });
 
     userScores.sort((a, b) => b.score - a.score);
-    const bestUser = userScores[0].user;
-    const confidence = Math.min(95, Math.max(60, userScores[0].score));
+    const topEntry = userScores[0];
+    if (!topEntry) {
+      throw new Error('No users available for hybrid assignment');
+    }
+    const bestUser = topEntry.user;
+    const confidence = Math.min(95, Math.max(60, topEntry.score));
 
     return {
       choreId: chore.id,
       assignedTo: bestUser.userId,
       strategy: 'ai_hybrid',
       confidence: Math.round(confidence),
-      reasoning: `AI hybrid analysis: ${bestUser.firstName} scored highest (${Math.round(userScores[0].score)}) based on workload balance, preferences, and compatibility`,
+      reasoning: `AI hybrid analysis: ${bestUser.firstName} scored highest (${Math.round(topEntry.score)}) based on workload balance, preferences, and compatibility`,
       workloadImpact: bestUser.totalChores + 1,
     };
   },
@@ -275,7 +288,7 @@ async function getHouseholdUsersWithWorkload(householdId: string): Promise<UserW
           completedToday,
           averageDifficulty,
           preferredCategories,
-          energyLevel,
+          energyLevel: energyLevel as 'low' | 'medium' | 'high',
           lastAssigned,
         };
       })
@@ -294,29 +307,45 @@ async function logAssignmentDecision(
   users: UserWorkload[],
 ): Promise<void> {
   try {
+    const insightData = {
+      chore_id: choreId,
+      assignment: {
+        choreId: assignment.choreId,
+        assignedTo: assignment.assignedTo,
+        strategy: assignment.strategy,
+        confidence: assignment.confidence,
+        reasoning: assignment.reasoning,
+        workloadImpact: assignment.workloadImpact,
+      },
+      available_users: users.map((u) => ({
+        id: u.userId,
+        workload: u.totalChores,
+        preferences: u.preferredCategories,
+      })),
+      timestamp: new Date().toISOString(),
+    } satisfies Json;
+
     const { error } = await supabase
       .from('chore_ai_insights')
       .insert({
         insight_type: 'assignment',
-        insight_data: {
-          chore_id: choreId,
-          assignment,
-          available_users: users.map((u) => ({
-            id: u.userId,
-            workload: u.totalChores,
-            preferences: u.preferredCategories,
-          })),
-          timestamp: new Date().toISOString(),
-        },
+        insight_data: insightData,
         ai_confidence: assignment.confidence,
         generated_at: new Date().toISOString(),
       });
 
     if (error) {
-      logger.warn('Error logging assignment decision', error, { choreId });
+      logger.warn('Error logging assignment decision', {
+        choreId,
+        error: error.message,
+        code: error.code,
+      });
     }
   } catch (error) {
-    logger.warn('Exception logging assignment decision', error as Error, { choreId });
+    logger.warn('Exception logging assignment decision', {
+      choreId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 }
 
@@ -333,9 +362,10 @@ export async function getAssignmentRecommendations(
         const assignment = strategy.algorithm(chore, users);
         recommendations.push(assignment);
       } catch (error) {
-        logger.warn('Error getting assignment recommendation', error as Error, {
+        logger.warn('Error getting assignment recommendation', {
           strategy: strategyName,
           householdId,
+          error: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }

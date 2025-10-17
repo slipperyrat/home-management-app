@@ -44,7 +44,12 @@ export function MonthGridKeyboardNav({
         return;
       }
 
-      focusDay(days[nextIndex].isoDate);
+      const nextDay = days[nextIndex];
+      if (!nextDay) {
+        return;
+      }
+
+      focusDay(nextDay.isoDate);
       event.preventDefault();
     },
     [days, selectedIso]

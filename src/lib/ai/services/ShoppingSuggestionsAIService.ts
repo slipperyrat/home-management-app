@@ -4,7 +4,7 @@
 import { BaseAIService, AIResponse } from './BaseAIService';
 import { createSupabaseAdminClient } from '@/lib/server/supabaseAdmin';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database';
+import type { Database } from '@/types/supabase.generated';
 
 export interface ShoppingSuggestion {
   type: 'frequently_bought' | 'category_based' | 'seasonal' | 'smart_templates' | 'ai_recommended';

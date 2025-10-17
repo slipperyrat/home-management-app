@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getDatabaseClient } from '@/lib/api/database';
 import { logger } from '@/lib/logging/logger';
 import { ReceiptOCRService } from '@/lib/ocr/receiptOCRService';
+import type { Database } from '@/types/supabase.generated';
 
 const uploadSchema = z.object({
   file_name: z.string().min(1).max(255),
@@ -56,12 +57,14 @@ export async function POST(request: NextRequest) {
         .eq('id', userId)
         .single();
 
-      if (userError || !userData) {
+      if (userError || !userData || !userData.household_id) {
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
       }
 
+      const householdId = userData.household_id;
+
       // Upload file to Supabase Storage
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.includes('.') ? file.name.split('.').pop() ?? '' : '';
       const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -78,19 +81,21 @@ export async function POST(request: NextRequest) {
       }
 
       // Create attachment record
+      const attachmentInsert: Database['public']['Tables']['attachments']['Insert'] = {
+        household_id: householdId,
+        uploaded_by: userId,
+        file_name: file.name,
+        file_size: file.size,
+        file_type: file.type,
+        file_extension: fileExt,
+        storage_path: uploadData.path,
+        storage_bucket: 'attachments',
+        ocr_status: 'pending',
+      };
+
       const { data: attachment, error: attachmentError } = await supabase
         .from('attachments')
-        .insert([{
-          household_id: userData.household_id,
-          uploaded_by: userId,
-          file_name: file.name,
-          file_size: file.size,
-          file_type: file.type,
-          file_extension: fileExt,
-          storage_path: uploadData.path,
-          storage_bucket: 'attachments',
-          ocr_status: 'pending'
-        }])
+        .insert(attachmentInsert)
         .select()
         .single();
 
@@ -101,18 +106,23 @@ export async function POST(request: NextRequest) {
 
       // If it's an image file, queue for OCR processing
       if (file.type.startsWith('image/')) {
+        const queuePayload: Database['public']['Tables']['ocr_processing_queue']['Insert'] = {
+          attachment_id: attachment.id,
+          household_id: householdId,
+          processing_type: 'receipt_ocr',
+          priority: 1,
+          status: 'pending',
+        };
+
         const { error: queueError } = await supabase
           .from('ocr_processing_queue')
-          .insert([{
-            attachment_id: attachment.id,
-            household_id: userData.household_id,
-            processing_type: 'receipt_ocr',
-            priority: 1,
-            status: 'pending'
-          }]);
+          .insert(queuePayload);
 
         if (queueError) {
-          logger.error('Error queueing OCR processing', queueError, {
+          const logError = queueError instanceof Error
+            ? queueError
+            : new Error(typeof queueError === 'object' && queueError !== null && 'message' in queueError ? String((queueError as { message?: unknown }).message) : 'Postgrest error');
+          logger.error('Error queueing OCR processing', logError, {
             userId,
             attachmentId: attachment.id,
           });
@@ -159,24 +169,28 @@ export async function POST(request: NextRequest) {
         .eq('id', userId)
         .single();
 
-      if (userError || !userData) {
+      if (userError || !userData || !userData.household_id) {
         return NextResponse.json({ error: 'User not found' }, { status: 404 });
       }
 
+      const householdId = userData.household_id;
+
       // Create attachment record
+      const attachmentInsert: Database['public']['Tables']['attachments']['Insert'] = {
+        household_id: householdId,
+        uploaded_by: userId,
+        file_name,
+        file_size,
+        file_type,
+        file_extension: file_extension ?? '',
+        storage_path,
+        storage_bucket: 'attachments',
+        ocr_status: 'pending',
+      };
+
       const { data: attachment, error: attachmentError } = await supabase
         .from('attachments')
-        .insert([{
-          household_id: userData.household_id,
-          uploaded_by: userId,
-          file_name,
-          file_size,
-          file_type,
-          file_extension,
-          storage_path,
-          storage_bucket: 'attachments',
-          ocr_status: 'pending'
-        }])
+        .insert(attachmentInsert)
         .select()
         .single();
 
@@ -187,18 +201,23 @@ export async function POST(request: NextRequest) {
 
       // If it's an image file, queue for OCR processing
       if (file_type.startsWith('image/')) {
+        const queuePayload: Database['public']['Tables']['ocr_processing_queue']['Insert'] = {
+          attachment_id: attachment.id,
+          household_id: householdId,
+          processing_type: 'receipt_ocr',
+          priority: 1,
+          status: 'pending',
+        };
+
         const { error: queueError } = await supabase
           .from('ocr_processing_queue')
-          .insert([{
-            attachment_id: attachment.id,
-            household_id: userData.household_id,
-            processing_type: 'receipt_ocr',
-            priority: 1,
-            status: 'pending'
-          }]);
+          .insert(queuePayload);
 
         if (queueError) {
-          logger.error('Error queueing OCR processing', queueError, {
+          const logError = queueError instanceof Error
+            ? queueError
+            : new Error(typeof queueError === 'object' && queueError !== null && 'message' in queueError ? String((queueError as { message?: unknown }).message) : 'Postgrest error');
+          logger.error('Error queueing OCR processing', logError, {
             userId,
             attachmentId: attachment.id,
           });
@@ -265,12 +284,14 @@ export async function PUT(request: NextRequest) {
     // Check if it's an image that needs OCR processing
     if (attachment.file_type.startsWith('image/') && attachment.ocr_status === 'pending') {
       // Update status to processing
+      const updatePayload: Database['public']['Tables']['attachments']['Update'] = {
+        ocr_status: 'processing',
+        processing_started_at: new Date().toISOString(),
+      };
+
       await supabase
         .from('attachments')
-        .update({ 
-          ocr_status: 'processing',
-          processing_started_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('id', attachment_id);
 
       // Start OCR processing in the background
@@ -296,13 +317,15 @@ export async function PUT(request: NextRequest) {
           });
           
           // Update status to failed
+          const failurePayload: Database['public']['Tables']['attachments']['Update'] = {
+            ocr_status: 'failed',
+            processing_error: result.error ?? null,
+            processing_completed_at: new Date().toISOString(),
+          };
+
           await supabase
             .from('attachments')
-            .update({ 
-              ocr_status: 'failed',
-              processing_error: result.error,
-              processing_completed_at: new Date().toISOString()
-            })
+            .update(failurePayload)
             .eq('id', attachment_id);
         }
 
@@ -313,13 +336,15 @@ export async function PUT(request: NextRequest) {
         });
         
         // Update status to failed
+        const failurePayload: Database['public']['Tables']['attachments']['Update'] = {
+          ocr_status: 'failed',
+          processing_error: ocrError instanceof Error ? ocrError.message : 'Unknown error',
+          processing_completed_at: new Date().toISOString(),
+        };
+
         await supabase
           .from('attachments')
-          .update({ 
-            ocr_status: 'failed',
-            processing_error: ocrError instanceof Error ? ocrError.message : 'Unknown error',
-            processing_completed_at: new Date().toISOString()
-          })
+          .update(failurePayload)
           .eq('id', attachment_id);
       }
     }

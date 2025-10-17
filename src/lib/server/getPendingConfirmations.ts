@@ -4,7 +4,7 @@ import { logger } from '@/lib/logging/logger';
 interface PendingItem {
   id: string;
   name: string;
-  quantity: number | string;
+  quantity: string;
   auto_added_at: string;
   source_recipe_id: string;
   recipe_title?: string;
@@ -89,9 +89,9 @@ export async function getPendingConfirmations(
     const transformedItems: PendingItem[] = (pendingItems || []).map((item) => ({
       id: item.id,
       name: item.name,
-      quantity: item.quantity,
-      auto_added_at: item.auto_added_at,
-      source_recipe_id: item.source_recipe_id,
+      quantity: item.quantity ?? '',
+      auto_added_at: item.auto_added_at ?? new Date().toISOString(),
+      source_recipe_id: item.source_recipe_id ?? '',
       recipe_title: item.recipes?.title || 'Unknown Recipe',
     }));
 

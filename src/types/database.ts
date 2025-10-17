@@ -29,7 +29,7 @@ export interface RecipeRow {
   servings: number | null;
   tags: string[] | null;
   image_url: string | null;
-  created_at?: string;
+  created_at: string | null;
 }
 
 export interface MealPlanRow {
@@ -37,7 +37,7 @@ export interface MealPlanRow {
   household_id: string;
   week_start_date: string;
   meals: Record<string, Record<string, string | null>> | null;
-  created_at?: string;
+  created_at: string | null;
 }
 
 export interface ChoreRow {
@@ -106,12 +106,14 @@ export interface ReceiptItem {
   attachment_id: string;
   household_id: string;
   item_name: string;
-  item_price: number;
-  item_quantity: number;
-  item_category?: string;
-  item_brand?: string;
-  item_unit?: string;
-  confidence_score: number;
+  item_price: number | null;
+  item_quantity: number | null;
+  item_category?: string | null;
+  item_brand?: string | null;
+  item_unit?: string | null;
+  confidence_score: number | null;
+  added_to_spending?: boolean | null;
+  added_to_shopping_list?: boolean | null;
   attachment?: {
     id: string;
     file_name: string;
@@ -142,14 +144,6 @@ export interface BudgetEnvelopeRow {
   color: string | null;
   category: string | null;
   period_end: string;
-}
-
-export interface ShoppingItemRow {
-  id: string;
-  name: string;
-  category: string | null;
-  created_at: string;
-  shopping_list_id: string | null;
 }
 
 export interface ShoppingListRow {
@@ -184,10 +178,10 @@ export interface AIHouseholdProfile {
   total_corrections: number;
   successful_learnings: number;
   accuracy_improvement: number;
-  preferred_email_formats?: Record<string, unknown> | null;
-  common_bill_providers?: Record<string, unknown> | null;
-  typical_shopping_patterns?: Record<string, unknown> | null;
-  event_preferences?: Record<string, unknown> | null;
+  preferred_email_formats: Record<string, unknown> | null;
+  common_bill_providers: Record<string, unknown> | null;
+  typical_shopping_patterns: Record<string, unknown> | null;
+  event_preferences: Record<string, unknown> | null;
   current_ai_model_version: string;
   last_learning_update: string;
   learning_status: 'active' | 'paused' | 'completed';
@@ -213,25 +207,6 @@ export interface AILearningRule {
   updated_at: string;
 }
 
-export interface ReceiptItem {
-  id: string;
-  attachment_id: string;
-  household_id: string;
-  item_name: string;
-  item_price: number;
-  item_quantity: number;
-  item_category?: string;
-  item_brand?: string;
-  item_unit?: string;
-  confidence_score: number;
-  attachment?: {
-    id: string;
-    file_name: string;
-    receipt_store?: string;
-    receipt_date?: string;
-  } | null;
-}
-
 export interface SpendEntryRow {
   id: string;
   household_id: string;
@@ -254,6 +229,57 @@ export interface BudgetEnvelopeRow {
   color: string | null;
   category: string | null;
   period_end: string;
+}
+
+export interface ShoppingListRow {
+  id: string;
+  title: string;
+  created_by: string;
+  household_id: string;
+  created_at: string;
+}
+
+export interface CalendarRow {
+  id: string;
+  household_id: string;
+  name: string;
+  color?: string | null;
+  timezone?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EventRow {
+  id: string;
+  household_id: string;
+  calendar_id?: string | null;
+  title: string;
+  description?: string | null;
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  is_all_day: boolean;
+  rrule?: string | null;
+  exdates?: string[] | null;
+  rdates?: string[] | null;
+  location?: string | null;
+  created_by: string;
+  updated_at: string;
+  created_at: string;
+  is_public?: boolean | null;
+  attendee_user_id?: string | null;
+  source: 'first_party' | 'google_import';
+}
+
+export interface EventAttendeeRow {
+  id: string;
+  event_id: string;
+  user_id?: string | null;
+  email?: string | null;
+  status?: 'accepted' | 'declined' | 'tentative' | 'needsAction' | null;
+  is_optional?: boolean | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type Database = {
@@ -364,11 +390,17 @@ export type Database = {
       shopping_lists: {
         Row: ShoppingListRow;
       };
-      shopping_items: {
-        Row: ShoppingItemRow;
-      };
       chore_ai_insights: {
         Row: ChoreInsightRow;
+      };
+      calendars: {
+        Row: CalendarRow;
+      };
+      events: {
+        Row: EventRow;
+      };
+      event_attendees: {
+        Row: EventAttendeeRow;
       };
     };
   };

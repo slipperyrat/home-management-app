@@ -1,38 +1,34 @@
 'use client';
 
-import React from 'react';
+import * as React from "react";
+import * as RadixTooltip from "@radix-ui/react-tooltip";
+import { cn } from "@/lib/utils";
 
-interface TooltipProps {
-  children: React.ReactNode;
-}
+const TooltipProvider = RadixTooltip.Provider;
 
-interface TooltipContentProps {
-  children: React.ReactNode;
-}
+const Tooltip = RadixTooltip.Root;
 
-interface TooltipTriggerProps {
-  children: React.ReactElement;
-}
+const TooltipTrigger = RadixTooltip.Trigger;
 
-export function TooltipProvider({ children }: TooltipProps) {
-  return <div>{children}</div>;
-}
+const TooltipPortal = RadixTooltip.Portal;
 
-export function Tooltip({ children }: TooltipProps) {
-  return <div className="relative inline-block">{children}</div>;
-}
+const TooltipContent = React.forwardRef<
+  React.ElementRef<typeof RadixTooltip.Content>,
+  React.ComponentPropsWithoutRef<typeof RadixTooltip.Content>
+>(({ className, sideOffset = 4, ...props }, ref) => (
+  <TooltipPortal>
+    <RadixTooltip.Content
+      ref={ref}
+      sideOffset={sideOffset}
+      className={cn(
+        "z-50 overflow-hidden rounded-md bg-gray-900 px-3 py-2 text-sm text-white shadow-lg",
+        "animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2",
+        className
+      )}
+      {...props}
+    />
+  </TooltipPortal>
+));
+TooltipContent.displayName = RadixTooltip.Content.displayName;
 
-export function TooltipTrigger({ children }: TooltipTriggerProps) {
-  return React.cloneElement(children, {
-    'aria-describedby': children.props['aria-describedby'] ?? undefined,
-  });
-}
-
-export function TooltipContent({ children }: TooltipContentProps) {
-  return (
-    <div className="absolute z-50 px-3 py-2 text-sm text-white bg-gray-900 rounded-md shadow-lg -top-2 left-1/2 transform -translate-x-1/2 -translate-y-full">
-      {children}
-      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
-    </div>
-  );
-}
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent };

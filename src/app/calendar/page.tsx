@@ -22,21 +22,23 @@ import {
 export const runtime = "nodejs";
 
 type CalendarPageProps = {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams?: Record<string, string | string[] | undefined>;
 };
 
-export default async function CalendarPage({ searchParams }: CalendarPageProps) {
+export default async function CalendarPage({ searchParams = {} }: CalendarPageProps) {
   const timezone = await detectTimezone();
-  const resolvedSearchParams = await searchParams;
-  const monthParam = typeof resolvedSearchParams?.month === "string" ? resolvedSearchParams.month : undefined;
-  const dateParam = typeof resolvedSearchParams?.date === "string" ? resolvedSearchParams.date : undefined;
+  const monthParam = typeof searchParams.month === "string" ? searchParams.month : undefined;
+  const dateParam = typeof searchParams.date === "string" ? searchParams.date : undefined;
 
   const reference = parseMonthParam(monthParam, timezone);
+  const today = DateTime.now().setZone(timezone).startOf("day");
   const selectedDate = parseDateParam(dateParam, timezone);
   const monthKey = formatMonthParam(reference);
-  const selectedIso = selectedDate.toISODate();
+  const selectedIso = selectedDate?.toISODate?.() ?? today.toISODate();
+  if (!selectedIso) {
+    throw new Error("Unable to determine selected ISO date");
+  }
   const weekdayLabels = getWeekdayLabels();
-  const today = DateTime.now().setZone(timezone).startOf("day");
 
   return (
     <div className="flex flex-col gap-6">
@@ -58,7 +60,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <NavButton
               href={buildNavHref({
                 month: formatMonthParam(today),
-                date: today.toISODate(),
+                date: today.toISODate() ?? today.toFormat("yyyy-MM-dd"),
               })}
             >
               Today
@@ -89,7 +91,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
               timezone={timezone}
               monthKey={monthKey}
               selectedIso={selectedIso}
-              monthReferenceISO={reference.toISO()}
+              monthReferenceISO={reference.toISO() ?? reference.toFormat("yyyy-MM-01")}
             />
           </Suspense>
         </div>
@@ -116,9 +118,12 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   );
 }
 
-function buildNavHref(params: Record<string, string>) {
-  const searchParams = new URLSearchParams(params);
-  return `/calendar?${searchParams.toString()}`;
+function buildNavHref(params: Record<string, string | undefined>) {
+  const searchParams = new URLSearchParams();
+  if (params.month) searchParams.set("month", params.month);
+  if (params.date) searchParams.set("date", params.date);
+  const query = searchParams.toString();
+  return query ? `/calendar?${query}` : "/calendar";
 }
 
 async function MonthSection({
@@ -130,13 +135,13 @@ async function MonthSection({
   timezone: string;
   monthKey: string;
   selectedIso: string;
-  monthReferenceISO: string | null;
+  monthReferenceISO: string;
 }) {
-  const reference = monthReferenceISO ? DateTime.fromISO(monthReferenceISO, { zone: timezone }) : DateTime.now().setZone(timezone).startOf("month");
+  const reference = DateTime.fromISO(monthReferenceISO, { zone: timezone }).startOf("month");
   const { summaries } = await getMonthData({ monthParam: monthKey, timezone });
   const selectedDayKey = selectedIso;
   const days = buildCalendarMatrix(reference, timezone).map(({ date, isCurrentMonth }) => {
-    const isoDate = date.toISODate();
+    const isoDate = date.toISODate() ?? date.toFormat("yyyy-MM-dd");
     const dayKey = toDayKey(date);
 
     return {
@@ -145,8 +150,8 @@ async function MonthSection({
       isCurrentMonth,
       isSelected: dayKey === selectedDayKey,
       isToday: date.hasSame(DateTime.now().setZone(timezone), "day"),
-      summary: summaries[dayKey],
-      href: `/calendar?${new URLSearchParams({ month: monthKey, date: isoDate }).toString()}`,
+      summary: summaries[dayKey] ?? null,
+      href: buildNavHref({ month: monthKey, date: isoDate }),
     };
   });
 
@@ -180,14 +185,12 @@ function NavButton({ href, children }: { href: string; children: ReactNode }) {
 }
 
 async function detectTimezone(): Promise<string> {
-  const headerStore = headers();
-  const headerTz = headerStore.get("x-user-timezone");
+  const headerTz = (await headers()).get("x-user-timezone");
   if (headerTz) {
     return headerTz;
   }
 
-  const cookieStore = cookies();
-  const cookieTz = cookieStore.get("tz");
+  const cookieTz = (await cookies()).get("tz");
   if (cookieTz?.value) {
     return cookieTz.value;
   }

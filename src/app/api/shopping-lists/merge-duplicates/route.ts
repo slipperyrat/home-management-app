@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { sb } from '@/lib/server/supabaseAdmin';
 import { mergeDuplicateItems } from '@/lib/server/mergeDuplicateItems';
 import { logger } from '@/lib/logging/logger';
@@ -10,8 +10,11 @@ const mergeRequestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return NextResponse.json({ success: false, error: 'User not authenticated' }, { status: 401 });
+      }
       const body = await req.json();
       const { listId } = mergeRequestSchema.parse(body);
 
@@ -44,8 +47,8 @@ export async function POST(request: NextRequest) {
       }
 
       logger.info('Merging duplicate shopping items', {
-        userId: user.id,
-        householdId: list.household_id,
+        ...(user?.id ? { userId: user.id } : {}),
+        ...(list.household_id ? { householdId: list.household_id } : {}),
         listId,
       });
 
@@ -54,7 +57,7 @@ export async function POST(request: NextRequest) {
       
       if (result.ok) {
         logger.info('Duplicate merge completed', {
-          userId: user.id,
+          ...(user?.id ? { userId: user.id } : {}),
           listId,
           mergedItems: result.mergedItems,
           totalItems: result.totalItems,
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest) {
         });
       } else {
         logger.error('Duplicate merge failed', new Error(result.error || 'merge failed'), {
-          userId: user.id,
+          ...(user?.id ? { userId: user.id } : {}),
           listId,
         });
         return NextResponse.json({ 
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest) {
     } catch (error: unknown) {
       if (error instanceof z.ZodError) {
         logger.warn('Merge duplicates validation failed', {
-          userId: user.id,
+          ...(user?.id ? { userId: user.id } : {}),
           errors: error.flatten().fieldErrors,
         });
         return NextResponse.json({
@@ -90,7 +93,7 @@ export async function POST(request: NextRequest) {
       }
 
       logger.error('Unexpected error in merge-duplicates API', error instanceof Error ? error : new Error(String(error)), {
-        userId: user.id,
+        userId: user?.id ?? 'unknown',
         route: '/api/shopping-lists/merge-duplicates',
       });
       return NextResponse.json({

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { getUserAndHouseholdData, getDatabaseClient, createAuditLog } from '@/lib/api/database';
 import { canAccessFeatureFromEntitlements } from '@/lib/server/canAccessFeature';
 import { logger } from '@/lib/logging/logger';
+import type { Entitlements } from '@/lib/entitlements';
+import type { Database } from '@/types/supabase.generated';
 
 const SPOONACULAR_ENDPOINT = 'https://api.spoonacular.com/recipes/extract';
 
@@ -22,78 +24,31 @@ interface SpoonacularRecipe {
   summary?: string;
 }
 
-let recipeTableColumnsCache: Set<string> | null = null;
-
-async function getRecipeTableColumns(db: ReturnType<typeof getDatabaseClient>): Promise<Set<string>> {
-  if (recipeTableColumnsCache) {
-    return recipeTableColumnsCache;
-  }
-
-  try {
-    const recipesTable = db.from('recipes');
-
-    if (typeof recipesTable.select === 'function') {
-      const { error } = await recipesTable.select('id').limit(1);
-
-      if (!error) {
-        recipeTableColumnsCache = new Set([
-          'household_id',
-          'title',
-          'description',
-          'ingredients',
-          'instructions',
-          'prep_time',
-          'cook_time',
-          'servings',
-          'image_url',
-          'tags',
-          'created_by',
-          'source_url',
-          'total_time',
-          'yield',
-        ]);
-        return recipeTableColumnsCache;
-      }
-    }
-
-    const { data, error } = await db
-      .from('information_schema.columns')
-      .select('column_name')
-      .eq('table_schema', 'public')
-      .eq('table_name', 'recipes');
-
-    if (!error && Array.isArray(data)) {
-      recipeTableColumnsCache = new Set(data.map((column: { column_name: string }) => column.column_name));
-      return recipeTableColumnsCache;
-    }
-  } catch (metaError) {
-    logger.warn('Failed to introspect recipes table columns', { error: metaError instanceof Error ? metaError.message : metaError });
-  }
-
-  recipeTableColumnsCache = new Set([
-    'household_id',
-    'title',
-    'description',
-    'ingredients',
-    'instructions',
-    'prep_time',
-    'cook_time',
-    'servings',
-    'image_url',
-    'tags',
-    'created_by',
-  ]);
-  return recipeTableColumnsCache;
-}
+const SUPPORTED_RECIPE_COLUMNS = new Set<keyof Database['public']['Tables']['recipes']['Insert']>([
+  'household_id',
+  'title',
+  'description',
+  'ingredients',
+  'instructions',
+  'prep_time',
+  'cook_time',
+  'servings',
+  'image_url',
+  'tags',
+  'created_by',
+  'source_url',
+  'total_time',
+  'yield',
+]);
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
       if (!user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
 
-      const { household, entitlements, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
 
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -116,7 +71,17 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Spoonacular integration is not configured', 503);
       }
 
-      if (!entitlements || !canAccessFeatureFromEntitlements(entitlements, 'recipe_import_url')) {
+      const db = getDatabaseClient();
+
+      const { data: entitlementsRecord } = await db
+        .from('entitlements')
+        .select('*')
+        .eq('household_id', household.id)
+        .maybeSingle<Entitlements>();
+
+      const effectiveEntitlements = entitlementsRecord ?? null;
+
+      if (!effectiveEntitlements || !canAccessFeatureFromEntitlements(effectiveEntitlements, 'recipe_import_url')) {
         return createErrorResponse('Recipe import by URL requires a higher plan tier', 403, {
           requiredPlan: 'pro',
           currentPlan: household.plan || 'free',
@@ -154,9 +119,9 @@ export async function POST(request: NextRequest) {
 
       const ingredients = (spoonacularData.extendedIngredients || []).map((ingredient) => ({
         name: ingredient.name || ingredient.original || 'Ingredient',
-        amount: ingredient.amount ?? null,
+        amount: typeof ingredient.amount === 'number' && Number.isFinite(ingredient.amount) ? ingredient.amount : null,
         unit: ingredient.unit ?? null,
-        original: ingredient.original ?? null,
+        notes: null,
       }));
 
       const instructions = (spoonacularData.analyzedInstructions || [])
@@ -164,50 +129,42 @@ export async function POST(request: NextRequest) {
         .map((step) => step.step?.trim())
         .filter((step): step is string => Boolean(step));
 
-      const db = getDatabaseClient();
-
-      if (!user.id) {
-        return createErrorResponse('Authenticated user is required to save recipes', 401);
-      }
-
-      const recipeTableColumns = await getRecipeTableColumns(db);
-
       const totalTime = spoonacularData.readyInMinutes ?? null;
 
-      const insertPayload: Record<string, unknown> = {
+      const insertPayload: Database['public']['Tables']['recipes']['Insert'] = {
         household_id: household.id,
         created_by: user.id,
-        title: spoonacularData.title,
+        title: spoonacularData.title ?? 'Imported recipe',
         image_url: spoonacularData.image ?? null,
         ingredients,
-        instructions,
+        instructions: instructions.length > 0 ? instructions : null,
       };
 
-      if (recipeTableColumns.has('description') && spoonacularData.summary) {
+      if (SUPPORTED_RECIPE_COLUMNS.has('description') && spoonacularData.summary) {
         insertPayload.description = spoonacularData.summary;
       }
 
-      if (recipeTableColumns.has('prep_time') && totalTime !== null) {
+      if (SUPPORTED_RECIPE_COLUMNS.has('prep_time') && totalTime !== null) {
         insertPayload.prep_time = totalTime;
       }
 
-      if (recipeTableColumns.has('cook_time')) {
+      if (SUPPORTED_RECIPE_COLUMNS.has('cook_time')) {
         insertPayload.cook_time = 0;
       }
 
-      if (recipeTableColumns.has('servings') && spoonacularData.servings) {
+      if (SUPPORTED_RECIPE_COLUMNS.has('servings') && spoonacularData.servings) {
         insertPayload.servings = spoonacularData.servings;
       }
 
-      if (recipeTableColumns.has('source_url')) {
+      if (SUPPORTED_RECIPE_COLUMNS.has('source_url')) {
         insertPayload.source_url = url;
       }
 
-      if (recipeTableColumns.has('total_time')) {
+      if (SUPPORTED_RECIPE_COLUMNS.has('total_time')) {
         insertPayload.total_time = totalTime;
       }
 
-      if (recipeTableColumns.has('yield') && spoonacularData.servings) {
+      if (SUPPORTED_RECIPE_COLUMNS.has('yield') && spoonacularData.servings) {
         insertPayload.yield = `${spoonacularData.servings} servings`;
       }
 
@@ -215,11 +172,15 @@ export async function POST(request: NextRequest) {
         .from('recipes')
         .insert(insertPayload)
         .select('id')
-        .single();
+        .maybeSingle<{ id: string }>();
 
       if (insertError) {
         logger.error('Failed to save imported recipe', new Error(insertError.message), { householdId: household.id, userId: user.id });
         return createErrorResponse('Failed to save recipe', 500, insertError.message);
+      }
+
+      if (!recipe) {
+        return createErrorResponse('Failed to save recipe', 500);
       }
 
       await createAuditLog({
@@ -235,13 +196,16 @@ export async function POST(request: NextRequest) {
 
       return createSuccessResponse({ recipe_id: recipe.id }, 'Recipe imported successfully');
     } catch (error) {
-      return handleApiError(error, { route: '/api/recipes/import', method: 'POST', userId: user?.id });
+      return handleApiError(error, {
+        route: '/api/recipes/import',
+        method: 'POST',
+        ...(user?.id ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,
     requireCSRF: true,
     rateLimitConfig: 'api',
-    requiredFeature: 'recipe_import_url',
   });
 }
 

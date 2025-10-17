@@ -44,7 +44,7 @@ export function createFeatureFlagContext(userPlan: UserPlan): FeatureFlagContext
  * @param context - Feature flag context
  * @returns Response with feature flag headers
  */
-export function addFeatureFlagHeaders(response: NextResponse, context: FeatureFlagContext): NextResponse {
+export function addFeatureFlagHeaders<T>(response: NextResponse<T>, context: FeatureFlagContext): NextResponse<T> {
   // Add feature flag headers for debugging and client-side use
   response.headers.set('X-User-Plan', context.userPlan);
   response.headers.set('X-Available-Features', context.availableFeatures.join(','));
@@ -75,11 +75,11 @@ export function withFeatureFlags<T = unknown>(
       for (const feature of requiredFeatures) {
         if (!canAccessFeature(userPlan, feature)) {
           return NextResponse.json(
-            { 
+            {
               error: `Feature "${feature}" is not available on your plan`,
               requiredPlan: context.userPlan,
-              availableFeatures: context.availableFeatures
-            },
+              availableFeatures: context.availableFeatures,
+            } as unknown as T,
             { status: 403 }
           );
         }

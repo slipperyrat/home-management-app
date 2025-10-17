@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { auth } from '@clerk/nextjs/server';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database.types';
+import type { TableRow, Database } from '@/types/supabase.generated';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -59,7 +59,7 @@ export async function GET(_request: NextRequest) {
   }
 }
 
-type CalendarEvent = Database['public']['Tables']['household_events']['Row'];
+type CalendarEvent = TableRow<'household_events'>;
 
 type CalendarInsightStats = {
   totalEvents: number;
@@ -82,7 +82,10 @@ type CalendarInsights = {
 
 function calculateAICalendarInsights(events: CalendarEvent[]): CalendarInsights {
   const now = new Date();
-  const upcomingEvents = events.filter(event => new Date(event.start_time) > now);
+  const eventsWithStartTime = events.filter(
+    (event): event is CalendarEvent & { start_time: string } => typeof event.start_time === 'string'
+  );
+  const upcomingEvents = eventsWithStartTime.filter(event => new Date(event.start_time) > now);
   
   // Calculate basic stats
   const totalEvents = events.length;
@@ -91,7 +94,7 @@ function calculateAICalendarInsights(events: CalendarEvent[]): CalendarInsights 
   // Analyze event types
   const eventTypeCounts: Record<string, number> = {};
   events.forEach(event => {
-    const type = event.event_type || 'unknown';
+    const type = event.type || 'unknown';
     eventTypeCounts[type] = (eventTypeCounts[type] || 0) + 1;
   });
   
@@ -102,7 +105,7 @@ function calculateAICalendarInsights(events: CalendarEvent[]): CalendarInsights 
 
   // Analyze scheduling patterns
   const timeSlots: Record<string, number> = {};
-  events.forEach(event => {
+  eventsWithStartTime.forEach(event => {
     const hour = new Date(event.start_time).getHours();
     const timeSlot = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
     timeSlots[timeSlot] = (timeSlots[timeSlot] || 0) + 1;
@@ -134,7 +137,7 @@ function calculateAICalendarInsights(events: CalendarEvent[]): CalendarInsights 
   const suggestedImprovements = generateSuggestedImprovements({
     totalEvents,
     upcomingCount,
-    mostCommonEventTypes: mostCommonEventTypes.length
+    mostCommonEventTypes
   });
 
   // Calculate AI learning progress (simplified)
@@ -171,7 +174,7 @@ function generateSuggestedImprovements(stats: CalendarInsightStats): string[] {
     suggestions.push('Try scheduling events further in advance for better planning');
   }
 
-  if (stats.mostCommonEventTypes < 2) {
+  if (stats.mostCommonEventTypes.length < 2) {
     suggestions.push('Diversify your event types for better AI insights');
   }
 

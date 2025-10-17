@@ -181,7 +181,6 @@ export function BillsSection({ bills, summary, householdId }: BillsSectionProps)
             </CardDescription>
           </div>
           <FinanceBillActions
-            householdId={householdId}
             onMarkAllPaid={markAllPaid}
             onResetFilters={resetFilters}
           />

@@ -39,8 +39,8 @@ export interface WebSocketMetrics {
 }
 
 export interface SystemMetrics {
-  memoryUsage: number;
-  cpuUsage: number;
+  memoryUsage: number | null;
+  cpuUsage: number | null;
   responseTime: number;
   errorRate: number;
   uptime: number;
@@ -97,6 +97,12 @@ export class PerformanceMonitor {
     householdId?: string,
     requestId?: string
   ): void {
+    const context = {
+      ...(userId ? { userId } : {}),
+      ...(householdId ? { householdId } : {}),
+      ...(requestId ? { requestId } : {}),
+    } satisfies Partial<Pick<PerformanceMetric, 'userId' | 'householdId' | 'requestId'>>;
+
     this.recordMetric({
       type: 'ai_processing',
       name: `ai_${type}_processing_time`,
@@ -108,9 +114,7 @@ export class PerformanceMonitor {
         provider,
         fallbackUsed
       },
-      userId,
-      householdId,
-      requestId
+      ...context,
     });
 
     this.recordMetric({
@@ -123,9 +127,7 @@ export class PerformanceMonitor {
         provider,
         fallbackUsed
       },
-      userId,
-      householdId,
-      requestId
+      ...context,
     });
   }
 
@@ -140,7 +142,7 @@ export class PerformanceMonitor {
       value: duration || 1,
       unit: action === 'disconnect' && duration ? 'ms' : 'count',
       metadata: { action },
-      userId
+      ...(userId ? { userId } : {}),
     });
   }
 
@@ -161,7 +163,7 @@ export class PerformanceMonitor {
         method,
         statusCode
       },
-      userId
+      ...(userId ? { userId } : {}),
     });
   }
 
@@ -180,7 +182,7 @@ export class PerformanceMonitor {
         query: query.substring(0, 100), // Truncate long queries
         success
       },
-      userId
+      ...(userId ? { userId } : {}),
     });
   }
 
@@ -197,7 +199,7 @@ export class PerformanceMonitor {
       unit: 'ms',
       metadata: { action },
       userId,
-      householdId
+      ...(householdId ? { householdId } : {}),
     });
   }
 
@@ -217,7 +219,10 @@ export class PerformanceMonitor {
 
     const totalRequests = aiMetrics.length / 2; // Each AI request creates 2 metrics
     const successfulRequests = successCounts.reduce((sum, val) => sum + val, 0);
-    const failedRequests = totalRequests - successfulRequests;
+    const failedRequests = aiMetrics.filter(m => {
+      const statusCode = m.metadata?.statusCode;
+      return typeof statusCode === 'number' && statusCode >= 400;
+    }).length;
 
     const averageProcessingTime = processingTimes.length > 0 
       ? processingTimes.reduce((sum, val) => sum + val, 0) / processingTimes.length 
@@ -235,7 +240,7 @@ export class PerformanceMonitor {
 
     const providerCounts: Record<string, number> = {};
     aiMetrics.forEach(m => {
-      const provider = m.metadata?.provider;
+      const provider = typeof m.metadata?.provider === 'string' ? m.metadata.provider : undefined;
       if (provider) {
         providerCounts[provider] = (providerCounts[provider] || 0) + 1;
       }
@@ -294,35 +299,38 @@ export class PerformanceMonitor {
   }
 
   public getSystemMetrics(): SystemMetrics {
-    // This would integrate with actual system monitoring
-    // For now, return mock data
+    const totalRequests = this.metrics.length;
+    const errorMetrics = this.metrics.filter(m => m.name.includes('error'));
+    const avgResponseTimeMetrics = this.metrics.filter(m => m.type === 'api_request');
+
+    const nodeProcess = typeof globalThis !== 'undefined' && (globalThis as { process?: NodeJS.Process }).process
+    const memoryUsage = nodeProcess && typeof nodeProcess.memoryUsage === 'function'
+      ? nodeProcess.memoryUsage().heapUsed / 1024 / 1024
+      : null
+    const cpuUsage = nodeProcess && typeof nodeProcess.cpuUsage === 'function'
+      ? nodeProcess.cpuUsage().user / 1000
+      : null
+
+    const avgResponseTime = avgResponseTimeMetrics.length > 0
+      ? avgResponseTimeMetrics.reduce((sum, metric) => sum + metric.value, 0) / avgResponseTimeMetrics.length
+      : 0;
+
+    const errorRate = totalRequests > 0
+      ? errorMetrics.length / totalRequests
+      : 0;
+
+    const uptime = (Date.now() - this.startTime.getTime()) / (1000 * 60 * 60); // hours
+
     return {
-      memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024, // MB
-      cpuUsage: 0, // Would need actual CPU monitoring
-      responseTime: this.calculateAverageResponseTime(),
-      errorRate: this.calculateErrorRate(),
-      uptime: Date.now() - this.startTime.getTime()
+      memoryUsage,
+      cpuUsage,
+      responseTime: avgResponseTime,
+      errorRate,
+      uptime,
     };
   }
 
-  private calculateAverageResponseTime(): number {
-    const apiMetrics = this.metrics.filter(m => m.type === 'api_request');
-    if (apiMetrics.length === 0) return 0;
-
-    const totalTime = apiMetrics.reduce((sum, m) => sum + m.value, 0);
-    return totalTime / apiMetrics.length;
-  }
-
-  private calculateErrorRate(): number {
-    const apiMetrics = this.metrics.filter(m => m.type === 'api_request');
-    if (apiMetrics.length === 0) return 0;
-
-    const errorMetrics = apiMetrics.filter(m => 
-      m.metadata?.statusCode && m.metadata.statusCode >= 400
-    );
-
-    return errorMetrics.length / apiMetrics.length;
-  }
+  // Removed unused helper methods for average response time and error rate
 
   private startSystemMetricsCollection(): void {
     // Collect system metrics every 30 seconds
@@ -330,18 +338,20 @@ export class PerformanceMonitor {
       if (this.isEnabled) {
         const systemMetrics = this.getSystemMetrics();
         
-        this.recordMetric({
-          type: 'api_request',
-          name: 'system_memory_usage',
-          value: systemMetrics.memoryUsage,
-          unit: 'bytes',
-          metadata: { metricType: 'system' }
-        });
+        if (typeof systemMetrics.memoryUsage === 'number') {
+          this.recordMetric({
+            type: 'api_request',
+            name: 'system_memory_usage',
+            value: systemMetrics.memoryUsage ?? 0,
+            unit: 'bytes',
+            metadata: { metricType: 'system' }
+          });
+        }
 
         this.recordMetric({
           type: 'api_request',
           name: 'system_cpu_usage',
-          value: systemMetrics.cpuUsage,
+          value: systemMetrics.cpuUsage ?? 0,
           unit: 'percentage',
           metadata: { metricType: 'system' }
         });

@@ -415,9 +415,9 @@ export default function CalendarTemplates({ householdId, entitlements }: Calenda
               <div>
                 <h4 className="font-semibold mb-2">Events in this template:</h4>
                 <div className="space-y-2">
-                  {selectedTemplate.events.map((event) => (
+                  {selectedTemplate.events.map((event, index) => (
                     <div
-                      key={buildEventKey({ templateId: selectedTemplate.id, eventId: event.id })}
+                      key={buildEventKey({ templateId: selectedTemplate.id, eventId: String(index) })}
                       className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
                     >
                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: event.color || '#3B82F6' }} />

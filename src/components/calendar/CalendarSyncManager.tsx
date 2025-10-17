@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { 
   Calendar,
   Link,
@@ -16,7 +15,6 @@ import {
   Shield,
   Globe,
   Clock,
-  ExternalLink,
   CheckCircle,
   AlertCircle,
   Info

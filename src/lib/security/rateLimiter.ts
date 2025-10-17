@@ -56,7 +56,7 @@ export class RateLimiter {
         return { allowed: true, remaining: config.maxRequests, resetTime: new Date() };
       }
 
-      const currentCount = existingRecord?.request_count || 0;
+      const currentCount = Number(existingRecord?.request_count ?? 0);
       
       if (currentCount >= config.maxRequests) {
         const resetTime = new Date(windowStart.getTime() + (config.windowMinutes * 60 * 1000));
@@ -126,33 +126,30 @@ export class RateLimiter {
 
 // Predefined rate limit configurations for common endpoints
 export const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
-  'auth': { maxRequests: 10, windowMinutes: 15, endpoint: 'auth' },
-  'api': { maxRequests: 100, windowMinutes: 60, endpoint: 'api' },
-  'analytics': { maxRequests: 120, windowMinutes: 10, endpoint: 'analytics' },
-  'shopping': { maxRequests: 50, windowMinutes: 60, endpoint: 'shopping' },
-  'chores': { maxRequests: 30, windowMinutes: 60, endpoint: 'chores' },
-  'bills': { maxRequests: 20, windowMinutes: 60, endpoint: 'bills' },
+  auth: { maxRequests: 10, windowMinutes: 15, endpoint: 'auth' },
+  api: { maxRequests: 100, windowMinutes: 60, endpoint: 'api' },
+  analytics: { maxRequests: 120, windowMinutes: 10, endpoint: 'analytics' },
+  shopping: { maxRequests: 50, windowMinutes: 60, endpoint: 'shopping' },
+  chores: { maxRequests: 30, windowMinutes: 60, endpoint: 'chores' },
+  bills: { maxRequests: 20, windowMinutes: 60, endpoint: 'bills' },
   'meal-planner': { maxRequests: 25, windowMinutes: 60, endpoint: 'meal-planner' },
-  'default': { maxRequests: 100, windowMinutes: 60, endpoint: 'default' }
+  default: { maxRequests: 100, windowMinutes: 60, endpoint: 'default' },
 };
 
 // Helper function to get rate limit config for an endpoint
-export function getRateLimitConfig(pathnameOrKey: string): RateLimitConfig {
-  const normalizedKey = pathnameOrKey.trim().toLowerCase();
+export function getRateLimitConfig(route: string): RateLimitConfig {
+  const routeMatch =
+    RATE_LIMIT_CONFIGS[route] ||
+    RATE_LIMIT_CONFIGS[`${route}/*`] ||
+    RATE_LIMIT_CONFIGS[route.replace(/\/[^/]+$/, '/*')];
 
-  if (RATE_LIMIT_CONFIGS[normalizedKey]) {
-    return RATE_LIMIT_CONFIGS[normalizedKey];
+  if (routeMatch) {
+    return routeMatch;
   }
 
-  if (normalizedKey.startsWith('/')) {
-    if (normalizedKey.includes('/auth')) return RATE_LIMIT_CONFIGS.auth;
-    if (normalizedKey.includes('/shopping')) return RATE_LIMIT_CONFIGS.shopping;
-    if (normalizedKey.includes('/chores')) return RATE_LIMIT_CONFIGS.chores;
-    if (normalizedKey.includes('/bills')) return RATE_LIMIT_CONFIGS.bills;
-    if (normalizedKey.includes('/meal-planner')) return RATE_LIMIT_CONFIGS['meal-planner'];
-    if (normalizedKey.includes('/analytics')) return RATE_LIMIT_CONFIGS.analytics;
-    if (normalizedKey.includes('/api')) return RATE_LIMIT_CONFIGS.api;
+  if (RATE_LIMIT_CONFIGS.default) {
+    return RATE_LIMIT_CONFIGS.default;
   }
 
-  return RATE_LIMIT_CONFIGS.default;
+  return RATE_LIMIT_CONFIGS.api ?? { maxRequests: 100, windowMinutes: 60, endpoint: 'fallback' };
 }

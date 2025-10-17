@@ -1,18 +1,23 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { createChoreSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Fetching chores without authenticated user', { url: req.url });
+        return createErrorResponse('Authentication required', 401);
+      }
+
       logger.info('Fetching chores', { userId: user.id });
 
       // Get user and household data
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
-      
+
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
       }
@@ -33,7 +38,11 @@ export async function GET(request: NextRequest) {
       return createSuccessResponse({ chores: chores || [] }, 'Chores fetched successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/chores', method: 'GET', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/chores',
+        method: 'GET',
+        ...(user?.id ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,
@@ -43,8 +52,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Creating chore without authenticated user', { url: req.url });
+        return createErrorResponse('Authentication required', 401);
+      }
+
       logger.info('Creating chore', { userId: user.id });
 
       // Validate input using Zod schema
@@ -54,7 +68,6 @@ export async function POST(request: NextRequest) {
         validatedData = createChoreSchema.parse(body);
       } catch (validationError: unknown) {
         if (validationError instanceof Error && 'errors' in validationError) {
-          logger.warn('Chore validation failed', validationError, { userId: user.id });
           return createErrorResponse('Invalid input', 400, (validationError as { errors: unknown }).errors);
         }
         return createErrorResponse('Invalid input', 400);
@@ -151,7 +164,11 @@ export async function POST(request: NextRequest) {
       return createSuccessResponse({ chore: data }, 'Chore created successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/chores', method: 'POST', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/chores',
+        method: 'POST',
+        ...(user?.id ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,

@@ -89,7 +89,7 @@ export const postEventTypes = {
       householdId,
       type: 'heartbeat',
       payload: payload ?? {},
-      occurredAt: payload?.occurred_at,
+      occurredAt: payload?.occurred_at ?? new Date().toISOString(),
     });
   },
   choreCompleted: async (payload: EventPayload) => {

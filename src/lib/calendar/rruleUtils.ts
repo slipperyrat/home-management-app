@@ -22,15 +22,15 @@ export interface EventOccurrence {
 export interface EventData {
   id: string;
   title: string;
-  description?: string;
+  description?: string | undefined;
   startAt: Date;
   endAt: Date;
   timezone: string;
   isAllDay: boolean;
-  rrule?: string;
-  exdates?: Date[];
-  rdates?: Date[];
-  location?: string;
+  rrule?: string | undefined;
+  exdates?: Date[] | undefined;
+  rdates?: Date[] | undefined;
+  location?: string | undefined;
 }
 
 /**
@@ -50,12 +50,12 @@ export function generateEventOccurrences(
         id: `${event.id}-single`,
         eventId: event.id,
         title: event.title,
-        description: event.description,
+        description: event.description ?? '',
         startAt: event.startAt,
         endAt: event.endAt,
         isAllDay: event.isAllDay,
         timezone: event.timezone,
-        location: event.location,
+        location: event.location ?? '',
         isException: false
       });
     }
@@ -96,12 +96,12 @@ export function generateEventOccurrences(
         id: `${event.id}-${index}`,
         eventId: event.id,
         title: event.title,
-        description: event.description,
+        description: event.description ?? '',
         startAt: date,
         endAt: occurrenceEnd,
         isAllDay: event.isAllDay,
         timezone: event.timezone,
-        location: event.location,
+        location: event.location ?? '',
         isException: false
       });
     });
@@ -114,12 +114,12 @@ export function generateEventOccurrences(
         id: `${event.id}-fallback`,
         eventId: event.id,
         title: event.title,
-        description: event.description,
+        description: event.description ?? '',
         startAt: event.startAt,
         endAt: event.endAt,
         isAllDay: event.isAllDay,
         timezone: event.timezone,
-        location: event.location,
+        location: event.location ?? '',
         isException: false
       });
     }
@@ -196,7 +196,16 @@ export function parseRRuleDescription(rrule: string): string {
 
     if (byweekday) {
       const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      const days = byweekday.map((day) => dayNames[day.weekday] ?? String(day.weekday));
+      const days = byweekday.map((day) => {
+        if (typeof day === 'number') {
+          return dayNames[day] ?? String(day);
+        }
+        const weekday = typeof day === 'object' && day !== null && 'weekday' in day ? (day as { weekday: number }).weekday : undefined;
+        if (typeof weekday === 'number') {
+          return dayNames[weekday] ?? String(weekday);
+        }
+        return 'Custom';
+      });
       description += ` on ${days.join(', ')}`;
     }
 
@@ -210,7 +219,7 @@ export function parseRRuleDescription(rrule: string): string {
 
     return description;
   } catch (error) {
-  logger.error('Error parsing RRULE', error as Error, { rrule });
+    logger.error('Error parsing RRULE', error as Error, { rrule });
     return 'Custom recurrence';
   }
 }
@@ -243,7 +252,11 @@ export function findConflicts(events: EventOccurrence[]): Array<{
     for (let j = i + 1; j < events.length; j++) {
       const event1 = events[i];
       const event2 = events[j];
-      
+
+      if (!event1 || !event2) {
+        continue;
+      }
+
       if (hasTimeConflict(event1, event2)) {
         // Check if they're just adjacent (touching) or actually overlapping
         const isAdjacent = 

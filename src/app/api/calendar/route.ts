@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getDatabaseClient, getUserAndHouseholdData, createAuditLog } from '@/lib/api/database';
 import { createSuccessResponse, createValidationErrorResponse, handleApiError } from '@/lib/api/errors';
 import { createCalendarEventInputSchema } from '@/lib/validation/schemas';
@@ -14,8 +14,24 @@ const calendarQuerySchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Calendar fetch attempted without authenticated user', {
+          url: req.url,
+          route: '/api/calendar',
+          securityEvent: true,
+          severity: 'medium',
+        });
+        return createValidationErrorResponse([
+          {
+            path: ['user'],
+            message: 'Authentication required',
+            code: 'custom',
+          },
+        ]);
+      }
+
       const queryValidation = calendarQuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
       if (!queryValidation.success) {
         return createValidationErrorResponse(queryValidation.error.errors);
@@ -48,25 +64,40 @@ export async function GET(request: NextRequest) {
       }
 
       // Filter and enhance calendar events (only show calendar.event type)
-      const calendarEvents = (events || []).filter(event => event.type === 'calendar.event');
-      
-      const enhancedEvents = calendarEvents.map(event => ({
-        ...event,
-        // Map database fields to frontend expected fields
-        startAt: event.start_time,
-        endAt: event.end_time,
-        ai_confidence: event.ai_confidence || 75,
-        ai_suggested: event.ai_suggested || false,
-        conflict_resolved: event.conflict_resolved || false,
-        reminder_sent: event.reminder_sent || false,
-        priority: event.priority || 'medium',
-        event_type: event.event_type || event.payload?.event_type || 'general'
-      }));
+      const calendarEvents = (events || []).filter((event) => event.type === 'calendar.event');
+
+      const enhancedEvents = calendarEvents.map((event) => {
+        const payload = event.payload;
+        let derivedEventType = event.event_type;
+
+        if (!derivedEventType && payload && typeof payload === 'object' && !Array.isArray(payload)) {
+          const candidate = (payload as Record<string, unknown>).event_type;
+          if (typeof candidate === 'string' && candidate.length > 0) {
+            derivedEventType = candidate;
+          }
+        }
+
+        return {
+          ...event,
+          startAt: event.start_time,
+          endAt: event.end_time,
+          ai_confidence: event.ai_confidence ?? 75,
+          ai_suggested: event.ai_suggested ?? false,
+          conflict_resolved: event.conflict_resolved ?? false,
+          reminder_sent: event.reminder_sent ?? false,
+          priority: event.priority ?? 'medium',
+          event_type: derivedEventType ?? 'general',
+        };
+      });
 
       return createSuccessResponse({ events: enhancedEvents }, 'Events fetched successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/calendar', method: 'GET', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/calendar',
+        method: 'GET',
+        ...(user ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,
@@ -76,8 +107,24 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('Calendar create attempted without authenticated user', {
+          url: req.url,
+          route: '/api/calendar',
+          securityEvent: true,
+          severity: 'medium',
+        });
+        return createValidationErrorResponse([
+          {
+            path: ['user'],
+            message: 'Authentication required',
+            code: 'custom',
+          },
+        ]);
+      }
+
       // Get user and household data
       const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
@@ -153,7 +200,11 @@ export async function POST(request: NextRequest) {
       return createSuccessResponse({ event: newEvent }, 'Event created successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/calendar', method: 'POST', userId: user.id });
+      return handleApiError(error, {
+        route: '/api/calendar',
+        method: 'POST',
+        ...(user ? { userId: user.id } : {}),
+      });
     }
   }, {
     requireAuth: true,

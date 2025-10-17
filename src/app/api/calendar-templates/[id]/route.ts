@@ -4,7 +4,8 @@ import { getAuth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { canAccessFeatureFromEntitlements } from '@/lib/server/canAccessFeature';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database.types';
+import type { Database, Json } from '@/types/supabase.generated';
+import { toEntitlements } from '@/lib/entitlements';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,7 +14,7 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-const supabase: SupabaseClient<Database> = createClient(supabaseUrl, supabaseKey);
+const supabase: SupabaseClient<Database> = createClient<Database>(supabaseUrl, supabaseKey);
 
 const TemplateIdSchema = z.object({
   id: z.string().uuid(),
@@ -58,17 +59,17 @@ export async function GET(
       }
 
       // Check entitlements for household templates
-      const { data: entitlements, error: entitlementsError } = await supabase
+    const { data: entitlementsRow, error: entitlementsError } = await supabase
         .from('entitlements')
         .select('*')
         .eq('household_id', template.household_id)
         .single();
 
-      if (entitlementsError || !entitlements) {
+      if (entitlementsError || !entitlementsRow) {
         return NextResponse.json({ error: 'Entitlements not found' }, { status: 404 });
       }
 
-      if (!canAccessFeatureFromEntitlements(entitlements, 'calendar_templates')) {
+      if (!canAccessFeatureFromEntitlements(toEntitlements(entitlementsRow), 'calendar_templates')) {
         return NextResponse.json({ 
           error: 'Calendar templates require Pro plan',
           code: 'UPGRADE_REQUIRED'
@@ -105,7 +106,26 @@ export async function PUT(
   try {
     const { id } = TemplateIdSchema.parse({ id: (await params).id });
     const body = await request.json();
-    let updateData = UpdateTemplateSchema.parse(body);
+    const parsedData = UpdateTemplateSchema.parse(body);
+    let updateData: Database['public']['Tables']['calendar_templates']['Update'] = {};
+    if (parsedData.name !== undefined) {
+      updateData.name = parsedData.name;
+    }
+    if (parsedData.description !== undefined) {
+      updateData.description = parsedData.description ?? null;
+    }
+    if (parsedData.template_type !== undefined) {
+      updateData.template_type = parsedData.template_type;
+    }
+    if (parsedData.rrule !== undefined) {
+      updateData.rrule = parsedData.rrule;
+    }
+    if (parsedData.events !== undefined) {
+      updateData.events = parsedData.events as unknown as Json;
+    }
+    if (typeof parsedData.is_active === 'boolean') {
+      updateData.is_active = parsedData.is_active;
+    }
 
     // Get user
     const { userId } = await getAuth(request);
@@ -141,17 +161,17 @@ export async function PUT(
       // Role check removed - Pro access is verified through entitlements
 
       // Check entitlements
-      const { data: entitlements, error: entitlementsError } = await supabase
+      const { data: entitlementsRow, error: entitlementsError } = await supabase
         .from('entitlements')
         .select('*')
         .eq('household_id', template.household_id)
         .single();
 
-      if (entitlementsError || !entitlements) {
+      if (entitlementsError || !entitlementsRow) {
         return NextResponse.json({ error: 'Entitlements not found' }, { status: 404 });
       }
 
-      if (!canAccessFeatureFromEntitlements(entitlements, 'calendar_templates')) {
+      if (!canAccessFeatureFromEntitlements(toEntitlements(entitlementsRow), 'calendar_templates')) {
         return NextResponse.json({ 
           error: 'Calendar templates require Pro plan',
           code: 'UPGRADE_REQUIRED'
@@ -159,11 +179,9 @@ export async function PUT(
       }
     } else {
       // Global templates - only allow updates to is_active for now
-      if (Object.prototype.hasOwnProperty.call(updateData, 'is_active')) {
-        updateData = { is_active: updateData.is_active };
-      } else {
-        updateData = {};
-      }
+      updateData = typeof parsedData.is_active === 'boolean'
+        ? { is_active: parsedData.is_active }
+        : {};
     }
 
     // Update the template
@@ -244,17 +262,17 @@ export async function DELETE(
     // Role check removed - Pro access is verified through entitlements
 
       // Check entitlements
-      const { data: entitlements, error: entitlementsError } = await supabase
+      const { data: entitlementsRow, error: entitlementsError } = await supabase
         .from('entitlements')
         .select('*')
         .eq('household_id', template.household_id)
         .single();
 
-      if (entitlementsError || !entitlements) {
+      if (entitlementsError || !entitlementsRow) {
         return NextResponse.json({ error: 'Entitlements not found' }, { status: 404 });
       }
 
-      if (!canAccessFeatureFromEntitlements(entitlements, 'calendar_templates')) {
+      if (!canAccessFeatureFromEntitlements(toEntitlements(entitlementsRow), 'calendar_templates')) {
         return NextResponse.json({ 
           error: 'Calendar templates require Pro plan',
           code: 'UPGRADE_REQUIRED'

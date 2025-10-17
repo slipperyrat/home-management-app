@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { withAPISecurity } from "@/lib/security/apiProtection";
-import { withFeatureFlags, createFeatureFlagContext } from "@/lib/middleware/featureFlags";
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
+import { createFeatureFlagContext } from "@/lib/middleware/featureFlags";
 import { UserPlan } from "@/lib/server/canAccessFeature";
 
 /**
@@ -8,7 +8,7 @@ import { UserPlan } from "@/lib/server/canAccessFeature";
  * Returns feature flag status for the current user
  */
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
  * Test feature flag access for a specific feature
  */
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

@@ -1,14 +1,35 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useUserData } from '@/hooks/useUserData';
 import ConflictDetection from '@/components/ConflictDetection';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, Info, AlertTriangle, Clock, Users, Calendar } from 'lucide-react';
+import type { Entitlements } from '@/lib/entitlements';
+
+function getFallbackEntitlements(householdId: string): Entitlements {
+  return {
+    household_id: householdId,
+    tier: 'free',
+    history_months: 0,
+    advanced_rrule: false,
+    conflict_detection: 'none',
+    google_import: false,
+    digest_max_per_day: 0,
+    quiet_hours: false,
+    quiet_hours_start: null,
+    quiet_hours_end: null,
+    quota_actions_per_month: 0,
+    quota_actions_used: 0,
+    quota_reset_date: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
 
 export default function ConflictsPage() {
   const { userData, isLoading } = useUserData();
-  const [entitlements, setEntitlements] = useState<Record<string, unknown> | null>(null);
+  const [entitlements, setEntitlements] = useState<Entitlements | null>(null);
   const [entitlementsLoading, setEntitlementsLoading] = useState(true);
   const householdId = userData?.household_id;
 
@@ -23,12 +44,14 @@ export default function ConflictsPage() {
       const data = await response.json();
       
       if (response.ok) {
-        setEntitlements(data);
+        setEntitlements(data as Entitlements);
       } else {
         console.error('Failed to load entitlements:', data.error);
+        setEntitlements(getFallbackEntitlements(householdId));
       }
     } catch (error) {
       console.error('Error loading entitlements:', error);
+      setEntitlements(getFallbackEntitlements(householdId));
     } finally {
       setEntitlementsLoading(false);
     }
@@ -39,6 +62,16 @@ export default function ConflictsPage() {
       void loadEntitlements();
     }
   }, [householdId, loadEntitlements]);
+
+  const userHouseholdId = userData?.household_id ?? householdId ?? null
+
+  const safeEntitlements = useMemo(() => {
+    if (entitlements) {
+      return entitlements
+    }
+
+    return userHouseholdId ? getFallbackEntitlements(userHouseholdId) : null
+  }, [entitlements, userHouseholdId])
 
   if (isLoading || entitlementsLoading) {
     return (
@@ -57,7 +90,7 @@ export default function ConflictsPage() {
     );
   }
 
-  if (!userData?.household_id) {
+  if (!userHouseholdId) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
@@ -91,10 +124,12 @@ export default function ConflictsPage() {
         </div>
 
         {/* Conflict Detection Component */}
-        <ConflictDetection 
-          householdId={userData.household_id}
-          entitlements={entitlements}
-        />
+        {safeEntitlements ? (
+          <ConflictDetection 
+            householdId={userHouseholdId}
+            entitlements={safeEntitlements}
+          />
+        ) : null}
 
         {/* Additional Information */}
         <Card>

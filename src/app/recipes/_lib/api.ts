@@ -78,7 +78,7 @@ export async function createRecipe(payload: RecipeFormInput): Promise<RecipeDeta
 
   if (!response.ok) {
     const error = await safeJson(response);
-    throw new Error(error?.error ?? "Failed to create recipe");
+    throw new Error((error && typeof error === "object" && "error" in error) ? (error as { error?: string }).error ?? "Failed to create recipe" : "Failed to create recipe");
   }
 
   const json = await response.json();
@@ -94,7 +94,7 @@ export async function updateRecipe({ id, ...payload }: RecipeFormInput & { id: s
 
   if (!response.ok) {
     const error = await safeJson(response);
-    throw new Error(error?.error ?? "Failed to update recipe");
+    throw new Error((error && typeof error === "object" && "error" in error) ? (error as { error?: string }).error ?? "Failed to update recipe" : "Failed to update recipe");
   }
 
   const json = await response.json();
@@ -107,7 +107,7 @@ export async function deleteRecipe({ id }: { id: string }): Promise<void> {
 
   if (!response.ok) {
     const error = await safeJson(response);
-    throw new Error(error?.error ?? "Failed to delete recipe");
+    throw new Error((error && typeof error === "object" && "error" in error) ? (error as { error?: string }).error ?? "Failed to delete recipe" : "Failed to delete recipe");
   }
 }
 
@@ -116,7 +116,7 @@ export async function toggleRecipeFavorite({ id }: { id: string }): Promise<{ is
 
   if (!response.ok) {
     const error = await safeJson(response);
-    throw new Error(error?.error ?? "Failed to toggle favorite");
+    throw new Error((error && typeof error === "object" && "error" in error) ? (error as { error?: string }).error ?? "Failed to toggle favorite" : "Failed to toggle favorite");
   }
 
   const json = await response.json();
@@ -132,7 +132,10 @@ export async function importRecipeFromUrl({ url }: { url: string }): Promise<Rec
 
   if (!response.ok) {
     const error = await safeJson(response);
-    throw new Error(error?.error ?? "Failed to import recipe");
+    if (error && typeof error === "object" && "error" in error) {
+      throw new Error((error as { error?: string }).error ?? "Failed to import recipe");
+    }
+    throw new Error("Failed to import recipe");
   }
 
   const json = await response.json();

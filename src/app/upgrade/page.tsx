@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { ProBadge } from '@/components/ProBadge';
 
 export default function UpgradePage() {
   const router = useRouter();

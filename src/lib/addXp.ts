@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 import { logger } from '@/lib/logging/logger';
 
-export async function addXp(userId: string, xpToAdd: number = 5): Promise<{ xp: number } | null> {
+export async function addXp(userId: string, xpToAdd: number = 5): Promise<{ xp: number | null } | null> {
   logger.info('Updating user XP', { userId, xpToAdd });
 
   const { data: currentUsers, error: fetchError } = await supabase

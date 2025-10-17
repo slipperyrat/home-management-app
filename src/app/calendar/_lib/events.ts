@@ -129,7 +129,10 @@ async function loadMonthFromDatabase({
   }
 
   for (const key of Object.keys(eventsByDay)) {
-    eventsByDay[key].sort((a, b) => a.startsAt.toMillis() - b.startsAt.toMillis());
+    const list = eventsByDay[key];
+    if (list) {
+      list.sort((a, b) => a.startsAt.toMillis() - b.startsAt.toMillis());
+    }
   }
 
   return {
@@ -186,11 +189,13 @@ async function queryEvents(rangeStart: DateTime, rangeEnd: DateTime): Promise<Ev
     const unique = new Map<string, EventRow>();
     for (const row of [...(base ?? []), ...(recurring ?? [])]) {
       if (
-        row.household_id === householdId ||
-        row.attendee_user_id === userId ||
-        (row.is_public && row.household_id === householdId)
+        row &&
+        typeof row === "object" &&
+        (row.household_id === householdId ||
+          row.attendee_user_id === userId ||
+          (row.is_public && row.household_id === householdId))
       ) {
-        unique.set(row.id, row);
+        unique.set(row.id, row as EventRow);
       }
     }
 
@@ -280,12 +285,12 @@ function toInstance(row: EventRow, startsAt: DateTime, endsAt: DateTime, instanc
   return {
     baseEventId: row.id,
     instanceId,
-    title: row.title,
-    description: row.description,
-    location: row.location,
+    title: row.title ?? "Untitled event",
+    description: row.description ?? null,
+    location: row.location ?? null,
     timezone: row.timezone || DEFAULT_CALENDAR_TIMEZONE,
-    isAllDay: row.is_all_day,
-    source: row.source,
+    isAllDay: Boolean(row.is_all_day),
+    source: row.source ?? "unknown",
     startsAt,
     endsAt,
   };

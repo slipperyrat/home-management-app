@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         const calendars = importSetting.calendars || [];
         const selectedCalendars = calendars
           .filter((cal: { id: string; selected?: boolean }) => cal.selected !== false)
-          .map((cal) => cal.id);
+          .map((cal: { id: string }) => cal.id);
 
         if (selectedCalendars.length === 0) {
           logger.info('No calendars selected for Google import; skipping household', { householdId: importSetting.household_id });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { sb } from '@/lib/server/supabaseAdmin';
 import { updateShoppingListCounts } from '@/lib/server/updateShoppingListCounts';
 import { logger } from '@/lib/logging/logger';
@@ -10,35 +10,36 @@ const confirmItemsSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return NextResponse.json({ success: false, error: 'User not authenticated' }, { status: 401 });
+      }
       const payload = await req.json();
       const { itemIds } = confirmItemsSchema.parse(payload);
 
-      // Get user's household
       const supabase = sb();
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('household_id')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (userError || !userData) {
-        return NextResponse.json({ 
-          success: false, 
-          error: 'User not found' 
+      if (userError || !userData?.household_id) {
+        return NextResponse.json({
+          success: false,
+          error: 'User not found',
         }, { status: 404 });
       }
 
       const householdId = userData.household_id;
 
-    // Get the "Groceries" list for this household
       const { data: groceriesList, error: listError } = await supabase
         .from('shopping_lists')
-        .select('id, title')
+        .select('id, name')
         .eq('household_id', householdId)
-        .eq('title', 'Groceries')
-        .single();
+        .eq('name', 'Groceries')
+        .maybeSingle();
 
       if (listError || !groceriesList) {
         logger.warn('Groceries list not found during confirm-items', {
@@ -48,11 +49,10 @@ export async function POST(request: NextRequest) {
         });
         return NextResponse.json({
           success: false,
-          error: 'Groceries list not found'
+          error: 'Groceries list not found',
         }, { status: 404 });
       }
 
-      // Get the items to confirm
       const { data: itemsToConfirm, error: fetchError } = await supabase
         .from('shopping_items')
         .select('*')
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
         });
         return NextResponse.json({
           success: false,
-          error: 'Failed to fetch items'
+          error: 'Failed to fetch items',
         }, { status: 500 });
       }
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         });
         return NextResponse.json({
           success: false,
-          error: 'No items found to confirm'
+          error: 'No items found to confirm',
         }, { status: 404 });
       }
 
@@ -161,10 +161,10 @@ export async function POST(request: NextRequest) {
                 is_complete: false,
               })
               .select()
-              .single();
+              .maybeSingle();
 
-            if (createError) {
-              errors.push(`Error creating item ${item.name}: ${createError.message}`);
+            if (createError || !newItem) {
+              errors.push(`Error creating item ${item.name}: ${createError?.message ?? 'Insert failed'}`);
               continue;
             }
 
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
       logger.error('Error in confirm-items API', error instanceof Error ? error : new Error(String(error)), {
-        userId: user.id,
+        userId: user?.id ?? 'unknown',
       });
       return NextResponse.json({
         success: false,
@@ -230,16 +230,20 @@ export async function POST(request: NextRequest) {
   }, {
     requireAuth: true,
     requireCSRF: true,
-    rateLimitConfig: 'shopping'
+    rateLimitConfig: 'shopping',
   });
 }
 
-function getMergedQuantity(existingQuantity: unknown, incomingQuantity: unknown): string | number {
-  const existingNumeric = parseFloat(String(existingQuantity));
-  const incomingNumeric = parseFloat(String(incomingQuantity));
+function getMergedQuantity(existingQuantity: unknown, incomingQuantity: unknown): string | null {
+  if (existingQuantity == null && incomingQuantity == null) {
+    return null;
+  }
+
+  const existingNumeric = Number.parseFloat(String(existingQuantity));
+  const incomingNumeric = Number.parseFloat(String(incomingQuantity));
 
   if (!Number.isNaN(existingNumeric) && !Number.isNaN(incomingNumeric)) {
-    return Math.round((existingNumeric + incomingNumeric) * 100) / 100;
+    return String(Math.round((existingNumeric + incomingNumeric) * 100) / 100);
   }
 
   const existingStr = String(existingQuantity ?? '').trim();
@@ -248,19 +252,19 @@ function getMergedQuantity(existingQuantity: unknown, incomingQuantity: unknown)
   if (existingStr.includes('+')) {
     const totalExisting = existingStr
       .split('+')
-      .map((part) => parseFloat(part.trim()) || 0)
+      .map((part) => Number.parseFloat(part.trim()) || 0)
       .reduce((sum, value) => sum + value, 0);
-    const combinedTotal = totalExisting + (parseFloat(incomingStr) || 0);
-    return combinedTotal;
+    const combinedTotal = totalExisting + (Number.parseFloat(incomingStr) || 0);
+    return String(combinedTotal);
   }
 
   if (existingStr.length === 0) {
-    return incomingQuantity ?? null;
+    return incomingStr.length > 0 ? incomingStr : null;
   }
 
   if (incomingStr.length === 0) {
-    return existingQuantity ?? null;
+    return existingStr.length > 0 ? existingStr : null;
   }
 
-  return `${existingQuantity} + ${incomingQuantity}`;
+  return `${existingStr} + ${incomingStr}`;
 }

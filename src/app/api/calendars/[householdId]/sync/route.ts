@@ -15,7 +15,7 @@ const syncSettingsSchema = z.object({
  * Get calendar sync settings and generate sync URLs
  */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ householdId: string }> }
 ) {
   try {
@@ -218,7 +218,7 @@ export async function PUT(
  * Regenerate ICS token
  */
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ householdId: string }> }
 ) {
   try {

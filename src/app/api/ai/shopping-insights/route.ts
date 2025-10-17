@@ -158,8 +158,15 @@ function analyzeShoppingFrequency(shoppingLists: ShoppingList[]): ShoppingFreque
   let count = 0;
 
   for (let i = 0; i < sortedLists.length - 1; i++) {
-    const currentDate = new Date(sortedLists[i].created_at);
-    const nextDate = new Date(sortedLists[i + 1].created_at);
+    const currentCreatedAt = sortedLists[i]?.created_at;
+    const nextCreatedAt = sortedLists[i + 1]?.created_at;
+
+    if (!currentCreatedAt || !nextCreatedAt) {
+      continue;
+    }
+
+    const currentDate = new Date(currentCreatedAt);
+    const nextDate = new Date(nextCreatedAt);
     const daysDiff = Math.abs(currentDate.getTime() - nextDate.getTime()) / (1000 * 60 * 60 * 24);
     totalDays += daysDiff;
     count++;
@@ -232,15 +239,18 @@ function calculateAILearningProgress(shoppingLists: ShoppingList[]): number {
 }
 
 function predictNextShopping(shoppingLists: ShoppingList[]): string {
-  if (shoppingLists.length === 0) return 'This week';
-
   const sortedLists = shoppingLists
-    .filter((list) => list.created_at)
+    .filter(list => list.created_at)
     .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
 
   if (sortedLists.length === 0) return 'This week';
 
-  const lastShoppingDate = new Date(sortedLists[0].created_at);
+  const latestCreatedAt = sortedLists[0]?.created_at;
+  if (!latestCreatedAt) {
+    return 'This week';
+  }
+
+  const lastShoppingDate = new Date(latestCreatedAt);
   const now = new Date();
   const daysSinceLastShopping = Math.floor((now.getTime() - lastShoppingDate.getTime()) / (1000 * 60 * 60 * 24));
 

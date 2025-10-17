@@ -2,16 +2,19 @@
 // This can be easily removed if the WebSocket implementation doesn't work
 
 import type { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { webSocketManager } from '@/lib/websocket/WebSocketServer';
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (_req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -33,7 +36,7 @@ export async function GET(request: NextRequest) {
       return createSuccessResponse(status, 'WebSocket status retrieved successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/websocket', method: 'GET', userId: user.id });
+      return handleApiError(error, { route: '/api/websocket', method: 'GET', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,
@@ -43,10 +46,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user?.id) {
+        return createErrorResponse('User not authenticated', 401);
+      }
       // Get user and household data
-      const { user: userData, household, error: userError } = await getUserAndHouseholdData(user.id);
+      const { household, error: userError } = await getUserAndHouseholdData(user.id);
       
       if (userError || !household) {
         return createErrorResponse('User not found or no household', 404);
@@ -74,7 +80,7 @@ export async function POST(request: NextRequest) {
       }
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/websocket', method: 'POST', userId: user.id });
+      return handleApiError(error, { route: '/api/websocket', method: 'POST', userId: user?.id ?? '' });
     }
   }, {
     requireAuth: true,

@@ -118,7 +118,7 @@ export const LazyChores = withLazyLoading(
 );
 
 export const LazyMealPlanner = withLazyLoading(
-  lazy(() => import('@/app/meal-planner/page')),
+  lazy(() => import('@/app/meals/page')),
   <div className="flex items-center justify-center min-h-screen">
     <LoadingSpinner size="lg" text="Loading meal planner..." />
   </div>
@@ -139,7 +139,7 @@ export const LazyCalendar = withLazyLoading(
 );
 
 export const LazyBills = withLazyLoading(
-  lazy(() => import('@/app/bills/page')),
+  lazy(() => import('@/app/finance/page')),
   <div className="flex items-center justify-center min-h-screen">
     <LoadingSpinner size="lg" text="Loading bills..." />
   </div>
@@ -166,6 +166,10 @@ export const LazyPushNotificationSetup = lazy(() => import('@/components/PushNot
 export const LazyHeartbeatProvider = lazy(() => import('@/components/HeartbeatProvider'));
 
 // Lazy heavy components
-export const LazyErrorBoundary = lazy(() => import('@/components/ErrorBoundary'));
+export const LazyErrorBoundary = lazy(() =>
+  import('@/components/ErrorBoundary').then((module) => ({ default: module.ErrorBoundary }))
+);
 export const LazyNavBar = lazy(() => import('@/components/NavBar'));
-export const LazySyncUserClient = lazy(() => import('@/components/SyncUserClient'));
+export const LazySyncUserClient = lazy(() =>
+  import('@/components/SyncUserClient').then((module) => ({ default: module.SyncUserClient }))
+);

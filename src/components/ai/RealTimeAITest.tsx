@@ -218,7 +218,7 @@ export function RealTimeAITest() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {testResults.map((result, index) => (
+              {testResults.map((result) => (
                 <div key={result.requestId} className="border rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">

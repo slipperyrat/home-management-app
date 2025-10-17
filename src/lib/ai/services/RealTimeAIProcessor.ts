@@ -1,27 +1,13 @@
 // Real-time AI Processing Service
 // This can be easily removed if the real-time processing doesn't work
 
-import { WebSocketManager, WebSocketMessage } from '@/lib/websocket/WebSocketServer';
+import { WebSocketManager } from '@/lib/websocket/WebSocketServer';
 import { ShoppingSuggestionsAIService, type ShoppingSuggestionsContext } from './ShoppingSuggestionsAIService';
 import { MealPlanningAIService, type MealPlanningContext } from './MealPlanningAIService';
+import type { ChoreAssignmentContext, EmailProcessingContext } from '@/components/ai/types/dashboard';
 import { isAIEnabled } from '@/lib/ai/config/aiConfig';
 import { logger } from '@/lib/logging/logger';
-
-type ChoreAssignmentContext = { householdId: string; chores: string[] };
-type EmailProcessingContext = { householdId: string; inbox: string };
-
-export type RealTimeContextMap =
-  | { type: 'shopping_suggestions'; context: ShoppingSuggestionsContext }
-  | { type: 'meal_planning'; context: MealPlanningContext }
-  | { type: 'chore_assignment'; context: ChoreAssignmentContext }
-  | { type: 'email_processing'; context: EmailProcessingContext };
-
-export interface RealTimeAIRequest extends RealTimeContextMap {
-  requestId: string;
-  userId: string;
-  householdId: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-}
+import type { RealTimeAIRequest } from '@/types/websocket';
 
 export interface RealTimeAIResponse<T = unknown> {
   success: boolean;
@@ -38,7 +24,6 @@ export class RealTimeAIProcessor {
   private shoppingAI: ShoppingSuggestionsAIService;
   private mealPlanningAI: MealPlanningAIService;
   private processingQueue: Map<string, RealTimeAIRequest> = new Map();
-  private isProcessing = false;
 
   constructor(webSocketManager: WebSocketManager) {
     this.webSocketManager = webSocketManager;
@@ -69,10 +54,33 @@ export class RealTimeAIProcessor {
       const startTime = Date.now();
 
       switch (type) {
-        case 'shopping_suggestions':
+        case 'shopping_suggestions': {
+          const ctx = context as Record<string, unknown>;
+          const shoppingContext: ShoppingSuggestionsContext = {
+            householdId,
+          };
+
+          if (Array.isArray(ctx.recentPurchases)) {
+            shoppingContext.recentPurchases = ctx.recentPurchases as NonNullable<
+              ShoppingSuggestionsContext['recentPurchases']
+            >;
+          }
+          if (Array.isArray(ctx.dietaryRestrictions)) {
+            shoppingContext.dietaryRestrictions = ctx.dietaryRestrictions as string[];
+          }
+          if (typeof ctx.budget === 'number') {
+            shoppingContext.budget = ctx.budget as number;
+          }
+          if (typeof ctx.season === 'string') {
+            shoppingContext.season = ctx.season as string;
+          }
+          if (Array.isArray(ctx.specialOccasions)) {
+            shoppingContext.specialOccasions = ctx.specialOccasions as string[];
+          }
+
           if (isAIEnabled('shoppingSuggestions')) {
             const { data: suggestions, provider: suggestionsProvider, fallbackUsed: suggestionsFallback } =
-              await this.shoppingAI.generateSuggestions(context as ShoppingSuggestionsContext);
+              await this.shoppingAI.generateSuggestions(shoppingContext);
             result = suggestions;
             provider = suggestionsProvider;
             fallbackUsed = suggestionsFallback ?? false;
@@ -82,32 +90,85 @@ export class RealTimeAIProcessor {
             fallbackUsed = true;
           }
           break;
+        }
 
-        case 'meal_planning':
+        case 'meal_planning': {
+          const ctx = context as Record<string, unknown>;
+          const mealContext: MealPlanningContext = {
+            householdId,
+            mealType: (typeof ctx.mealType === 'string' ? ctx.mealType : 'dinner') as MealPlanningContext['mealType'],
+            dietaryRestrictions: Array.isArray(ctx.dietaryRestrictions)
+              ? (ctx.dietaryRestrictions as string[])
+              : [],
+            maxPrepTime: typeof ctx.maxPrepTime === 'number' ? (ctx.maxPrepTime as number) : 30,
+            servings: typeof ctx.servings === 'number' ? (ctx.servings as number) : 4,
+            cuisine: typeof ctx.cuisine === 'string' ? (ctx.cuisine as string) : 'any',
+            budget: typeof ctx.budget === 'number' ? (ctx.budget as number) : 0,
+            skillLevel: 'intermediate',
+          };
+
+          const skillLevel = ctx.skillLevel;
+          if (skillLevel === 'beginner' || skillLevel === 'intermediate' || skillLevel === 'advanced') {
+            mealContext.skillLevel = skillLevel;
+          }
+
+          if (Array.isArray(ctx.availableIngredients)) {
+            mealContext.availableIngredients = ctx.availableIngredients as string[];
+          }
+          if (Array.isArray(ctx.avoidIngredients)) {
+            mealContext.avoidIngredients = ctx.avoidIngredients as string[];
+          }
+          if (Array.isArray(ctx.specialOccasions)) {
+            mealContext.specialOccasions = ctx.specialOccasions as string[];
+          }
+
           if (isAIEnabled('mealPlanning')) {
             const { data: mealPlan, provider: mealProvider, fallbackUsed: mealFallback } =
-              await this.mealPlanningAI.generateMealSuggestions(context as MealPlanningContext);
+              await this.mealPlanningAI.generateMealSuggestions(mealContext);
             result = mealPlan;
             provider = mealProvider;
             fallbackUsed = mealFallback ?? false;
           } else {
-            result = this.generateMockMealSuggestions(context as MealPlanningContext);
+            result = this.generateMockMealSuggestions(mealContext);
             provider = 'mock';
             fallbackUsed = true;
           }
           break;
+        }
 
-        case 'chore_assignment':
-          result = await this.processChoreAssignment(context as ChoreAssignmentContext);
+        case 'chore_assignment': {
+          const ctx = context as Record<string, unknown>;
+          const normalizedChores: string[] = Array.isArray(ctx.chores)
+            ? (ctx.chores as unknown[]).map((value) => String(value))
+            : [];
+          const choreContext: ChoreAssignmentContext = {
+            householdId,
+            availableUsers: Array.isArray(ctx.availableUsers)
+              ? (ctx.availableUsers as unknown[]).map((value) => String(value))
+              : [],
+            choreTypes: Array.isArray(ctx.choreTypes)
+              ? (ctx.choreTypes as unknown[]).map((value) => String(value))
+              : [],
+            chores: normalizedChores,
+          } as ChoreAssignmentContext;
+          result = await this.processChoreAssignment(choreContext);
           provider = 'mock';
           fallbackUsed = true;
           break;
+        }
 
-        case 'email_processing':
-          result = await this.processEmailProcessing(context as EmailProcessingContext);
+        case 'email_processing': {
+          const ctx = context as Record<string, unknown>;
+          const emailContext: EmailProcessingContext = {
+            householdId,
+            emailCount: typeof ctx.emailCount === 'number' ? (ctx.emailCount as number) : 0,
+            processingType: typeof ctx.processingType === 'string' ? (ctx.processingType as string) : 'standard',
+          };
+          result = await this.processEmailProcessing(emailContext);
           provider = 'mock';
           fallbackUsed = true;
           break;
+        }
 
         default:
           throw new Error(`Unknown AI processing type: ${type}`);
@@ -170,11 +231,16 @@ export class RealTimeAIProcessor {
     }
   }
 
-  private async processChoreAssignment({ householdId, chores }: ChoreAssignmentContext) {
+  private async processChoreAssignment(context: ChoreAssignmentContext) {
+    const { householdId, chores = [], availableUsers = [], choreTypes = [] } = context as ChoreAssignmentContext & {
+      chores?: string[];
+    };
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
+    const normalizedChores: string[] = Array.isArray(chores) ? chores : [];
+
     return {
-      assignments: chores.map((choreId) => ({
+      assignments: normalizedChores.map((choreId) => ({
         choreId,
         assignedTo: householdId,
         dueDate: new Date().toISOString(),
@@ -182,12 +248,15 @@ export class RealTimeAIProcessor {
         estimatedTime: 30,
         reasoning: 'Based on workload and preferences',
       })),
-      totalChores: chores.length,
-      estimatedTotalTime: chores.length * 30,
+      totalChores: normalizedChores.length,
+      estimatedTotalTime: normalizedChores.length * 30,
+      availableUsers,
+      choreTypes,
     };
   }
 
-  private async processEmailProcessing({ householdId, inbox }: EmailProcessingContext) {
+  private async processEmailProcessing(context: EmailProcessingContext) {
+    const { householdId, inbox } = context;
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     return {
@@ -241,13 +310,15 @@ export class RealTimeAIProcessor {
     };
   }
 
-  private emitToUser(userId: string, message: WebSocketMessage) {
+  private emitToUser(userId: string, message: any) {
     try {
       this.webSocketManager.emitToUser(userId, message);
     } catch (error) {
-      logger.warn('Failed to emit real-time AI message', error as Error, {
+      const err = error instanceof Error ? error : new Error('Unknown error');
+      logger.warn('Failed to emit real-time AI message', {
         userId,
         messageType: message.type,
+        error: err.message,
       });
     }
   }

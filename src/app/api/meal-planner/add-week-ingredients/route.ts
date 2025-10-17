@@ -27,9 +27,9 @@ export async function POST(request: NextRequest) {
       .from('users')
       .select('household_id')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (userError || !userData) {
+    if (userError || !userData?.household_id) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 

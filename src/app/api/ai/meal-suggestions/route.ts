@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { MealPlanningAIService, MealPlanningContext } from '@/lib/ai/services/MealPlanningAIService';
@@ -7,8 +7,13 @@ import { isAIEnabled } from '@/lib/ai/config/aiConfig';
 import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('AI meal suggestions requested without authenticated user');
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Fetching AI meal suggestions', { userId: user.id });
 
       // Check if AI is enabled
@@ -54,20 +59,31 @@ export async function GET(request: NextRequest) {
         dietaryRestrictions,
         maxPrepTime,
         servings,
-        cuisine,
-        budget,
         skillLevel,
         availableIngredients,
         avoidIngredients,
         specialOccasions
       };
 
+      if (cuisine) {
+        context.cuisine = cuisine;
+      }
+
+      if (budget !== undefined) {
+        context.budget = budget;
+      }
+
       // Generate AI meal suggestions
       const aiService = new MealPlanningAIService();
       const result = await aiService.generateMealSuggestions(context);
 
       if (!result.success) {
-        logger.error('AI meal suggestion generation failed', result.error instanceof Error ? result.error : new Error(String(result.error)), {
+        const errorValue = result.error as unknown;
+        const errorObject = errorValue instanceof Error
+          ? errorValue
+          : new Error(String(errorValue ?? 'Unknown AI meal suggestion error'));
+
+        logger.error('AI meal suggestion generation failed', errorObject, {
           userId: user.id,
           householdId: household.id,
         });
@@ -91,7 +107,20 @@ export async function GET(request: NextRequest) {
       }, 'AI meal suggestions generated successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/ai/meal-suggestions', method: 'GET', userId: user.id });
+      const errorContext: {
+        route: string;
+        method: string;
+        userId?: string;
+      } = {
+        route: '/api/ai/meal-suggestions',
+        method: 'GET'
+      };
+
+      if (user?.id) {
+        errorContext.userId = user.id;
+      }
+
+      return handleApiError(error, errorContext);
     }
   }, {
     requireAuth: true,

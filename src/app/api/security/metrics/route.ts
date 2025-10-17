@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { logger, createRequestLogger } from '@/lib/logging/logger';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const requestId = logger.generateRequestId();
   const log = createRequestLogger(requestId);
   
@@ -48,11 +48,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(metrics || []);
     
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    log.apiError('GET', '/api/security/metrics', new Error(errorMessage), { userId: clerkUser?.id });
+    const err = error instanceof Error ? error : new Error('Unknown error');
+    log.apiError('GET', '/api/security/metrics', err);
     
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { success: false, error: err.message },
       { status: 500 }
     );
   }

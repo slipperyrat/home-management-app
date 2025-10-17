@@ -24,9 +24,11 @@ export async function GET(request: NextRequest) {
       .eq('id', userId)
       .single();
 
-    if (userError || !userData) {
+    if (userError || !userData || !userData.household_id) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    const householdId = userData.household_id;
 
     // Build query
     let query = supabase
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
           confidence_score
         )
       `)
-      .eq('household_id', userData.household_id)
+      .eq('household_id', householdId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -55,7 +57,7 @@ export async function GET(request: NextRequest) {
     if (fetchError) {
       logger.error('Error fetching attachments', fetchError, {
         userId,
-        householdId: userData.household_id,
+        householdId,
       });
       return NextResponse.json({ error: 'Failed to fetch attachments' }, { status: 500 });
     }

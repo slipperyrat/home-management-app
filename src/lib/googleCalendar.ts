@@ -1,53 +1,54 @@
-import { google } from 'googleapis';
+import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
+import { logger } from '@/lib/logging/logger';
 
 export interface GoogleCalendarEvent {
-  id: string;
-  summary: string;
-  description?: string;
+  id: string
+  summary: string
+  description?: string | undefined
   start: {
-    dateTime?: string;
-    date?: string;
-    timeZone?: string;
-  };
+    dateTime?: string | undefined
+    date?: string | undefined
+    timeZone?: string | undefined
+  }
   end: {
-    dateTime?: string;
-    date?: string;
-    timeZone?: string;
-  };
-  location?: string;
+    dateTime?: string | undefined
+    date?: string | undefined
+    timeZone?: string | undefined
+  }
+  location?: string | undefined
   attendees?: Array<{
-    email: string;
-    displayName?: string;
-    responseStatus?: string;
-  }>;
-  recurrence?: string[];
-  status?: string;
-  visibility?: string;
-  created?: string;
-  updated?: string;
+    email?: string | undefined
+    displayName?: string | undefined
+    responseStatus?: string | undefined
+  }> | undefined
+  recurrence?: string[] | undefined
+  status?: string | undefined
+  visibility?: string | undefined
+  created?: string | undefined
+  updated?: string | undefined
 }
 
 export interface GoogleCalendarListEntry {
-  id: string;
-  summary: string;
-  description?: string;
-  accessRole: string;
-  primary?: boolean;
-  selected?: boolean;
-  timeZone?: string;
-  backgroundColor?: string;
-  foregroundColor?: string;
+  id: string
+  summary: string
+  description?: string | undefined
+  accessRole: string
+  primary: boolean
+  selected: boolean
+  timeZone?: string | undefined
+  backgroundColor?: string | undefined
+  foregroundColor?: string | undefined
 }
 
 export class GoogleCalendarService {
-  private oauth2Client: OAuth2Client;
-  private calendar: ReturnType<typeof google.calendar>;
+  private oauth2Client: OAuth2Client
+  private calendar: ReturnType<typeof google.calendar>
 
   constructor(accessToken: string) {
-    this.oauth2Client = new OAuth2Client();
-    this.oauth2Client.setCredentials({ access_token: accessToken });
-    this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
+    this.oauth2Client = new OAuth2Client()
+    this.oauth2Client.setCredentials({ access_token: accessToken })
+    this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client })
   }
 
   /**
@@ -57,25 +58,28 @@ export class GoogleCalendarService {
     try {
       const response = await this.calendar.calendarList.list({
         maxResults: 100,
-        minAccessRole: 'reader'
-      });
+        minAccessRole: 'reader',
+      })
 
-      return (
-        response.data.items?.map((item) => ({
-          id: item?.id ?? '',
-          summary: item?.summary ?? 'Untitled Calendar',
-          description: item?.description ?? undefined,
-          accessRole: item?.accessRole ?? 'reader',
-          primary: item?.primary ?? false,
-          selected: item?.selected ?? false,
-          timeZone: item?.timeZone ?? undefined,
-          backgroundColor: item?.backgroundColor ?? undefined,
-          foregroundColor: item?.foregroundColor ?? undefined,
-        })) ?? []
-      );
+      const items = response.data.items ?? []
+
+      return items
+        .filter((item): item is NonNullable<typeof item> => Boolean(item?.id))
+        .map((item): GoogleCalendarListEntry => ({
+          id: item.id ?? '',
+          summary: item.summary ?? 'Untitled Calendar',
+          description: item.description ?? undefined,
+          accessRole: item.accessRole ?? 'reader',
+          primary: Boolean(item.primary),
+          selected: Boolean(item.selected),
+          timeZone: item.timeZone ?? undefined,
+          backgroundColor: item.backgroundColor ?? undefined,
+          foregroundColor: item.foregroundColor ?? undefined,
+        }))
     } catch (error) {
-      console.error('Error fetching calendar list:', error);
-      throw new Error('Failed to fetch calendar list');
+      const err = error instanceof Error ? error : new Error('Failed to fetch calendar list')
+      logger.error('Error fetching calendar list', err)
+      throw new Error('Failed to fetch calendar list')
     }
   }
 
@@ -83,14 +87,14 @@ export class GoogleCalendarService {
    * Get events from a specific calendar
    */
   async getEvents(
-    calendarId: string, 
+    calendarId: string,
     options: {
-      timeMin?: string;
-      timeMax?: string;
-      maxResults?: number;
-      singleEvents?: boolean;
-      orderBy?: string;
-    } = {}
+      timeMin?: string
+      timeMax?: string
+      maxResults?: number
+      singleEvents?: boolean
+      orderBy?: string
+    } = {},
   ): Promise<GoogleCalendarEvent[]> {
     try {
       const {
@@ -98,45 +102,59 @@ export class GoogleCalendarService {
         timeMax,
         maxResults = 100,
         singleEvents = true,
-        orderBy = 'startTime'
-      } = options;
+        orderBy = 'startTime',
+      } = options
 
-      const response = await this.calendar.events.list({
+      const params: calendar_v3.Params$Resource$Events$List = {
         calendarId,
         timeMin,
-        timeMax,
         maxResults,
         singleEvents,
-        orderBy
-      });
+        orderBy,
+      }
 
-      return (
-        response.data.items?.map((item) => ({
-          id: item?.id ?? '',
-          summary: item?.summary ?? 'No Title',
-          description: item?.description ?? undefined,
+      if (timeMax) {
+        params.timeMax = timeMax
+      }
+
+      const response = await this.calendar.events.list(params)
+
+      const items: calendar_v3.Schema$Event[] = response.data?.items ?? []
+
+      return items
+        .filter((item): item is calendar_v3.Schema$Event => Boolean(item?.id))
+        .map((item): GoogleCalendarEvent => ({
+          id: item.id ?? '',
+          summary: item.summary ?? 'No Title',
+          description: item.description ?? undefined,
           start: {
-            dateTime: item?.start?.dateTime ?? undefined,
-            date: item?.start?.date ?? undefined,
-            timeZone: item?.start?.timeZone ?? undefined,
+            dateTime: item.start?.dateTime ?? undefined,
+            date: item.start?.date ?? undefined,
+            timeZone: item.start?.timeZone ?? undefined,
           },
           end: {
-            dateTime: item?.end?.dateTime ?? undefined,
-            date: item?.end?.date ?? undefined,
-            timeZone: item?.end?.timeZone ?? undefined,
+            dateTime: item.end?.dateTime ?? undefined,
+            date: item.end?.date ?? undefined,
+            timeZone: item.end?.timeZone ?? undefined,
           },
-          location: item?.location ?? undefined,
-          attendees: item?.attendees ?? [],
-          recurrence: item?.recurrence ?? undefined,
-          status: item?.status ?? undefined,
-          visibility: item?.visibility ?? undefined,
-          created: item?.created ?? undefined,
-          updated: item?.updated ?? undefined,
-        })) ?? []
-      );
+          location: item.location ?? undefined,
+          attendees: item.attendees
+            ? item.attendees.map((attendee) => ({
+                email: attendee.email ?? undefined,
+                displayName: attendee.displayName ?? undefined,
+                responseStatus: attendee.responseStatus ?? undefined,
+              }))
+            : undefined,
+          recurrence: item.recurrence ?? undefined,
+          status: item.status ?? undefined,
+          visibility: item.visibility ?? undefined,
+          created: item.created ?? undefined,
+          updated: item.updated ?? undefined,
+        }))
     } catch (error) {
-      console.error('Error fetching events:', error);
-      throw new Error('Failed to fetch events');
+      const err = error instanceof Error ? error : new Error('Failed to fetch events')
+      logger.error('Error fetching events', err)
+      throw new Error('Failed to fetch events')
     }
   }
 
@@ -146,23 +164,21 @@ export class GoogleCalendarService {
   async getEventsFromCalendars(
     calendarIds: string[],
     options: {
-      timeMin?: string;
-      timeMax?: string;
-      maxResults?: number;
-    } = {}
+      timeMin?: string
+      timeMax?: string
+      maxResults?: number
+    } = {},
   ): Promise<{ calendarId: string; events: GoogleCalendarEvent[] }[]> {
     const results = await Promise.allSettled(
       calendarIds.map(async (calendarId) => {
-        const events = await this.getEvents(calendarId, options);
-        return { calendarId, events };
-      })
-    );
+        const events = await this.getEvents(calendarId, options)
+        return { calendarId, events }
+      }),
+    )
 
     return results
-      .filter((result): result is PromiseFulfilledResult<{ calendarId: string; events: GoogleCalendarEvent[] }> => 
-        result.status === 'fulfilled'
-      )
-      .map(result => result.value);
+      .filter((result): result is PromiseFulfilledResult<{ calendarId: string; events: GoogleCalendarEvent[] }> => result.status === 'fulfilled')
+      .map((result) => result.value)
   }
 
   /**
@@ -202,9 +218,9 @@ export class GoogleCalendarService {
       external_id: googleEvent.id,
       external_source: 'google_calendar',
       external_calendar_id: calendarId,
-      attendees: googleEvent.attendees?.map(attendee => ({
-        email: attendee.email,
-        name: attendee.displayName || attendee.email,
+      attendees: googleEvent.attendees?.map((attendee) => ({
+        email: attendee.email ?? '',
+        name: attendee.displayName || attendee.email || '',
         status: attendee.responseStatus || 'needsAction'
       })) || []
     };

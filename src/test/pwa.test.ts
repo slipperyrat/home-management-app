@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { vi } from './setup'
 
 // Mock the window object for PWA APIs
 const mockWindow = {
@@ -11,8 +12,8 @@ const mockWindow = {
   },
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),
-  matchMedia: vi.fn(() => ({
-    matches: false,
+  matchMedia: vi.fn((query: string) => ({
+    matches: query === '(display-mode: standalone)' ? mockWindow.navigator.onLine : false,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn()
   })),
@@ -70,14 +71,8 @@ describe('PWA Features', () => {
 
   describe('PWA Install Logic', () => {
     it('should detect if app is already installed', () => {
-      // Mock standalone display mode
-      mockWindow.matchMedia = vi.fn(() => ({
-        matches: true, // App is in standalone mode
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn()
-      }))
-      
-      const isStandalone = mockWindow.matchMedia('(display-mode: standalone)').matches
+      const mediaQueryList = mockWindow.matchMedia('(display-mode: standalone)')
+      const isStandalone = mediaQueryList.matches
       expect(isStandalone).toBe(true)
     })
 
@@ -131,7 +126,7 @@ describe('PWA Features', () => {
       }
       
       mockWindow.navigator.serviceWorker.getRegistration = vi.fn(() => 
-        Promise.resolve(mockRegistration)
+        Promise.resolve(mockRegistration as unknown as ServiceWorkerRegistration | null)
       )
       
       // Test service worker registration

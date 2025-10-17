@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getDatabaseClient } from '@/lib/api/database';
+import type { Database } from '@/types/supabase.generated';
+import type { Entitlements } from '@/lib/entitlements';
 import { z } from 'zod';
 import { generateEventOccurrences } from '@/lib/calendar/rruleUtils';
 import { ConflictDetectionService } from '@/lib/conflictDetectionService';
 import { canAccessFeatureFromEntitlements } from '@/lib/server/canAccessFeature';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 // Validation schemas
 const createEventSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -23,20 +27,18 @@ const createEventSchema = z.object({
     userId: z.string().optional(),
     email: z.string().email().optional(),
     status: z.enum(['accepted', 'declined', 'tentative', 'needsAction']).default('needsAction'),
-    isOptional: z.boolean().default(false)
+    isOptional: z.boolean().default(false),
   })).optional().default([]),
   reminders: z.array(z.object({
     minutesBefore: z.number().min(0),
-    method: z.enum(['push', 'email', 'sms']).default('push')
-  })).optional().default([])
+    method: z.enum(['push', 'email', 'sms']).default('push'),
+  })).optional().default([]),
 });
-
-const updateEventSchema = createEventSchema.partial();
 
 const getEventsSchema = z.object({
   start: z.string().datetime(),
   end: z.string().datetime(),
-  calendarId: z.string().uuid().optional()
+  calendarId: z.string().uuid().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -51,33 +53,30 @@ export async function GET(request: NextRequest) {
     const end = searchParams.get('end');
     const calendarId = searchParams.get('calendarId');
 
-    // Validate query parameters
     const validatedQuery = getEventsSchema.parse({
       start,
       end,
-      calendarId: calendarId || undefined
+      calendarId: calendarId || undefined,
     });
 
     const supabase = getDatabaseClient();
-    
-    // Get user's household
+
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('household_id')
       .eq('id', userId)
-      .single();
+      .maybeSingle<{ household_id: string | null }>();
 
-    if (userError || !userData) {
-      console.error('User not found:', userError);
+    if (userError || !userData?.household_id) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    console.log('User household_id:', userData.household_id);
+    const householdId = userData.household_id;
 
-    // Build query
     let query = supabase
       .from('events')
-      .select(`
+      .select(
+        `
         *,
         calendar:calendars(name, color),
         attendees:event_attendees(
@@ -91,8 +90,9 @@ export async function GET(request: NextRequest) {
           minutes_before,
           method
         )
-      `)
-      .eq('household_id', userData.household_id)
+      `,
+      )
+      .eq('household_id', householdId)
       .gte('start_at', validatedQuery.start)
       .lte('start_at', validatedQuery.end)
       .order('start_at', { ascending: true });
@@ -101,71 +101,65 @@ export async function GET(request: NextRequest) {
       query = query.eq('calendar_id', validatedQuery.calendarId);
     }
 
-    console.log('Querying events for household:', userData.household_id);
     const { data: events, error } = await query;
-    
+
     if (error) {
-      console.error('Error fetching events:', error);
       return NextResponse.json({ error: 'Failed to fetch events', details: error.message }, { status: 500 });
     }
-    
-    console.log('Events found:', events?.length || 0);
 
-    // Generate occurrences for recurring events
-    const allOccurrences = [];
+    const allOccurrences: Array<Record<string, unknown>> = [];
     const startDate = new Date(validatedQuery.start);
     const endDate = new Date(validatedQuery.end);
 
-    for (const event of events || []) {
+    for (const event of events ?? []) {
       if (event.rrule) {
-        // Generate occurrences for recurring events
         const occurrences = generateEventOccurrences(
           {
             id: event.id,
             title: event.title,
-            description: event.description,
+            description: event.description ?? undefined,
             startAt: new Date(event.start_at),
             endAt: new Date(event.end_at),
             timezone: event.timezone,
             isAllDay: event.is_all_day,
             rrule: event.rrule,
-            exdates: event.exdates?.map((d: string) => new Date(d)) || [],
-            rdates: event.rdates?.map((d: string) => new Date(d)) || [],
-            location: event.location
+            exdates: (event.exdates ?? []).map((d: string) => new Date(d)),
+            rdates: (event.rdates ?? []).map((d: string) => new Date(d)),
+            location: event.location ?? undefined,
           },
           startDate,
-          endDate
+          endDate,
         );
 
-        allOccurrences.push(...occurrences.map(occ => ({
-          ...occ,
-          calendar: event.calendar,
-          attendees: event.attendees,
-          reminders: event.reminders,
-          isRecurring: true,
-          originalEventId: event.id
-        })));
+        allOccurrences.push(
+          ...occurrences.map((occurrence) => ({
+            ...occurrence,
+            calendar: event.calendar,
+            attendees: event.attendees,
+            reminders: event.reminders,
+            isRecurring: true,
+            originalEventId: event.id,
+          })),
+        );
       } else {
-        // Single occurrence event
         allOccurrences.push({
           ...event,
-          isRecurring: false
+          isRecurring: false,
         });
       }
     }
 
-    // Sort all occurrences by start time
-    allOccurrences.sort((a, b) => 
-      new Date(a.startAt || a.start_at).getTime() - new Date(b.startAt || b.start_at).getTime()
-    );
-
-    return NextResponse.json({ 
-      events: allOccurrences,
-      count: allOccurrences.length 
+    allOccurrences.sort((a, b) => {
+      const aStart = 'startAt' in a && a.startAt ? new Date(a.startAt as string).getTime() : new Date((a as { start_at: string }).start_at).getTime();
+      const bStart = 'startAt' in b && b.startAt ? new Date(b.startAt as string).getTime() : new Date((b as { start_at: string }).start_at).getTime();
+      return aStart - bStart;
     });
 
+    return NextResponse.json({
+      events: allOccurrences,
+      count: allOccurrences.length,
+    });
   } catch (error) {
-    console.error('Error in GET /api/events:', error);
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid query parameters', details: error.errors }, { status: 400 });
     }
@@ -184,52 +178,50 @@ export async function POST(request: NextRequest) {
     const validatedData = createEventSchema.parse(body);
 
     const supabase = getDatabaseClient();
-    
-    // Get user's household
+
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('household_id')
       .eq('id', userId)
-      .single();
+      .maybeSingle<{ household_id: string | null }>();
 
-    if (userError || !userData) {
+    if (userError || !userData?.household_id) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Create event
+    const householdId = userData.household_id;
+
     const { data: event, error: eventError } = await supabase
       .from('events')
       .insert({
-        household_id: userData.household_id,
-        calendar_id: validatedData.calendarId || null,
+        household_id: householdId,
+        calendar_id: validatedData.calendarId ?? null,
         title: validatedData.title,
-        description: validatedData.description,
+        description: validatedData.description ?? null,
         start_at: validatedData.startAt,
         end_at: validatedData.endAt,
         timezone: validatedData.timezone,
         is_all_day: validatedData.isAllDay,
-        rrule: validatedData.rrule || null,
-        exdates: validatedData.exdates || [],
-        rdates: validatedData.rdates || [],
-        location: validatedData.location,
-        created_by: userId
-      })
-      .select()
-      .single();
+        rrule: validatedData.rrule ?? null,
+        exdates: validatedData.exdates ?? [],
+        rdates: validatedData.rdates ?? [],
+        location: validatedData.location ?? null,
+        created_by: userId,
+      } satisfies Database['public']['Tables']['events']['Insert'])
+      .select('*')
+      .maybeSingle<Database['public']['Tables']['events']['Row']>();
 
-    if (eventError) {
-      console.error('Error creating event:', eventError);
+    if (eventError || !event) {
       return NextResponse.json({ error: 'Failed to create event' }, { status: 500 });
     }
 
-    // Add attendees
-    if (validatedData.attendees && validatedData.attendees.length > 0) {
-      const attendeeData = validatedData.attendees.map(attendee => ({
+    if (validatedData.attendees?.length) {
+      const attendeeData: Database['public']['Tables']['event_attendees']['Insert'][] = validatedData.attendees.map((attendee) => ({
         event_id: event.id,
-        user_id: attendee.userId || null,
-        email: attendee.email || null,
+        user_id: attendee.userId ?? null,
+        email: attendee.email ?? null,
         status: attendee.status,
-        is_optional: attendee.isOptional
+        is_optional: attendee.isOptional,
       }));
 
       const { error: attendeesError } = await supabase
@@ -238,16 +230,14 @@ export async function POST(request: NextRequest) {
 
       if (attendeesError) {
         console.error('Error adding attendees:', attendeesError);
-        // Don't fail the entire request for attendee errors
       }
     }
 
-    // Add reminders
-    if (validatedData.reminders && validatedData.reminders.length > 0) {
-      const reminderData = validatedData.reminders.map(reminder => ({
+    if (validatedData.reminders?.length) {
+      const reminderData: Database['public']['Tables']['event_reminders']['Insert'][] = validatedData.reminders.map((reminder) => ({
         event_id: event.id,
         minutes_before: reminder.minutesBefore,
-        method: reminder.method
+        method: reminder.method,
       }));
 
       const { error: remindersError } = await supabase
@@ -256,46 +246,37 @@ export async function POST(request: NextRequest) {
 
       if (remindersError) {
         console.error('Error adding reminders:', remindersError);
-        // Don't fail the entire request for reminder errors
       }
     }
 
-    // Check for conflicts if Pro plan
-    let conflictResult = null;
+    let conflictResult: Awaited<ReturnType<typeof ConflictDetectionService.detectConflictsForEvent>> | null = null;
     try {
       const { data: entitlements, error: entitlementsError } = await supabase
         .from('entitlements')
         .select('*')
-        .eq('household_id', userData.household_id)
-        .single();
+        .eq('household_id', householdId)
+        .maybeSingle<Entitlements>();
 
       if (!entitlementsError && entitlements && canAccessFeatureFromEntitlements(entitlements, 'conflict_detection')) {
-        conflictResult = await ConflictDetectionService.detectConflictsForEvent(
-          event.id,
-          userData.household_id,
-          {
-            id: event.id,
-            title: event.title,
-            start_at: event.start_at,
-            end_at: event.end_at,
-            is_all_day: event.is_all_day,
-            household_id: userData.household_id
-          }
-        );
+        conflictResult = await ConflictDetectionService.detectConflictsForEvent(event.id, householdId, {
+          id: event.id,
+          title: event.title ?? 'Untitled',
+          start_at: event.start_at,
+          end_at: event.end_at,
+          is_all_day: event.is_all_day,
+          household_id: householdId,
+        });
       }
     } catch (conflictError) {
       console.error('Error detecting conflicts:', conflictError);
-      // Don't fail the entire request for conflict detection errors
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       event,
       message: 'Event created successfully',
-      conflicts: conflictResult
+      conflicts: conflictResult,
     }, { status: 201 });
-
   } catch (error) {
-    console.error('Error in POST /api/events:', error);
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid event data', details: error.errors }, { status: 400 });
     }

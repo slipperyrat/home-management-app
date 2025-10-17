@@ -12,7 +12,7 @@ export async function mergeDuplicateItems(listId: string): Promise<{
 
     const { data: allItems, error: fetchError } = await supabase
       .from('shopping_items')
-      .select('*')
+      .select('id, name, quantity, list_id, auto_added, pending_confirmation')
       .eq('list_id', listId)
       .order('created_at', { ascending: true });
 
@@ -60,7 +60,7 @@ export async function mergeDuplicateItems(listId: string): Promise<{
       try {
         let totalQuantity = 0;
         for (const item of items) {
-          const qty = Number.parseFloat(item.quantity) || 0;
+          const qty = Number.parseFloat(item.quantity ?? '0') || 0;
           totalQuantity += qty;
         }
 
@@ -73,7 +73,7 @@ export async function mergeDuplicateItems(listId: string): Promise<{
             quantity: totalQuantity.toString(),
             updated_at: new Date().toISOString(),
           })
-          .eq('id', firstItem.id);
+        .eq('id', firstItem?.id ?? '');
 
         if (updateError) {
           logger.error('Error updating primary shopping item during duplicate merge', updateError, { listId, itemName });

@@ -137,7 +137,6 @@ export function RowActions({ chore, members, onChange }: RowActionsProps) {
               mode="single"
               selected={chore.dueAt ? DateTime.fromISO(chore.dueAt).toJSDate() : undefined}
               onSelect={(date) => handleDueDate(date ?? undefined)}
-              initialFocus
             />
             <Button variant="ghost" size="sm" className="mt-2 w-full text-xs" onClick={() => handleDueDate(undefined)}>
               Clear due date

@@ -9,6 +9,8 @@ import {
   formatDigestTime,
   getNextDigestTime,
   DEFAULT_DIGEST_PREFERENCES,
+  type UpdateDigestPreferencesData,
+  type DigestPreferences as DigestPreferencesModel,
 } from '@/hooks/useDigestPreferences';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,24 +27,70 @@ interface DigestPreferencesProps {
   className?: string;
 }
 
-interface DigestPreferencesForm {
-  daily_digest_enabled: boolean;
-  daily_digest_time: string;
-  weekly_digest_enabled?: boolean;
-  weekly_digest_day?: string;
-  weekly_digest_time?: string;
-  include_chores?: boolean;
-  include_meals?: boolean;
-  include_shopping?: boolean;
-  include_events?: boolean;
-  include_achievements?: boolean;
-  include_insights?: boolean;
-  email_enabled?: boolean;
-  email_address?: string;
-  push_enabled?: boolean;
-  priority_filter?: string;
-  completion_status?: string;
-}
+type DigestPreferencesFormBase = Pick<DigestPreferencesModel,
+  'daily_digest_enabled' |
+  'daily_digest_time' |
+  'weekly_digest_enabled' |
+  'weekly_digest_day' |
+  'weekly_digest_time' |
+  'include_chores' |
+  'include_meals' |
+  'include_shopping' |
+  'include_events' |
+  'include_achievements' |
+  'include_insights' |
+  'email_enabled' |
+  'push_enabled' |
+  'priority_filter' |
+  'completion_status'
+>;
+
+type DigestPreferencesForm = DigestPreferencesFormBase & {
+  email_address: string;
+};
+
+type IncludePreferenceKey = Extract<keyof DigestPreferencesForm, `include_${string}`>;
+
+const DAILY_SECTIONS = ['chores', 'meals', 'shopping', 'events'] as const;
+const WEEKLY_SECTIONS = ['chores', 'meals', 'shopping', 'events', 'achievements', 'insights'] as const;
+
+const FALLBACK_PREFERENCES: DigestPreferencesForm = {
+  daily_digest_enabled: DEFAULT_DIGEST_PREFERENCES.daily_digest_enabled ?? true,
+  daily_digest_time: DEFAULT_DIGEST_PREFERENCES.daily_digest_time ?? '08:00',
+  weekly_digest_enabled: DEFAULT_DIGEST_PREFERENCES.weekly_digest_enabled ?? false,
+  weekly_digest_day: DEFAULT_DIGEST_PREFERENCES.weekly_digest_day ?? 'sunday',
+  weekly_digest_time: DEFAULT_DIGEST_PREFERENCES.weekly_digest_time ?? '09:00',
+  include_chores: DEFAULT_DIGEST_PREFERENCES.include_chores ?? true,
+  include_meals: DEFAULT_DIGEST_PREFERENCES.include_meals ?? true,
+  include_shopping: DEFAULT_DIGEST_PREFERENCES.include_shopping ?? true,
+  include_events: DEFAULT_DIGEST_PREFERENCES.include_events ?? true,
+  include_achievements: DEFAULT_DIGEST_PREFERENCES.include_achievements ?? true,
+  include_insights: DEFAULT_DIGEST_PREFERENCES.include_insights ?? true,
+  email_enabled: DEFAULT_DIGEST_PREFERENCES.email_enabled ?? true,
+  email_address: DEFAULT_DIGEST_PREFERENCES.email_address ?? '',
+  push_enabled: DEFAULT_DIGEST_PREFERENCES.push_enabled ?? true,
+  priority_filter: DEFAULT_DIGEST_PREFERENCES.priority_filter ?? 'all',
+  completion_status: DEFAULT_DIGEST_PREFERENCES.completion_status ?? 'all',
+};
+
+const toFormPreferences = (prefs?: DigestPreferencesModel | null): DigestPreferencesForm => ({
+  daily_digest_enabled: prefs?.daily_digest_enabled ?? FALLBACK_PREFERENCES.daily_digest_enabled,
+  daily_digest_time: prefs?.daily_digest_time ?? FALLBACK_PREFERENCES.daily_digest_time,
+  weekly_digest_enabled: prefs?.weekly_digest_enabled ?? FALLBACK_PREFERENCES.weekly_digest_enabled,
+  weekly_digest_day: prefs?.weekly_digest_day ?? FALLBACK_PREFERENCES.weekly_digest_day,
+  weekly_digest_time: prefs?.weekly_digest_time ?? FALLBACK_PREFERENCES.weekly_digest_time,
+  include_chores: prefs?.include_chores ?? FALLBACK_PREFERENCES.include_chores,
+  include_meals: prefs?.include_meals ?? FALLBACK_PREFERENCES.include_meals,
+  include_shopping: prefs?.include_shopping ?? FALLBACK_PREFERENCES.include_shopping,
+  include_events: prefs?.include_events ?? FALLBACK_PREFERENCES.include_events,
+  include_achievements: prefs?.include_achievements ?? FALLBACK_PREFERENCES.include_achievements,
+  include_insights: prefs?.include_insights ?? FALLBACK_PREFERENCES.include_insights,
+  email_enabled: prefs?.email_enabled ?? FALLBACK_PREFERENCES.email_enabled,
+  email_address: prefs?.email_address ?? '',
+  push_enabled: prefs?.push_enabled ?? FALLBACK_PREFERENCES.push_enabled,
+  priority_filter: prefs?.priority_filter ?? FALLBACK_PREFERENCES.priority_filter,
+  completion_status: prefs?.completion_status ?? FALLBACK_PREFERENCES.completion_status,
+});
 
 type DigestType = 'daily' | 'weekly';
 
@@ -55,17 +103,22 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
 
   const [localPreferences, setLocalPreferences] = useState<DigestPreferencesForm | null>(null);
 
-  const currentPreferences = useMemo(() => {
-    if (localPreferences) return localPreferences;
-    return (preferences as DigestPreferencesForm | undefined) ?? DEFAULT_DIGEST_PREFERENCES;
+  const currentPreferences = useMemo<DigestPreferencesForm>(() => {
+    if (localPreferences) {
+      return localPreferences;
+    }
+    return toFormPreferences(preferences);
   }, [localPreferences, preferences]);
 
   const nextDigest = useMemo(() => (preferences ? getNextDigestTime(preferences) : null), [preferences]);
   const hasUnsavedChanges = localPreferences !== null;
 
-  const handlePreferenceChange = useCallback((key: keyof DigestPreferencesForm, value: unknown) => {
+  const handlePreferenceChange = useCallback(<Key extends keyof DigestPreferencesForm>(
+    key: Key,
+    value: DigestPreferencesForm[Key],
+  ) => {
     setLocalPreferences((prev) => ({
-      ...(prev ?? (preferences as DigestPreferencesForm | undefined) ?? DEFAULT_DIGEST_PREFERENCES),
+      ...(prev ?? toFormPreferences(preferences)),
       [key]: value,
     }));
   }, [preferences]);
@@ -73,7 +126,26 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
   const handleSave = useCallback(() => {
     if (!localPreferences) return;
 
-    updatePreferences.mutate(localPreferences, {
+    const payload: UpdateDigestPreferencesData = {
+      daily_digest_enabled: localPreferences.daily_digest_enabled,
+      daily_digest_time: localPreferences.daily_digest_time,
+      weekly_digest_enabled: localPreferences.weekly_digest_enabled,
+      weekly_digest_day: localPreferences.weekly_digest_day,
+      weekly_digest_time: localPreferences.weekly_digest_time,
+      include_chores: localPreferences.include_chores,
+      include_meals: localPreferences.include_meals,
+      include_shopping: localPreferences.include_shopping,
+      include_events: localPreferences.include_events,
+      include_achievements: localPreferences.include_achievements,
+      include_insights: localPreferences.include_insights,
+      email_enabled: localPreferences.email_enabled,
+      email_address: localPreferences.email_address.trim() ? localPreferences.email_address.trim() : '',
+      push_enabled: localPreferences.push_enabled,
+      priority_filter: localPreferences.priority_filter,
+      completion_status: localPreferences.completion_status,
+    };
+
+    updatePreferences.mutate(payload, {
       onSuccess: () => {
         setLocalPreferences(null);
       },
@@ -184,7 +256,7 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
               <Label htmlFor="daily-enabled">Enable daily digest</Label>
               <Switch
                 id="daily-enabled"
-                checked={currentPreferences.daily_digest_enabled ?? false}
+                checked={Boolean(currentPreferences.daily_digest_enabled)}
                 onCheckedChange={(checked) => handlePreferenceChange('daily_digest_enabled', checked)}
               />
             </div>
@@ -206,14 +278,19 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-gray-700">Include in daily digest:</p>
                   <div className="space-y-2">
-                    {(['chores', 'meals', 'shopping', 'events'] as const).map((section) => (
+                    {DAILY_SECTIONS.map((section) => (
                       <div key={`daily-${section}`} className="flex items-center justify-between">
                         <Label htmlFor={`daily-${section}`}>{section.charAt(0).toUpperCase() + section.slice(1)}</Label>
-                        <Switch
-                          id={`daily-${section}`}
-                          checked={currentPreferences[`include_${section}` as const] ?? false}
-                          onCheckedChange={(checked) => handlePreferenceChange(`include_${section}` as const, checked)}
-                        />
+                        {(() => {
+                          const includeKey = `include_${section}` as IncludePreferenceKey;
+                          return (
+                            <Switch
+                              id={`daily-${section}`}
+                              checked={Boolean(currentPreferences[includeKey])}
+                              onCheckedChange={(checked) => handlePreferenceChange(includeKey, checked)}
+                            />
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -236,7 +313,7 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
               <Label htmlFor="weekly-enabled">Enable weekly digest</Label>
               <Switch
                 id="weekly-enabled"
-                checked={currentPreferences.weekly_digest_enabled ?? false}
+                checked={Boolean(currentPreferences.weekly_digest_enabled)}
                 onCheckedChange={(checked) => handlePreferenceChange('weekly_digest_enabled', checked)}
               />
             </div>
@@ -247,7 +324,12 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
                   <Label htmlFor="weekly-day">Day of week</Label>
                   <Select
                     value={currentPreferences.weekly_digest_day ?? 'sunday'}
-                    onValueChange={(value) => handlePreferenceChange('weekly_digest_day', value)}
+                    onValueChange={(value) =>
+                      handlePreferenceChange(
+                        'weekly_digest_day',
+                        value as DigestPreferencesForm['weekly_digest_day'],
+                      )
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -277,16 +359,19 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-gray-700">Include in weekly digest:</p>
                   <div className="space-y-2">
-                    {['chores', 'meals', 'shopping', 'events', 'achievements', 'insights'].map((section) => (
-                      <div key={`weekly-${section}`} className="flex items-center justify-between">
-                        <Label htmlFor={`weekly-${section}`}>{section.charAt(0).toUpperCase() + section.slice(1)}</Label>
-                        <Switch
-                          id={`weekly-${section}`}
-                          checked={currentPreferences[`include_${section}` as const] ?? false}
-                          onCheckedChange={(checked) => handlePreferenceChange(`include_${section}` as const, checked)}
-                        />
-                      </div>
-                    ))}
+                    {WEEKLY_SECTIONS.map((section) => {
+                      const includeKey = `include_${section}` as IncludePreferenceKey;
+                      return (
+                        <div key={`weekly-${section}`} className="flex items-center justify-between">
+                          <Label htmlFor={`weekly-${section}`}>{section.charAt(0).toUpperCase() + section.slice(1)}</Label>
+                          <Switch
+                            id={`weekly-${section}`}
+                            checked={Boolean(currentPreferences[includeKey])}
+                            onCheckedChange={(checked) => handlePreferenceChange(includeKey, checked)}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -307,7 +392,7 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
               <Label htmlFor="email-enabled">Email</Label>
               <Switch
                 id="email-enabled"
-                checked={currentPreferences.email_enabled ?? false}
+                checked={Boolean(currentPreferences.email_enabled)}
                 onCheckedChange={(checked) => handlePreferenceChange('email_enabled', checked)}
               />
             </div>
@@ -318,7 +403,7 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
                 <Input
                   id="email-address"
                   type="email"
-                  value={currentPreferences.email_address ?? ''}
+                  value={currentPreferences.email_address}
                   onChange={(event) => handlePreferenceChange('email_address', event.target.value)}
                   placeholder="your@email.com"
                 />
@@ -331,7 +416,7 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
               <Label htmlFor="push-enabled">Push notifications</Label>
               <Switch
                 id="push-enabled"
-                checked={currentPreferences.push_enabled ?? false}
+                checked={Boolean(currentPreferences.push_enabled)}
                 onCheckedChange={(checked) => handlePreferenceChange('push_enabled', checked)}
               />
             </div>
@@ -351,7 +436,9 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
               <Label htmlFor="priority-filter">Priority filter</Label>
               <Select
                 value={currentPreferences.priority_filter ?? 'all'}
-                onValueChange={(value) => handlePreferenceChange('priority_filter', value)}
+                onValueChange={(value) =>
+                  handlePreferenceChange('priority_filter', value as DigestPreferencesForm['priority_filter'])
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -368,7 +455,9 @@ export function DigestPreferences({ className = '' }: DigestPreferencesProps) {
               <Label htmlFor="completion-status">Completion status</Label>
               <Select
                 value={currentPreferences.completion_status ?? 'all'}
-                onValueChange={(value) => handlePreferenceChange('completion_status', value)}
+                onValueChange={(value) =>
+                  handlePreferenceChange('completion_status', value as DigestPreferencesForm['completion_status'])
+                }
               >
                 <SelectTrigger>
                   <SelectValue />

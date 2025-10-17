@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Trash2, Calendar } from 'lucide-react';
-import { CalendarTemplate } from '@/lib/entitlements';
-import { useFormState } from '@/hooks/useFormValidation';
+import type { CalendarTemplate, TemplateEvent } from '@/lib/entitlements';
+import { useFormState, type FormFieldError } from '@/hooks/useFormValidation';
 import { createCalendarTemplateSchema } from '@/lib/validation/schemas';
 import { toast } from 'sonner';
 
@@ -21,22 +21,15 @@ interface CreateTemplateFormProps {
   onCancel: () => void;
 }
 
-interface TemplateEvent {
-  id: string;
-  title: string;
-  start: string;
-  end: string;
-  color: string;
-  recurring?: boolean;
-}
+type TemplateEventWithId = TemplateEvent & { id: string };
 
 type CalendarTemplatePayload = {
   household_id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   template_type: CalendarTemplate['template_type'];
   rrule: string;
-  events: Array<Omit<TemplateEvent, 'id'>>;
+  events: TemplateEvent[];
   is_active: boolean;
 };
 
@@ -49,7 +42,21 @@ const DEFAULT_COLORS = [
   '#06B6D4', // Cyan
   '#84CC16', // Lime
   '#F97316', // Orange
-];
+] as const;
+
+const getColorForIndex = (index: number): string => DEFAULT_COLORS[index % DEFAULT_COLORS.length] ?? DEFAULT_COLORS[0];
+
+const createEmptyEvent = (index: number): TemplateEventWithId => {
+  const timestamp = new Date().toISOString().slice(0, 16);
+  return {
+    id: generateEventId(),
+    title: '',
+    start: timestamp,
+    end: timestamp,
+    color: getColorForIndex(index),
+    recurring: false,
+  };
+};
 
 const generateEventId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -79,29 +86,22 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
     rrule: true,
   }));
 
-  const initialEvents = useMemo<TemplateEvent[]>(
-    () =>
-      template?.events?.map((event) => ({
+  const initialEvents = useMemo<TemplateEventWithId[]>(() => {
+    if (template?.events?.length) {
+      return template.events.map((event, index) => ({
         id: generateEventId(),
-        title: event.title,
+        title: event.title ?? '',
         start: event.start,
         end: event.end,
-        color: event.color || DEFAULT_COLORS[0],
-        recurring: event.recurring,
-      })) ?? [
-        {
-          id: generateEventId(),
-          title: '',
-          start: new Date().toISOString().slice(0, 16),
-          end: new Date().toISOString().slice(0, 16),
-          color: DEFAULT_COLORS[0],
-          recurring: false,
-        },
-      ],
-    [template?.events]
-  );
+        color: event.color ?? getColorForIndex(index),
+        recurring: Boolean(event.recurring),
+      }));
+    }
 
-  const [events, setEvents] = useState<TemplateEvent[]>(initialEvents);
+    return [createEmptyEvent(0)];
+  }, [template?.events]);
+
+  const [events, setEvents] = useState<TemplateEventWithId[]>(initialEvents);
   const [errorsState, setErrorsState] = useState<FormFieldError[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -133,17 +133,7 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
   );
 
   const addEvent = useCallback(() => {
-    setEvents((prev) => [
-      ...prev,
-      {
-        id: generateEventId(),
-        title: '',
-        start: new Date().toISOString().slice(0, 16),
-        end: new Date().toISOString().slice(0, 16),
-        color: DEFAULT_COLORS[prev.length % DEFAULT_COLORS.length],
-        recurring: false,
-      },
-    ]);
+    setEvents((prev) => [...prev, createEmptyEvent(prev.length)]);
   }, []);
 
   const removeEvent = useCallback((index: number) => {
@@ -189,12 +179,18 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
         return;
       }
 
-      const templateEvents = events.map(({ id: _id, ...rest }) => rest);
+      const templateEvents: TemplateEvent[] = events.map((event, index) => ({
+        title: event.title.trim(),
+        start: event.start,
+        end: event.end,
+        color: event.color ?? getColorForIndex(index),
+        recurring: Boolean(event.recurring),
+      }));
 
       const templateData: CalendarTemplatePayload = {
         household_id: householdId,
         name: formData.name.trim(),
-        description: formData.description.trim() || undefined,
+        description: formData.description.trim() || null,
         template_type: formData.template_type,
         rrule: formData.rrule,
         events: templateEvents,
@@ -209,16 +205,7 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
         }
 
         reset();
-        setEvents([
-          {
-            id: generateEventId(),
-            title: '',
-            start: new Date().toISOString().slice(0, 16),
-            end: new Date().toISOString().slice(0, 16),
-            color: DEFAULT_COLORS[0],
-            recurring: false,
-          },
-        ]);
+        setEvents([createEmptyEvent(0)]);
         toast.success(isEditing ? 'Template updated successfully' : 'Template created successfully');
       } catch (submissionError) {
         console.error('Error saving template:', submissionError);
@@ -258,7 +245,7 @@ export default function CreateTemplateForm({ householdId, template, onCreateTemp
         <form onSubmit={handleSubmit} className="space-y-6">
           {errors.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-800 text-sm">{errors[0].message}</p>
+              <p className="text-red-800 text-sm">{errors[0]?.message}</p>
             </div>
           )}
 

@@ -2,14 +2,13 @@
 // This can be easily removed if the batch processing doesn't work
 
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { withAPISecurity, RequestUser } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
 import { batchProcessor, type BatchRequest, type BatchRequestContextMap } from '@/lib/ai/services/BatchProcessor';
 import { logger } from '@/lib/logging/logger';
 
 type BatchRequestType = keyof BatchRequestContextMap;
-
 interface BatchRequestPayload<TType extends BatchRequestType = BatchRequestType> {
   type: TType;
   context: BatchRequestContextMap[TType];
@@ -28,7 +27,7 @@ interface BatchRequestBody {
 }
 
 export async function POST(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
       if (!user) {
         return createErrorResponse('Unauthorized', 401);
@@ -124,7 +123,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
       if (!user) {
         return createErrorResponse('Unauthorized', 401);

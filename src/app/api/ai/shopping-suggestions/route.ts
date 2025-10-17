@@ -1,14 +1,19 @@
 import { NextRequest } from 'next/server';
-import { withAPISecurity } from '@/lib/security/apiProtection';
+import { RequestUser, withAPISecurity } from '@/lib/security/apiProtection';
 import { getUserAndHouseholdData } from '@/lib/api/database';
 import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/errors';
-import { ShoppingSuggestionsAIService, ShoppingContext } from '@/lib/ai/services/ShoppingSuggestionsAIService';
+import { ShoppingSuggestionsAIService, ShoppingSuggestionsContext } from '@/lib/ai/services/ShoppingSuggestionsAIService';
 import { isAIEnabled } from '@/lib/ai/config/aiConfig';
 import { logger } from '@/lib/logging/logger';
 
 export async function GET(request: NextRequest) {
-  return withAPISecurity(request, async (req, user) => {
+  return withAPISecurity(request, async (req: NextRequest, user: RequestUser | null) => {
     try {
+      if (!user) {
+        logger.warn('AI shopping suggestions requested without authenticated user');
+        return createErrorResponse('Unauthorized', 401);
+      }
+
       logger.info('Fetching AI shopping suggestions', { userId: user.id });
 
       // Check if AI is enabled
@@ -32,19 +37,33 @@ export async function GET(request: NextRequest) {
       const specialOccasions = searchParams.get('specialOccasions')?.split(',').filter(Boolean) || [];
 
       // Create shopping context
-      const context: ShoppingContext = {
-        householdId: household.id,
-        dietaryRestrictions,
-        budget,
-        specialOccasions
+      const context: ShoppingSuggestionsContext = {
+        householdId: household.id
       };
+
+      if (dietaryRestrictions && dietaryRestrictions.length > 0) {
+        context.dietaryRestrictions = dietaryRestrictions;
+      }
+
+      if (typeof budget === 'number') {
+        context.budget = budget;
+      }
+
+      if (specialOccasions && specialOccasions.length > 0) {
+        context.specialOccasions = specialOccasions;
+      }
 
       // Generate AI suggestions
       const aiService = new ShoppingSuggestionsAIService();
       const result = await aiService.generateSuggestions(context);
 
       if (!result.success) {
-        logger.error('AI shopping suggestions failed', result.error instanceof Error ? result.error : new Error(String(result.error)), {
+        const errorValue = result.error as unknown;
+        const errorObject = errorValue instanceof Error
+          ? errorValue
+          : new Error(String(errorValue ?? 'Unknown AI shopping suggestion error'));
+
+        logger.error('AI shopping suggestions failed', errorObject, {
           userId: user.id,
           householdId: household.id,
         });
@@ -68,7 +87,20 @@ export async function GET(request: NextRequest) {
       }, 'AI shopping suggestions generated successfully');
 
     } catch (error) {
-      return handleApiError(error, { route: '/api/ai/shopping-suggestions', method: 'GET', userId: user.id });
+      const errorContext: {
+        route: string;
+        method: string;
+        userId?: string;
+      } = {
+        route: '/api/ai/shopping-suggestions',
+        method: 'POST'
+      };
+
+      if (user?.id) {
+        errorContext.userId = user.id;
+      }
+
+      return handleApiError(error, errorContext);
     }
   }, {
     requireAuth: true,

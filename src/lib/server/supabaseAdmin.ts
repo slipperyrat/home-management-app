@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import { logger } from '@/lib/logging/logger';
-import type { Database } from '@/types/database';
+import type { Database } from '@/types/supabase.generated';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

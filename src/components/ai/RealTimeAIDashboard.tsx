@@ -36,6 +36,8 @@ import {
   BarChart3,
   RefreshCw
 } from 'lucide-react';
+import { REQUEST_TYPE_ICON, DEFAULT_REQUEST_ICON } from './icons';
+import type { AIRequestType } from './types/dashboard';
 
 export function RealTimeAIDashboard() {
   const {
@@ -158,11 +160,8 @@ export function RealTimeAIDashboard() {
   }, [isConnected, getStatus]);
 
   const getRequestTypeIcon = useCallback((requestId: string) => {
-    if (requestId.includes('shopping')) return <ShoppingCart className="h-4 w-4" />;
-    if (requestId.includes('meal')) return <Utensils className="h-4 w-4" />;
-    if (requestId.includes('chore')) return <Clock className="h-4 w-4" />;
-    if (requestId.includes('email')) return <Brain className="h-4 w-4" />;
-    return <Zap className="h-4 w-4" />;
+    const matchedType = (Object.keys(REQUEST_TYPE_ICON) as AIRequestType[]).find((key) => requestId.includes(key));
+    return matchedType ? REQUEST_TYPE_ICON[matchedType] : DEFAULT_REQUEST_ICON;
   }, []);
 
   return (
@@ -425,7 +424,7 @@ export function RealTimeAIDashboard() {
 interface ProcessingRequestCardProps {
   requestId: string;
   progress: ProgressUpdate;
-  getRequestTypeIcon: (requestId: string) => JSX.Element;
+  getRequestTypeIcon: (requestId: string) => React.ReactNode;
 }
 
 function ProcessingRequestCard({ requestId, progress, getRequestTypeIcon }: ProcessingRequestCardProps) {

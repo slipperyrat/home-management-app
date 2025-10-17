@@ -94,10 +94,10 @@ export async function GET(request: NextRequest) {
         const { error: updateError } = await supabase
           .from("households")
           .update({ plan: "pro" })
-          .eq("id", householdId);
+          .eq("id", householdId ?? "");
 
         if (updateError) {
-          logger.error('Failed to auto-upgrade household plan', updateError, { householdId });
+          logger.error('Failed to auto-upgrade household plan', updateError, { householdId: householdId ?? 'unknown' });
         }
       }
     }

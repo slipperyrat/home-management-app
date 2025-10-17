@@ -34,8 +34,8 @@ export function useCalendarTemplates({ householdId, templateType }: UseCalendarT
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          household_id: householdId,
           ...templateData,
+          household_id: householdId,
         }),
       });
 

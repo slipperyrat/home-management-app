@@ -138,8 +138,8 @@ export class QuietHoursService {
       }
 
       // Check if current time is within the quiet hours window
-      const startTime = quietHours.start_time;
-      const endTime = quietHours.end_time;
+      const startTime = quietHours.start_time ?? '00:00';
+      const endTime = quietHours.end_time ?? '00:00';
 
       // Handle overnight quiet hours (e.g., 22:00 to 06:00)
       if (startTime > endTime) {
@@ -174,27 +174,30 @@ export class QuietHoursService {
         // Calculate next change time
         if (isQuietHours) {
           // Currently in quiet hours, find when it ends
-          const endTime = settings.end_time;
+          const endTime = settings.end_time ?? '00:00';
+          const [endHour = '00', endMinute = '00'] = endTime.split(':');
           nextChange = new Date();
           nextChange.setHours(
-            parseInt(endTime.split(':')[0]),
-            parseInt(endTime.split(':')[1]),
+            Number.parseInt(endHour, 10),
+            Number.parseInt(endMinute, 10),
             0,
             0
           );
 
           // If end time is before start time (overnight), and we're past midnight
-          if (settings.start_time > settings.end_time && currentTime < endTime) {
+          const startTimeValue = settings.start_time ?? '00:00';
+          if (startTimeValue > endTime && currentTime < endTime) {
             // End time is tomorrow
             nextChange.setDate(nextChange.getDate() + 1);
           }
         } else {
           // Not in quiet hours, find when they start next
-          const startTime = settings.start_time;
+          const startTime = settings.start_time ?? '00:00';
+          const [startHour = '00', startMinute = '00'] = startTime.split(':');
           nextChange = new Date();
           nextChange.setHours(
-            parseInt(startTime.split(':')[0]),
-            parseInt(startTime.split(':')[1]),
+            Number.parseInt(startHour, 10),
+            Number.parseInt(startMinute, 10),
             0,
             0
           );
@@ -226,8 +229,8 @@ export class QuietHoursService {
    */
   static formatTime(time: string): string {
     try {
-      const [hours, minutes] = time.split(':');
-      const hour = parseInt(hours);
+      const [hours = '00', minutes = '00'] = time.split(':');
+      const hour = Number.parseInt(hours, 10);
       const ampm = hour >= 12 ? 'PM' : 'AM';
       const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
       return `${displayHour}:${minutes} ${ampm}`;
