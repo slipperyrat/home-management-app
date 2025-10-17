@@ -1,4 +1,18 @@
+'use client'
+
 export const dynamic = 'force-dynamic'
+
+const kitchenFeatures = [
+  'One-click grocery sync',
+  'Weekly meal planner',
+  'Household favorites',
+]
+
+const workflowFeatures = [
+  'Household dashboard',
+  'Shared calendar',
+  'Automated reminders',
+]
 
 export default function MarketingHome() {
   return (
@@ -21,7 +35,7 @@ export default function MarketingHome() {
           </p>
         </header>
         <div className="grid gap-4 md:grid-cols-3">
-          {["One-click grocery sync", "Weekly meal planner", "Household favorites"].map((feature) => (
+          {kitchenFeatures.map((feature) => (
             <div key={feature} className="rounded-2xl border border-white/5 bg-[#0b101d] p-5 text-sm text-slate-300">
               <p className="text-white">{feature}</p>
               <p className="mt-2 text-xs text-slate-500">
@@ -42,7 +56,7 @@ export default function MarketingHome() {
           </p>
         </header>
         <div className="grid gap-4 md:grid-cols-3">
-          {["Household dashboard", "Shared calendar", "Automated reminders"].map((feature) => (
+          {workflowFeatures.map((feature) => (
             <div key={feature} className="rounded-2xl border border-white/5 bg-[#0b101d] p-5 text-sm text-slate-300">
               <p className="text-white">{feature}</p>
               <p className="mt-2 text-xs text-slate-500">
